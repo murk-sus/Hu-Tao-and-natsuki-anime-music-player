@@ -8,7 +8,7 @@
 - Добавлены картинки персонажей (Hu Tao и Natsuki), обложка, плейлист и элементы управления.
 - Репозиторий хранит только исходники (без бинарных `.deb` файлов).
 
-## Сборка пакета
+## Сборка пакета (Linux/macOS/WSL)
 
 ```bash
 ./scripts/build_deb.sh
@@ -19,6 +19,33 @@
 ```text
 build/com.anime.hutao-natsuki-lockscreen_2.0.0_iphoneos-arm64.deb
 ```
+
+## Сборка `.deb` в Windows 11 (PowerShell)
+
+Запуск из корня репозитория:
+
+```powershell
+.\scripts\build_deb.ps1
+```
+
+Скрипт для Windows 11 поддерживает 2 backend-режима:
+- `wsl` (рекомендуется)
+- `docker` (Docker Desktop)
+
+Примеры:
+
+```powershell
+# Явно через WSL
+.\scripts\build_deb.ps1 -Backend wsl
+
+# Через конкретный дистрибутив WSL
+.\scripts\build_deb.ps1 -Backend wsl -WslDistro Ubuntu
+
+# Явно через Docker Desktop
+.\scripts\build_deb.ps1 -Backend docker
+```
+
+> В PowerShell не нужно запускать `/usr/bin/env ...` — это Linux-путь, которого в Windows нет.
 
 ## Установка на iPhone (jailbreak)
 
@@ -31,21 +58,3 @@ apt-get -f install
 1. Откройте **Xen HTML**.
 2. Перейдите в **Lock Screen widgets**.
 3. Выберите `HuTaoNatsukiPlayer`.
-
-## Сборка в Windows PowerShell
-
-> В PowerShell не нужно запускать `/usr/bin/env ...` — это Linux-путь, которого в Windows нет.
-
-Запуск из корня репозитория:
-
-```powershell
-.\scripts\build_deb.ps1
-```
-
-Если нужно указать конкретный дистрибутив WSL:
-
-```powershell
-.\scripts\build_deb.ps1 -WslDistro Ubuntu
-```
-
-PowerShell-скрипт запускает `scripts/build_deb.sh` внутри WSL.
