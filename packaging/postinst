@@ -1,0 +1,7 @@
+#!/bin/bash
+set -e
+chmod -R 0755 /var/mobile/Library/LockHTML/HuTaoNatsukiPlayer
+chown -R mobile:mobile /var/mobile/Library/LockHTML/HuTaoNatsukiPlayer || true
+
+echo "Installed lockscreen widget: /var/mobile/Library/LockHTML/HuTaoNatsukiPlayer"
+echo "Open Xen HTML -> Lock Screen -> choose HuTaoNatsukiPlayer"

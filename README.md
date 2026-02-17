@@ -2,55 +2,12 @@
 
 Готовый **lock screen-only** аниме-плеер (Hu Tao + Natsuki) для jailbreak iPhone на iOS 16.7.x.
 
-## Что сделано
+## Установка (без локальной сборки)
 
-- Плеер адаптирован **только под lock screen** (Xen HTML / LockHTML).
-- Добавлены картинки персонажей (Hu Tao и Natsuki), обложка, плейлист и элементы управления.
-- Репозиторий хранит только исходники (без бинарных `.deb` файлов).
-
-## Сборка пакета (Linux/macOS/WSL)
+Скачайте готовый `.deb` из **GitHub Releases** этого репозитория и установите на устройство:
 
 ```bash
-./scripts/build_deb.sh
-```
-
-После сборки пакет будет в:
-
-```text
-build/com.anime.hutao-natsuki-lockscreen_2.0.0_iphoneos-arm64.deb
-```
-
-## Сборка `.deb` в Windows 11 (PowerShell)
-
-Запуск из корня репозитория:
-
-```powershell
-.\scripts\build_deb.ps1
-```
-
-Скрипт для Windows 11 поддерживает 2 backend-режима:
-- `wsl` (рекомендуется)
-- `docker` (Docker Desktop)
-
-Примеры:
-
-```powershell
-# Явно через WSL
-.\scripts\build_deb.ps1 -Backend wsl
-
-# Через конкретный дистрибутив WSL
-.\scripts\build_deb.ps1 -Backend wsl -WslDistro Ubuntu
-
-# Явно через Docker Desktop
-.\scripts\build_deb.ps1 -Backend docker
-```
-
-> В PowerShell не нужно запускать `/usr/bin/env ...` — это Linux-путь, которого в Windows нет.
-
-## Установка на iPhone (jailbreak)
-
-```bash
-dpkg -i com.anime.hutao-natsuki-lockscreen_2.0.0_iphoneos-arm64.deb
+dpkg -i com.anime.hutao-natsuki-lockscreen_<version>_iphoneos-arm64.deb
 apt-get -f install
 ```
 
@@ -58,3 +15,12 @@ apt-get -f install
 1. Откройте **Xen HTML**.
 2. Перейдите в **Lock Screen widgets**.
 3. Выберите `HuTaoNatsukiPlayer`.
+
+## Как публикуется `.deb` в Releases
+
+При публикации Release (или вручную через `workflow_dispatch`) GitHub Actions автоматически:
+- собирает пакет из `src/app`;
+- создаёт `.deb`;
+- прикрепляет его к Release.
+
+Workflow: `.github/workflows/release-deb.yml`.
