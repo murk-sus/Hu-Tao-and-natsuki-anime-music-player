@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360" role="img" aria-label="Natsuki inspired art">
+  <defs>
+    <linearGradient id="g2" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#ff6fa8"/>
+      <stop offset="100%" stop-color="#53203e"/>
+    </linearGradient>
+  </defs>
+  <rect width="640" height="360" fill="url(#g2)"/>
+  <circle cx="510" cy="90" r="60" fill="#fff" opacity="0.2"/>
+  <circle cx="120" cy="310" r="115" fill="#ffc0da" opacity="0.2"/>
+  <text x="38" y="70" font-size="44" fill="#fff" font-family="Arial" font-weight="700">Natsuki</text>
+  <text x="40" y="108" font-size="24" fill="#ffe5f2" font-family="Arial">Poetry beats</text>
+  <rect x="250" y="138" width="225" height="145" rx="18" fill="#ffe8f5" opacity="0.86"/>
+  <line x1="275" y1="170" x2="450" y2="170" stroke="#d06c98" stroke-width="8"/>
+  <line x1="275" y1="198" x2="420" y2="198" stroke="#d06c98" stroke-width="8"/>
+  <line x1="275" y1="226" x2="435" y2="226" stroke="#d06c98" stroke-width="8"/>
+</svg>

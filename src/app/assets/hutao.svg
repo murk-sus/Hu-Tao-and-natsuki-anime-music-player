@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360" role="img" aria-label="Hu Tao inspired art">
+  <defs>
+    <linearGradient id="g1" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#621431"/>
+      <stop offset="100%" stop-color="#1e0d21"/>
+    </linearGradient>
+  </defs>
+  <rect width="640" height="360" fill="url(#g1)"/>
+  <circle cx="500" cy="80" r="70" fill="#ff7cbf" opacity="0.35"/>
+  <circle cx="130" cy="290" r="110" fill="#ff9f43" opacity="0.25"/>
+  <text x="38" y="70" font-size="44" fill="#fff" font-family="Arial" font-weight="700">Hu Tao</text>
+  <text x="40" y="108" font-size="24" fill="#ffd9ef" font-family="Arial">Pyro vibes</text>
+  <path d="M330 280c-70 0-126-56-126-126 0-44 23-83 57-106 34 23 57 62 57 106 0 22 18 40 40 40 44 0 80 36 80 80h-108z" fill="#ff6ec7" opacity="0.88"/>
+</svg>

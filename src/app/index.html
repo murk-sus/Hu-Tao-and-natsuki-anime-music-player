@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Hu Tao & Natsuki Lockscreen Player</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="player-shell lockscreen-only">
+    <header>
+      <h1>Hu Tao × Natsuki</h1>
+      <p>Lock Screen Player · iOS 16.7.x jailbreak</p>
+    </header>
+
+    <section class="characters">
+      <article class="character-card hutao">
+        <img src="assets/hutao.svg" alt="Hu Tao anime portrait" />
+        <div>
+          <h3>Hu Tao</h3>
+          <p>Pyro Ghost Bloom</p>
+        </div>
+      </article>
+      <article class="character-card natsuki">
+        <img src="assets/natsuki.svg" alt="Natsuki anime portrait" />
+        <div>
+          <h3>Natsuki</h3>
+          <p>Poetry Pink Pulse</p>
+        </div>
+      </article>
+    </section>
+
+    <section class="cover-area">
+      <img id="cover" src="assets/hutao-natsuki.svg" alt="Hu Tao and Natsuki cover" />
+      <div class="glow"></div>
+    </section>
+
+    <section class="track-meta">
+      <h2 id="track-title">Night Sakura Drift</h2>
+      <p id="track-artist">Luna Echo</p>
+    </section>
+
+    <audio id="audio" preload="metadata"></audio>
+
+    <section class="controls">
+      <button id="prev" aria-label="Предыдущий трек">⏮</button>
+      <button id="play" aria-label="Пауза или воспроизведение">▶</button>
+      <button id="next" aria-label="Следующий трек">⏭</button>
+    </section>
+
+    <section class="timeline">
+      <span id="current-time">0:00</span>
+      <input id="seek" type="range" min="0" max="100" value="0" />
+      <span id="duration">0:00</span>
+    </section>
+
+    <section class="playlist">
+      <h3>Плейлист (Lock Screen)</h3>
+      <ul id="playlist"></ul>
+    </section>
+  </main>
+
+  <script src="player.js"></script>
+</body>
+</html>
