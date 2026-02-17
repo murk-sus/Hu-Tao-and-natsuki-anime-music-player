@@ -1,0 +1,130 @@
+:root {
+  --bg: #0f0b1f;
+  --card: rgba(35, 19, 62, 0.82);
+  --accent: #ff6ec7;
+  --accent-2: #ffa94d;
+  --text: #fdf5ff;
+}
+
+* {
+  box-sizing: border-box;
+  font-family: "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  color: var(--text);
+  background: radial-gradient(circle at top, #30245c, var(--bg) 55%);
+}
+
+.player-shell {
+  width: min(420px, 94vw);
+  background: var(--card);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 22px;
+  backdrop-filter: blur(8px);
+  padding: 1rem;
+  box-shadow: 0 16px 50px rgba(0, 0, 0, 0.45);
+}
+
+h1, h2, h3, p {
+  margin: 0;
+}
+
+header p {
+  opacity: 0.85;
+  margin-top: 0.25rem;
+  font-size: 0.85rem;
+}
+
+.cover-area {
+  position: relative;
+  margin-top: 1rem;
+}
+
+.cover-area img {
+  width: 100%;
+  border-radius: 14px;
+  display: block;
+  position: relative;
+  z-index: 2;
+}
+
+.glow {
+  position: absolute;
+  inset: 12px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  filter: blur(25px);
+  opacity: 0.28;
+}
+
+.track-meta {
+  margin-top: 1rem;
+}
+
+.track-meta p {
+  opacity: 0.82;
+}
+
+.controls {
+  margin-top: 1rem;
+  display: flex;
+  justify-content: center;
+  gap: 0.65rem;
+}
+
+button {
+  border: none;
+  border-radius: 999px;
+  width: 56px;
+  height: 56px;
+  font-size: 1.2rem;
+  color: white;
+  background: linear-gradient(135deg, #ff5ca8, #ff9f43);
+  box-shadow: 0 8px 18px rgba(255, 95, 170, 0.35);
+}
+
+#play {
+  width: 72px;
+  height: 72px;
+  font-size: 1.5rem;
+}
+
+.timeline {
+  display: grid;
+  grid-template-columns: 42px 1fr 42px;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  font-size: 0.8rem;
+}
+
+input[type="range"] {
+  width: 100%;
+}
+
+.playlist {
+  margin-top: 1rem;
+}
+
+ul {
+  margin: 0.6rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+li {
+  padding: 0.6rem;
+  border-radius: 10px;
+  margin-bottom: 0.5rem;
+  background: rgba(255, 255, 255, 0.08);
+  cursor: pointer;
+}
+
+li.active {
+  background: linear-gradient(135deg, rgba(255, 110, 199, 0.4), rgba(255, 169, 77, 0.4));
+}
