@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Hu Tao & Natsuki Anime Player</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="player-shell">
+    <header>
+      <h1>Hu Tao × Natsuki</h1>
+      <p>Anime Music Player · iOS 16.7.x jailbreak</p>
+    </header>
+
+    <section class="cover-area">
+      <img id="cover" src="assets/hutao-natsuki.svg" alt="Hu Tao and Natsuki" />
+      <div class="glow"></div>
+    </section>
+
+    <section class="track-meta">
+      <h2 id="track-title">Night Sakura Drift</h2>
+      <p id="track-artist">Luna Echo</p>
+    </section>
+
+    <audio id="audio" preload="metadata"></audio>
+
+    <section class="controls">
+      <button id="prev" aria-label="Предыдущий трек">⏮</button>
+      <button id="play" aria-label="Пауза или воспроизведение">▶</button>
+      <button id="next" aria-label="Следующий трек">⏭</button>
+    </section>
+
+    <section class="timeline">
+      <span id="current-time">0:00</span>
+      <input id="seek" type="range" min="0" max="100" value="0" />
+      <span id="duration">0:00</span>
+    </section>
+
+    <section class="playlist">
+      <h3>Плейлист</h3>
+      <ul id="playlist"></ul>
+    </section>
+  </main>
+
+  <script src="player.js"></script>
+</body>
+</html>
