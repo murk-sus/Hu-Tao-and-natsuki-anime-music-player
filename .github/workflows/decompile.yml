@@ -51,7 +51,6 @@ jobs:
             --build "${IOS_BUILD}" \
             --output "${GITHUB_WORKSPACE}/ipsw" \
             --confirm
-          echo "=== downloaded files ==="
           find "${GITHUB_WORKSPACE}/ipsw" -type f -exec ls -lh {} \;
           IPSW="$(find "${GITHUB_WORKSPACE}/ipsw" -type f -name '*.ipsw' -print -quit)"
           if [[ -z "${IPSW}" ]]; then
@@ -71,7 +70,6 @@ jobs:
           ls -lh "${IPSW}"
           mkdir -p "${GITHUB_WORKSPACE}/kernel"
           ipsw extract --kernel "${IPSW}" --output "${GITHUB_WORKSPACE}/kernel"
-          echo "=== extracted files ==="
           find "${GITHUB_WORKSPACE}/kernel" -type f -exec ls -lh {} \;
           KERNEL="$(find "${GITHUB_WORKSPACE}/kernel" -type f \( -name 'kernelcache*' -o -name '*.kernelcache' \) -print -quit)"
           if [[ -z "${KERNEL}" ]]; then
@@ -99,8 +97,11 @@ jobs:
           _JAVA_OPTIONS: "-Xmx6g -Djava.awt.headless=true"
         run: |
           set -euo pipefail
+          GHIDRA_ROOT="${GHIDRA_INSTALL_DIR:-${GHIDRA_INSTALL_PATH:-/opt/ghidra}}"
+          echo "[*] Using Ghidra at: ${GHIDRA_ROOT}"
+          ls "${GHIDRA_ROOT}/support/"
           mkdir -p "${GITHUB_WORKSPACE}/ghidra_project"
-          "${GHIDRA_INSTALL_PATH}/support/analyzeHeadless" \
+          "${GHIDRA_ROOT}/support/analyzeHeadless" \
             "${GITHUB_WORKSPACE}/ghidra_project" KernelProject \
             -import "${KERNEL}" \
             -postScript decompile.py \
