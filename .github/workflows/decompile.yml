@@ -1,4 +1,4 @@
-name: Decompile iOS Kernelcache
+name: Extract Kernel Offsets
 
 on:
   push:
@@ -12,17 +12,20 @@ permissions:
   contents: read
 
 jobs:
-  decompile:
+  offsets:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 180
 
     env:
       GHIDRA_VERSION: "11.0.3"
       GHIDRA_DATE: "20240410"
       GHIDRA_HOME: /home/runner/ghidra
+      DEVICE: "iPhone14,5"
+      IOS_VERSION: "27.0"
+      IOS_BUILD: "24A437"
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Set up JDK 17
@@ -38,7 +41,7 @@ jobs:
           path: ${{ env.GHIDRA_HOME }}
           key: ghidra-11.0.3-linux-v2
 
-      - name: Download and install Ghidra
+      - name: Install Ghidra
         if: steps.cache-ghidra.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
@@ -50,31 +53,47 @@ jobs:
           mv /tmp/ghidra_unpack/ghidra_${GHIDRA_VERSION}_PUBLIC/* "${GHIDRA_HOME}/"
           rm -rf /tmp/ghidra.zip /tmp/ghidra_unpack
 
-      - name: Download ipsw
+      - name: Install ipsw
         run: |
           set -euo pipefail
-          wget -q https://github.com/blacktop/ipsw/releases/latest/download/ipsw_linux_amd64.tar.gz
-          tar xzf ipsw_linux_amd64.tar.gz
-          sudo mv ipsw /usr/local/bin/ipsw
+          API="https://api.github.com/repos/blacktop/ipsw/releases/latest"
+          URL="$(curl -sSL "$API" \
+            | grep -oE '"browser_download_url":\s*"[^"]*linux_amd64[^"]*"' \
+            | head -n1 \
+            | sed -E 's/.*"(https[^"]+)".*/\1/')"
+          curl -sSL -o /tmp/ipsw.tar.gz "$URL"
+          mkdir -p /tmp/ipsw_dl
+          tar xzf /tmp/ipsw.tar.gz -C /tmp/ipsw_dl
+          BIN="$(find /tmp/ipsw_dl -maxdepth 2 -type f -name ipsw -print -quit)"
+          sudo install -m 0755 "$BIN" /usr/local/bin/ipsw
           ipsw version
 
-      - name: Extract kernel.zip
+      - name: Download IPSW
         run: |
           set -euo pipefail
-          unzip -q "${GITHUB_WORKSPACE}/kernel.zip" -d "${GITHUB_WORKSPACE}"
-          ls -lh "${GITHUB_WORKSPACE}/kernel.raw"
-          file "${GITHUB_WORKSPACE}/kernel.raw"
+          ipsw download ipsw --device "${DEVICE}" --version "${IOS_VERSION}" --output /tmp/ipsw
+          IPSW="$(find /tmp/ipsw -name '*.ipsw' -print -quit)"
+          echo "IPSW=${IPSW}" >> "${GITHUB_ENV}"
 
-      - name: Symbolicate kernelcache
+      - name: Extract Kernelcache
         run: |
           set -euo pipefail
-          ipsw kernel symbolicate "${GITHUB_WORKSPACE}/kernel.raw" \
-            --output "${GITHUB_WORKSPACE}/kernel.sym.raw" || true
-          if [[ -f "${GITHUB_WORKSPACE}/kernel.sym.raw" ]]; then
-            cp "${GITHUB_WORKSPACE}/kernel.sym.raw" "${GITHUB_WORKSPACE}/kernel.raw"
-          fi
+          ipsw extract --kernel "${IPSW}" --output /tmp/kernel
+          KERNEL="$(find /tmp/kernel -name 'kernelcache*' -print -quit)"
+          echo "KERNEL=${KERNEL}" >> "${GITHUB_ENV}"
 
-      - name: Run Ghidra headless analysis
+      - name: Clone Symbolicator signatures
+        run: |
+          git clone --depth 1 https://github.com/blacktop/symbolicator.git /tmp/symbolicator
+
+      - name: Symbolicate Kernelcache
+        run: |
+          set -euo pipefail
+          ipsw kernel symbolicate --signatures /tmp/symbolicator/kernel \
+            --json "${KERNEL}" > /tmp/symbols.json || true
+          ls -lh /tmp/symbols.json || true
+
+      - name: Run Ghidra headless
         env:
           _JAVA_OPTIONS: "-Xmx6g -Djava.awt.headless=true"
         run: |
@@ -82,21 +101,12 @@ jobs:
           mkdir -p /tmp/ghidra_project
           "${GHIDRA_HOME}/support/analyzeHeadless" \
             /tmp/ghidra_project KernelProject \
-            -import "${GITHUB_WORKSPACE}/kernel.raw" \
+            -import "${KERNEL}" \
             -postScript decompile.py \
             -scriptPath "${GITHUB_WORKSPACE}/scripts" \
             -max-cpu 4 \
-            -analysisTimeoutPerFile 5400 \
+            -analysisTimeoutPerFile 9000 \
             2>&1 | tee /tmp/ghidra.log
-
-      - name: Verify offsets.txt
-        run: |
-          if [[ -f "${GITHUB_WORKSPACE}/offsets.txt" ]]; then
-            cat "${GITHUB_WORKSPACE}/offsets.txt"
-          else
-            tail -100 /tmp/ghidra.log
-            exit 1
-          fi
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -104,5 +114,6 @@ jobs:
           name: kernel-offsets-${{ github.sha }}
           path: |
             ${{ github.workspace }}/offsets.txt
+            /tmp/symbols.json
             /tmp/ghidra.log
           retention-days: 30
