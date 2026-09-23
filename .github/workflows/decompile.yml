@@ -22,7 +22,6 @@ jobs:
       GHIDRA_HOME: /home/runner/ghidra
       DEVICE: "iPhone14,5"
       IOS_VERSION: "27.0"
-      IOS_BUILD: "24A437"
 
     steps:
       - name: Checkout
@@ -33,6 +32,12 @@ jobs:
         with:
           java-version: "17"
           distribution: temurin
+
+      - name: Install ipsw (snap)
+        run: |
+          set -euo pipefail
+          sudo snap install ipsw
+          ipsw version
 
       - name: Cache Ghidra
         id: cache-ghidra
@@ -53,31 +58,18 @@ jobs:
           mv /tmp/ghidra_unpack/ghidra_${GHIDRA_VERSION}_PUBLIC/* "${GHIDRA_HOME}/"
           rm -rf /tmp/ghidra.zip /tmp/ghidra_unpack
 
-      - name: Install ipsw
-        run: |
-          set -euo pipefail
-          API="https://api.github.com/repos/blacktop/ipsw/releases/latest"
-          URL="$(curl -sSL "$API" \
-            | grep -oE '"browser_download_url":\s*"[^"]*linux_amd64[^"]*"' \
-            | head -n1 \
-            | sed -E 's/.*"(https[^"]+)".*/\1/')"
-          curl -sSL -o /tmp/ipsw.tar.gz "$URL"
-          mkdir -p /tmp/ipsw_dl
-          tar xzf /tmp/ipsw.tar.gz -C /tmp/ipsw_dl
-          BIN="$(find /tmp/ipsw_dl -maxdepth 2 -type f -name ipsw -print -quit)"
-          sudo install -m 0755 "$BIN" /usr/local/bin/ipsw
-          ipsw version
-
       - name: Download IPSW
         run: |
           set -euo pipefail
-          ipsw download ipsw --device "${DEVICE}" --version "${IOS_VERSION}" --output /tmp/ipsw
-          IPSW="$(find /tmp/ipsw -name '*.ipsw' -print -quit)"
+          mkdir -p /tmp/ipsw_dl
+          ipsw download ipsw --device "${DEVICE}" --version "${IOS_VERSION}" --output /tmp/ipsw_dl
+          IPSW="$(find /tmp/ipsw_dl -name '*.ipsw' -print -quit)"
           echo "IPSW=${IPSW}" >> "${GITHUB_ENV}"
 
       - name: Extract Kernelcache
         run: |
           set -euo pipefail
+          mkdir -p /tmp/kernel
           ipsw extract --kernel "${IPSW}" --output /tmp/kernel
           KERNEL="$(find /tmp/kernel -name 'kernelcache*' -print -quit)"
           echo "KERNEL=${KERNEL}" >> "${GITHUB_ENV}"
