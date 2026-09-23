@@ -17,10 +17,8 @@ jobs:
     timeout-minutes: 180
 
     env:
-      GHIDRA_VERSION: "11.0.3"
-      GHIDRA_DATE: "20240410"
-      GHIDRA_HOME: /home/runner/ghidra
       DEVICE: "iPhone14,5"
+      IOS_BUILD: "24A437"
       IOS_VERSION: "27.0"
 
     steps:
@@ -33,72 +31,83 @@ jobs:
           java-version: "17"
           distribution: temurin
 
+      - name: Setup Ghidra
+        uses: antoniovazquezblanco/setup-ghidra@v2.0.6
+        with:
+          version: "11.0.3"
+
       - name: Install ipsw (snap)
         run: |
           set -euo pipefail
           sudo snap install ipsw
           ipsw version
 
-      - name: Cache Ghidra
-        id: cache-ghidra
-        uses: actions/cache@v4
-        with:
-          path: ${{ env.GHIDRA_HOME }}
-          key: ghidra-11.0.3-linux-v2
-
-      - name: Install Ghidra
-        if: steps.cache-ghidra.outputs.cache-hit != 'true'
-        run: |
-          set -euo pipefail
-          ZIP="ghidra_${GHIDRA_VERSION}_PUBLIC_${GHIDRA_DATE}.zip"
-          URL="https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_${GHIDRA_VERSION}_build/${ZIP}"
-          wget -q -O /tmp/ghidra.zip "${URL}"
-          mkdir -p "${GHIDRA_HOME}"
-          unzip -q /tmp/ghidra.zip -d /tmp/ghidra_unpack
-          mv /tmp/ghidra_unpack/ghidra_${GHIDRA_VERSION}_PUBLIC/* "${GHIDRA_HOME}/"
-          rm -rf /tmp/ghidra.zip /tmp/ghidra_unpack
-
       - name: Download IPSW
         run: |
           set -euo pipefail
-          mkdir -p /tmp/ipsw_dl
-          ipsw download ipsw --device "${DEVICE}" --version "${IOS_VERSION}" --output /tmp/ipsw_dl
-          IPSW="$(find /tmp/ipsw_dl -name '*.ipsw' -print -quit)"
+          mkdir -p "${GITHUB_WORKSPACE}/ipsw"
+          ipsw download ipsw \
+            --device "${DEVICE}" \
+            --build "${IOS_BUILD}" \
+            --output "${GITHUB_WORKSPACE}/ipsw" \
+            --confirm
+          echo "=== downloaded files ==="
+          find "${GITHUB_WORKSPACE}/ipsw" -type f -exec ls -lh {} \;
+          IPSW="$(find "${GITHUB_WORKSPACE}/ipsw" -type f -name '*.ipsw' -print -quit)"
+          if [[ -z "${IPSW}" ]]; then
+            echo "ERROR: no IPSW downloaded"
+            exit 1
+          fi
           echo "IPSW=${IPSW}" >> "${GITHUB_ENV}"
+          echo "[+] IPSW=${IPSW}"
 
       - name: Extract Kernelcache
         run: |
           set -euo pipefail
-          mkdir -p /tmp/kernel
-          ipsw extract --kernel "${IPSW}" --output /tmp/kernel
-          KERNEL="$(find /tmp/kernel -name 'kernelcache*' -print -quit)"
+          if [[ -z "${IPSW:-}" ]]; then
+            echo "ERROR: IPSW env is empty"
+            exit 1
+          fi
+          ls -lh "${IPSW}"
+          mkdir -p "${GITHUB_WORKSPACE}/kernel"
+          ipsw extract --kernel "${IPSW}" --output "${GITHUB_WORKSPACE}/kernel"
+          echo "=== extracted files ==="
+          find "${GITHUB_WORKSPACE}/kernel" -type f -exec ls -lh {} \;
+          KERNEL="$(find "${GITHUB_WORKSPACE}/kernel" -type f \( -name 'kernelcache*' -o -name '*.kernelcache' \) -print -quit)"
+          if [[ -z "${KERNEL}" ]]; then
+            echo "ERROR: no kernelcache found"
+            exit 1
+          fi
           echo "KERNEL=${KERNEL}" >> "${GITHUB_ENV}"
+          echo "[+] KERNEL=${KERNEL}"
 
       - name: Clone Symbolicator signatures
         run: |
-          git clone --depth 1 https://github.com/blacktop/symbolicator.git /tmp/symbolicator
+          set -euo pipefail
+          git clone --depth 1 https://github.com/blacktop/symbolicator.git "${GITHUB_WORKSPACE}/symbolicator"
 
       - name: Symbolicate Kernelcache
         run: |
           set -euo pipefail
-          ipsw kernel symbolicate --signatures /tmp/symbolicator/kernel \
-            --json "${KERNEL}" > /tmp/symbols.json || true
-          ls -lh /tmp/symbols.json || true
+          ipsw kernel symbolicate \
+            --signatures "${GITHUB_WORKSPACE}/symbolicator/kernel" \
+            --json "${KERNEL}" > "${GITHUB_WORKSPACE}/symbols.json" || true
+          ls -lh "${GITHUB_WORKSPACE}/symbols.json" || true
 
       - name: Run Ghidra headless
         env:
           _JAVA_OPTIONS: "-Xmx6g -Djava.awt.headless=true"
         run: |
           set -euo pipefail
-          mkdir -p /tmp/ghidra_project
-          "${GHIDRA_HOME}/support/analyzeHeadless" \
-            /tmp/ghidra_project KernelProject \
+          mkdir -p "${GITHUB_WORKSPACE}/ghidra_project"
+          "${GHIDRA_INSTALL_PATH}/support/analyzeHeadless" \
+            "${GITHUB_WORKSPACE}/ghidra_project" KernelProject \
             -import "${KERNEL}" \
             -postScript decompile.py \
             -scriptPath "${GITHUB_WORKSPACE}/scripts" \
             -max-cpu 4 \
             -analysisTimeoutPerFile 9000 \
-            2>&1 | tee /tmp/ghidra.log
+            2>&1 | tee "${GITHUB_WORKSPACE}/ghidra.log"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -106,6 +115,6 @@ jobs:
           name: kernel-offsets-${{ github.sha }}
           path: |
             ${{ github.workspace }}/offsets.txt
-            /tmp/symbols.json
-            /tmp/ghidra.log
+            ${{ github.workspace }}/symbols.json
+            ${{ github.workspace }}/ghidra.log
           retention-days: 30
