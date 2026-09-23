@@ -2,9 +2,11 @@
 
 import os
 import re
+import json
 
 WORKSPACE = os.environ.get("GITHUB_WORKSPACE", "/tmp")
 OUT_PATH = os.path.join(WORKSPACE, "offsets.txt")
+SYMBOLS_JSON = "/tmp/symbols.json"
 INSTR_LIMIT = 300
 
 TARGET_SYMBOLS = [
@@ -72,7 +74,29 @@ def fmt_hex(v):
     return "0x{:016X}".format(to_unsigned(v))
 
 
-def find_symbol_address(name):
+def load_symbols_json():
+    if not os.path.exists(SYMBOLS_JSON):
+        return {}
+    try:
+        with open(SYMBOLS_JSON) as f:
+            data = json.load(f)
+        result = {}
+        for entry in data.get("symbols", []):
+            name = entry.get("name", "")
+            addr = entry.get("address")
+            if name and addr is not None:
+                result[name] = to_unsigned(int(addr, 16) if isinstance(addr, str) else addr)
+        return result
+    except Exception:
+        return {}
+
+
+def find_symbol_address(name, symbols):
+    if name in symbols:
+        return symbols[name]
+    alt = name.lstrip("_")
+    if alt in symbols:
+        return symbols[alt]
     st = currentProgram.getSymbolTable()
     try:
         for sym in st.getSymbols(name):
@@ -102,10 +126,14 @@ def find_xrefs_to(addr):
     refs = []
     rm = currentProgram.getReferenceManager()
     try:
-        it = rm.getReferencesTo(toAddr(to_java_long(addr)))
-        for r in it:
-            refs.append(to_unsigned(r.getFromAddress().getOffset()))
-    except Exception:
+        it = rm.getReferencesTo(to
+Addr(to_java_long(addr)))
+           for r in it:
+            refs return.append lines(to_unsigned(r.getFromAddress().get
+
+
+Offset()))
+def    except Exception:
         pass
     return refs
 
@@ -130,11 +158,7 @@ def dump_instructions_from(addr, limit=INSTR_LIMIT):
         lines.append("  {}  {}".format(
             fmt_hex(to_unsigned(instr.getAddress().getOffset())), instr))
         instr = instr.getNext()
-        count += 1
-    return lines
-
-
-def decompile_function(func):
+        count += 1 decompile_function(func):
     from ghidra.app.decompiler import DecompInterface, DecompileOptions
     from ghidra.util.task import ConsoleTaskMonitor
     ifc = DecompInterface()
@@ -158,34 +182,11 @@ def extract_field_offsets(code):
     return hits
 
 
-def disasm_field_load(func):
-    listing = currentProgram.getListing()
-    body = func.getBody()
-    it = listing.getInstructions(body, True)
-    while it.hasNext():
-        insn = it.next()
-        mnem = insn.getMnemonicString()
-        if mnem not in ("ldr", "ldrb", "ldrh", "ldrsw", "str", "strb", "strh"):
-            continue
-        reg = insn.getRegister(0)
-        if reg is None:
-            continue
-        if reg.getName() not in ("x0", "w0", "x1", "w1"):
-            continue
-        scalars = []
-        for i in range(insn.getNumOperands()):
-            for obj in insn.getOpObjects(i):
-                if hasattr(obj, "getValue"):
-                    scalars.append(obj.getValue())
-        if scalars:
-            off = scalars[-1] & 0xFFFFFFFF
-            if 0 < off < 0x2000:
-                return off, mnem
-    return None, None
-
-
 def main():
+    symbols = load_symbols_json()
     print("[*] Program: " + currentProgram.getName())
+    print("[*] Symbols loaded from JSON: {}".format(len(symbols)))
+
     out = open(OUT_PATH, "w")
     try:
         out.write("=== KERNEL OFFSETS ===\n")
@@ -195,7 +196,7 @@ def main():
 
         out.write("=== SYMBOLS ===\n")
         for name in TARGET_SYMBOLS:
-            addr = find_symbol_address(name)
+            addr = find_symbol_address(name, symbols)
             if addr is not None:
                 line = "{:<40} {}".format(name, fmt_hex(addr))
             else:
@@ -237,7 +238,7 @@ def main():
                      hits[0][1]))
         out.write("scanned: {}\n".format(total))
         out.write("candidates: {}\n\n".format(len(candidates)))
-        for name, addr, off, typ in candidates[:2000]:
+        for name, addr, off, typ in candidates[:3000]:
             out.write("  {:<40} {}  +0x{:x}  {}\n".format(
                 name, fmt_hex(addr), off, typ))
         out.flush()
