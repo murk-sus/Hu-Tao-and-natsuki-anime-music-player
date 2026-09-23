@@ -18,6 +18,7 @@ jobs:
 
     env:
       DEVICE: "iPhone14,5"
+      DEVICE_SLUG: "iPhone14-5"
       IOS_BUILD: "24A437"
       IOS_VERSION: "27.0"
 
@@ -67,7 +68,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}/ipsw
-          key: ipsw-${{ env.DEVICE }}-${{ env.IOS_BUILD }}
+          key: ipsw-${{ env.DEVICE_SLUG }}-${{ env.IOS_BUILD }}
 
       - name: Download IPSW
         if: steps.cache-ipsw.outputs.cache-hit != 'true'
@@ -122,7 +123,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}/symbols.json
-          key: symbols-${{ env.DEVICE }}-${{ env.IOS_BUILD }}
+          key: symbols-${{ env.DEVICE_SLUG }}-${{ env.IOS_BUILD }}
 
       - name: Symbolicate Kernelcache
         if: steps.cache-symbols.outputs.cache-hit != 'true'
@@ -156,7 +157,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}/ghidra_project
-          key: ghidra-project-${{ env.DEVICE }}-${{ env.IOS_BUILD }}-v2
+          key: ghidra-project-${{ env.DEVICE_SLUG }}-${{ env.IOS_BUILD }}-v1
 
       - name: Run Ghidra (warm)
         if: steps.cache-project.outputs.cache-hit == 'true'
