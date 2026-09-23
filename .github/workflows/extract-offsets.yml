@@ -114,7 +114,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}/symbolicator
-          key: symbolicator-main
+          key: symbolicator-${{ env.IOS_BUILD }}
 
       - name: Clone Symbolicator
         if: steps.cache-sigs.outputs.cache-hit != 'true'
@@ -134,12 +134,14 @@ jobs:
         if: steps.cache-symbols.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
-          ipsw kernel symbolicate \
-            --signatures "${GITHUB_WORKSPACE}/symbolicator/kernel" \
-            "${KERNEL}"
-          SRC="${KERNEL}.symbols.json"
+          ipsw kernel sym \
+            "${KERNEL}" \
+            --json \
+            --signatures "${GITHUB_WORKSPACE}/symbolicator/kernel"
+          SRC="${KERNEL}.json"
           if [[ ! -f "${SRC}" ]]; then
-            SRC="$(find "${GITHUB_WORKSPACE}/kernel" -name '*.symbols.json' -print -quit)"
+            SRC="$(find "${GITHUB_WORKSPACE}/kernel" -name '*.json' \
+                    ! -name '.done' -print -quit)"
           fi
           if [[ ! -f "${SRC}" ]]; then
             echo "ERROR: symbolicate produced no output"
