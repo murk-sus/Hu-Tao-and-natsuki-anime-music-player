@@ -14,7 +14,7 @@ permissions:
 jobs:
   offsets:
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    timeout-minutes: 240
 
     env:
       DEVICE: "iPhone14,5"
@@ -51,7 +51,6 @@ jobs:
             --build "${IOS_BUILD}" \
             --output "${GITHUB_WORKSPACE}/ipsw" \
             --confirm
-          find "${GITHUB_WORKSPACE}/ipsw" -type f -exec ls -lh {} \;
           IPSW="$(find "${GITHUB_WORKSPACE}/ipsw" -type f -name '*.ipsw' -print -quit)"
           if [[ -z "${IPSW}" ]]; then
             echo "ERROR: no IPSW downloaded"
@@ -63,14 +62,8 @@ jobs:
       - name: Extract Kernelcache
         run: |
           set -euo pipefail
-          if [[ -z "${IPSW:-}" ]]; then
-            echo "ERROR: IPSW env is empty"
-            exit 1
-          fi
-          ls -lh "${IPSW}"
           mkdir -p "${GITHUB_WORKSPACE}/kernel"
           ipsw extract --kernel "${IPSW}" --output "${GITHUB_WORKSPACE}/kernel"
-          find "${GITHUB_WORKSPACE}/kernel" -type f -exec ls -lh {} \;
           KERNEL="$(find "${GITHUB_WORKSPACE}/kernel" -type f \( -name 'kernelcache*' -o -name '*.kernelcache' \) -print -quit)"
           if [[ -z "${KERNEL}" ]]; then
             echo "ERROR: no kernelcache found"
@@ -89,17 +82,48 @@ jobs:
           set -euo pipefail
           ipsw kernel symbolicate \
             --signatures "${GITHUB_WORKSPACE}/symbolicator/kernel" \
-            --json "${KERNEL}" > "${GITHUB_WORKSPACE}/symbols.json" || true
-          ls -lh "${GITHUB_WORKSPACE}/symbols.json" || true
+            "${KERNEL}"
+          SRC="${KERNEL}.symbols.json"
+          if [[ ! -f "${SRC}" ]]; then
+            echo "ERROR: ${SRC} not produced"
+            ls -la "$(dirname "${KERNEL}")"
+            exit 1
+          fi
+          cp "${SRC}" "${GITHUB_WORKSPACE}/symbols.json"
+          echo "[+] symbols.json size:"
+          wc -c "${GITHUB_WORKSPACE}/symbols.json"
 
-      - name: Run Ghidra headless
+      - name: Cache Ghidra project
+        id: cache-project
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/ghidra_project
+          key: ghidra-project-24A437-iphone14-5-v1
+
+      - name: Run Ghidra headless (warm)
+        if: steps.cache-project.outputs.cache-hit == 'true'
         env:
           _JAVA_OPTIONS: "-Xmx6g -Djava.awt.headless=true"
         run: |
           set -euo pipefail
-          GHIDRA_ROOT="${GHIDRA_INSTALL_DIR:-${GHIDRA_INSTALL_PATH:-/opt/ghidra}}"
-          echo "[*] Using Ghidra at: ${GHIDRA_ROOT}"
-          ls "${GHIDRA_ROOT}/support/"
+          GHIDRA_ROOT="${GHIDRA_INSTALL_DIR}"
+          echo "[+] Warm start — reusing cached analysis"
+          "${GHIDRA_ROOT}/support/analyzeHeadless" \
+            "${GITHUB_WORKSPACE}/ghidra_project" KernelProject \
+            -process "kernelcache.release.iPhone14,5" \
+            -noanalysis \
+            -postScript decompile.py \
+            -scriptPath "${GITHUB_WORKSPACE}/scripts" \
+            2>&1 | tee "${GITHUB_WORKSPACE}/ghidra.log"
+
+      - name: Run Ghidra headless (cold)
+        if: steps.cache-project.outputs.cache-hit != 'true'
+        env:
+          _JAVA_OPTIONS: "-Xmx6g -Djava.awt.headless=true"
+        run: |
+          set -euo pipefail
+          GHIDRA_ROOT="${GHIDRA_INSTALL_DIR}"
+          echo "[+] Cold start — full analysis"
           mkdir -p "${GITHUB_WORKSPACE}/ghidra_project"
           "${GHIDRA_ROOT}/support/analyzeHeadless" \
             "${GITHUB_WORKSPACE}/ghidra_project" KernelProject \
@@ -111,6 +135,7 @@ jobs:
             2>&1 | tee "${GITHUB_WORKSPACE}/ghidra.log"
 
       - name: Upload artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: kernel-offsets-${{ github.sha }}
@@ -119,3 +144,4 @@ jobs:
             ${{ github.workspace }}/symbols.json
             ${{ github.workspace }}/ghidra.log
           retention-days: 30
+          if-no-files-found: warn
