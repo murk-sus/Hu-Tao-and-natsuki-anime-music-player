@@ -43,23 +43,45 @@ jobs:
           ls -lh "$KERNEL"
 
       - name: Cache Ghidra project
+        id: cache-project
         uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}/ghidra_project
           key: ghidra-project-${{ hashFiles('kernel.zip', 'scripts/**') }}
 
-      - name: Run Ghidra
+      - name: Run Ghidra (warm)
+        id: warm
+        if: steps.cache-project.outputs.cache-hit == 'true'
+        continue-on-error: true
         env:
           _JAVA_OPTIONS: "-Xmx8g -Djava.awt.headless=true"
           SYMBOLS_JSON: ${{ github.workspace }}/symbols.json
           GITHUB_WORKSPACE: ${{ github.workspace }}
         run: |
           set -euo pipefail
+          test -f "$GITHUB_WORKSPACE/ghidra_project/KernelProject.rep/project.prp" || exit 1
+          test -d "$GITHUB_WORKSPACE/ghidra_project/KernelProject.rep/idata" || exit 1
+          "$GHIDRA_ROOT/support/analyzeHeadless" \
+            "$GITHUB_WORKSPACE/ghidra_project" KernelProject \
+            -process "$KERNEL_NAME" \
+            -noanalysis \
+            -postScript kernel_rw.py \
+            -scriptPath "$GITHUB_WORKSPACE/scripts" \
+            2>&1 | tee "$GITHUB_WORKSPACE/ghidra.log"
+
+      - name: Run Ghidra (cold)
+        if: steps.cache-project.outputs.cache-hit != 'true' || steps.warm.outcome != 'success'
+        env:
+          _JAVA_OPTIONS: "-Xmx8g -Djava.awt.headless=true"
+          SYMBOLS_JSON: ${{ github.workspace }}/symbols.json
+          GITHUB_WORKSPACE: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          rm -rf "$GITHUB_WORKSPACE/ghidra_project"
           mkdir -p "$GITHUB_WORKSPACE/ghidra_project"
           "$GHIDRA_ROOT/support/analyzeHeadless" \
             "$GITHUB_WORKSPACE/ghidra_project" KernelProject \
             -import "$KERNEL" \
-            -overwrite \
             -postScript kernel_rw.py \
             -scriptPath "$GITHUB_WORKSPACE/scripts" \
             -max-cpu 4 \
