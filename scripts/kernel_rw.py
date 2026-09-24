@@ -30,6 +30,50 @@ _syms_index       = None
 _IFC              = [None]
 _valid_addr_cache = {}
 
+FIELD_EXPECTED_RANGE = {
+    "proc_pid":      (0x40, 0x120),
+    "proc_ppid":     (0x40, 0x120),
+    "proc_task":     (0x10, 0x80),
+    "proc_ucred":    (0x80, 0x180),
+    "proc_fd":       (0x18, 0x80),
+    "proc_pptr":     (0x10, 0x80),
+    "proc_pgrp":     (0x10, 0x80),
+    "task_thread":   (0x40, 0x80),
+    "task_bsd_info": (0x300, 0x400),
+    "task_vm_map":   (0x18, 0x60),
+    "task_itk_self": (0x300, 0x400),
+    "task_itk_space": (0x300, 0x400),
+    "kauth_cred_uid": (0x10, 0x40),
+    "kauth_cred_gid": (0x10, 0x40),
+    "kauth_cred_label": (0x80, 0x100),
+    "ipc_port_kobject": (0x40, 0xA0),
+    "ipc_port_receiver": (0x40, 0xA0),
+    "ipc_port_mscount": (0x40, 0xA0),
+    "ipc_space_is_table": (0x10, 0x40),
+    "vme_start": (0x00, 0x30),
+    "vme_end": (0x00, 0x30),
+    "vme_object": (0x40, 0xA0),
+    "vme_offset": (0x40, 0xA0),
+    "fd_ofiles": (0x10, 0x80),
+    "fileproc_fg": (0x10, 0x80),
+    "fileproc_fglob": (0x10, 0x80),
+    "vnode_data": (0x10, 0x80),
+    "socket_so_proto": (0x10, 0x80),
+    "inpcb_inp_socket": (0x10, 0x80),
+    "inpcb_inp_list": (0x10, 0x80),
+}
+
+XNU_KNOWN_OFFSETS = {
+    "proc_p_pid":     0x68,
+    "proc_p_ppid":    0x70,
+    "proc_p_ucred":   0x100,
+    "task_bsd_info":  0x3A0,
+    "task_vm_map":    0x28,
+    "ipc_port_kobject": 0x68,
+    "kauth_cred_uid": 0x18,
+    "kauth_cred_gid": 0x1C,
+}
+
 
 def _to_u(v):
     return int(v) & 0xFFFFFFFFFFFFFFFF
@@ -477,23 +521,29 @@ def _sysent_entry(base, i):
     return (call, narg, ret_type, arg_bytes)
 
 
-def _score_sysent(base, sample=80):
+def _score_sysent(base, sample=12):
     hits = 0
+    zero_streak = 0
     for i in range(sample):
         e = _sysent_entry(base, i)
-        if e is not None:
-            call, narg, rt, ab = e
-            if narg > 0 or rt > 0 or ab > 0:
-                hits += 2
-            else:
-                hits += 1
+        if e is None:
+            zero_streak += 1
+            if zero_streak >= 3:
+                return hits
+            continue
+        zero_streak = 0
+        call, narg, rt, ab = e
+        if narg > 0 or rt > 0 or ab > 0:
+            hits += 2
+        else:
+            hits += 1
     return hits
 
 
 def _find_sysent():
     for nm in ("_sysent", "sysent", "_unix_sysent", "unix_sysent"):
         a = sym_get(nm)
-        if a and _score_sysent(a) > 40:
+        if a and _score_sysent(a) >= 10:
             return a, "sym:" + nm
 
     for a, n in funcs_named("unix_syscall"):
@@ -501,7 +551,7 @@ def _find_sysent():
         if f is None:
             continue
         for _, tgt, _ in resolve_adrp_pairs(f):
-            if _score_sysent(tgt) > 60:
+            if _score_sysent(tgt) >= 12:
                 return tgt, n + "_adrp"
 
     mem = currentProgram.getMemory()
@@ -523,27 +573,28 @@ def _find_sysent():
             continue
         blocks.append((prio, b))
 
-    best    = None
-    best_sc = 0
-    best_src = ""
     blocks.sort(key=lambda x: x[0])
     for _, b in blocks:
         s = _to_u(b.getStart().getOffset())
         e = _to_u(b.getEnd().getOffset())
-        if e - s < SYSENT_STRIDE * 200:
+        scan_hi = min(e, s + 0x200000)
+        if scan_hi - s < SYSENT_STRIDE * 200:
             continue
         a = s + ((-s) % 8)
-        max_a = e - SYSENT_STRIDE * 200
+        max_a = scan_hi - SYSENT_STRIDE * 200
+        best    = None
+        best_sc = 0
         while a < max_a:
             sc = _score_sysent(a)
             if sc > best_sc:
                 best_sc  = sc
                 best     = a
-                best_src = "scan:" + b.getName()
+                if sc >= 20:
+                    return a, "scan:" + b.getName()
             a += 8
+        if best is not None and best_sc >= 12:
+            return best, "scan:" + b.getName()
 
-    if best is not None and best_sc > 60:
-        return best, best_src
     return None, "NOT_FOUND"
 
 
@@ -584,6 +635,15 @@ def _find_mach_traps():
 
 
 ACCESSOR_SPECS = {
+    "proc_pid":        ["_proc_pid", "proc_pid"],
+    "proc_ppid":       ["_proc_ppid", "proc_ppid"],
+    "proc_task":       ["_proc_task", "proc_task"],
+    "proc_ucred":      ["_proc_ucred", "proc_ucred"],
+    "proc_fd":         ["_proc_fd", "proc_fd"],
+    "proc_flag":       ["_proc_flag", "proc_flag"],
+    "proc_pptr":       ["_proc_pptr", "proc_pptr"],
+    "proc_pgrp":       ["_proc_pgrp", "proc_pgrp"],
+    "proc_ro":         ["_proc_ro", "proc_ro"],
     "task_bsd_info":   ["_get_bsdtask_info", "task_bsd_info", "get_bsdtask_info"],
     "task_vm_map":     ["_task_vm_map", "task_vm_map", "get_task_map", "_get_task_map"],
     "task_itk_self":   ["_task_get_itk_self", "task_get_itk_self"],
@@ -591,39 +651,24 @@ ACCESSOR_SPECS = {
     "task_thread":     ["_task_thread", "task_thread", "get_task_thread"],
     "task_proc":       ["_get_task_proc", "task_get_proc"],
     "task_t_flags":    ["_task_get_t_flags", "task_get_t_flags"],
-    "proc_task":       ["_proc_task", "proc_task"],
-    "proc_pid":        ["_proc_pid", "proc_pid"],
-    "proc_ucred":      ["_proc_ucred", "proc_ucred"],
-    "proc_ppid":       ["_proc_ppid", "proc_ppid"],
-    "proc_textvp":     ["_proc_textvp", "proc_textvp"],
-    "proc_fd":         ["_proc_fd", "proc_fd"],
-    "proc_flag":       ["_proc_flag", "proc_flag"],
-    "proc_pptr":       ["_proc_pptr", "proc_pptr"],
-    "proc_pgrp":       ["_proc_pgrp", "proc_pgrp"],
-    "proc_ro":         ["_proc_ro", "proc_ro"],
-    "kauth_cred_uid":    ["_kauth_cred_getuid", "kauth_cred_getuid"],
-    "kauth_cred_ruid":   ["_kauth_cred_getruid", "kauth_cred_getruid"],
-    "kauth_cred_svuid":  ["_kauth_cred_getsvuid", "kauth_cred_getsvuid"],
-    "kauth_cred_gid":    ["_kauth_cred_getgid", "kauth_cred_getgid"],
-    "kauth_cred_rgid":   ["_kauth_cred_getrgid", "kauth_cred_getrgid"],
-    "kauth_cred_svgid":  ["_kauth_cred_getsvgid", "kauth_cred_getsvgid"],
-    "kauth_cred_label":  ["_kauth_cred_getlabel", "kauth_cred_getlabel",
-                          "_kauth_cred_get_label"],
-    "ipc_port_kobject":   ["_ipc_port_get_kobject", "ipc_port_get_kobject"],
-    "ipc_port_receiver":  ["_ipc_port_get_receiver", "ipc_port_get_receiver"],
-    "ipc_port_mscount":   ["_ipc_port_get_mscount", "ipc_port_get_mscount"],
+    "kauth_cred_uid":  ["_kauth_cred_getuid", "kauth_cred_getuid"],
+    "kauth_cred_gid":  ["_kauth_cred_getgid", "kauth_cred_getgid"],
+    "kauth_cred_label": ["_kauth_cred_getlabel", "kauth_cred_getlabel"],
+    "ipc_port_kobject": ["_ipc_port_get_kobject", "ipc_port_get_kobject"],
+    "ipc_port_receiver": ["_ipc_port_get_receiver", "ipc_port_get_receiver"],
+    "ipc_port_mscount": ["_ipc_port_get_mscount", "ipc_port_get_mscount"],
     "ipc_space_is_table": ["_ipc_space_get_table", "ipc_space_get_table"],
-    "vme_start":     ["_vm_map_entry_get_start", "vm_map_entry_get_start"],
-    "vme_end":       ["_vm_map_entry_get_end", "vm_map_entry_get_end"],
-    "vme_object":    ["_vm_map_entry_get_object", "vm_map_entry_get_object"],
-    "vme_offset":    ["_vm_map_entry_get_offset", "vm_map_entry_get_offset"],
-    "fd_ofiles":     ["_fdp_get_ofiles", "fdp_get_ofiles"],
-    "fileproc_fg":   ["_fp_get_fg", "fp_get_fg"],
-    "fileproc_fglob": ["_fp_get_fglob", "fp_get_fglob"],
-    "vnode_data":    ["_vnode_get_data", "vnode_get_data"],
-    "socket_so_proto":   ["_so_get_proto", "so_get_proto"],
-    "inpcb_inp_socket":  ["_inp_get_socket", "inp_get_socket"],
-    "inpcb_inp_list":    ["_inp_get_list", "inp_get_list"],
+    "vme_start":       ["_vm_map_entry_get_start", "vm_map_entry_get_start"],
+    "vme_end":         ["_vm_map_entry_get_end", "vm_map_entry_get_end"],
+    "vme_object":      ["_vm_map_entry_get_object", "vm_map_entry_get_object"],
+    "vme_offset":      ["_vm_map_entry_get_offset", "vm_map_entry_get_offset"],
+    "fd_ofiles":       ["_fdp_get_ofiles", "fdp_get_ofiles"],
+    "fileproc_fg":     ["_fp_get_fg", "fp_get_fg"],
+    "fileproc_fglob":  ["_fp_get_fglob", "fp_get_fglob"],
+    "vnode_data":      ["_vnode_get_data", "vnode_get_data"],
+    "socket_so_proto": ["_so_get_proto", "so_get_proto"],
+    "inpcb_inp_socket": ["_inp_get_socket", "inp_get_socket"],
+    "inpcb_inp_list":  ["_inp_get_list", "inp_get_list"],
 }
 
 
@@ -645,6 +690,7 @@ def _extract_field_offset(code, field_var=None):
 
 def _collect_struct_offsets():
     struct_offsets = {}
+    rejected = []
     for field, names in ACCESSOR_SPECS.items():
         for name in names:
             hits = syms_named(name)
@@ -657,10 +703,30 @@ def _collect_struct_offsets():
             code = decompile(f)
             if not code:
                 continue
-            off = _extract_field_offset(code)
-            if off is not None:
-                struct_offsets[field] = off
+            candidates = []
+            for p in [
+                r"\*\([^)]*\*\)\s*\(\s*\w+\s*\+\s*(0x[0-9a-fA-F]+|\d+)\s*\)",
+                r"return\s+\*\([^)]*\)\s*\(\s*\w+\s*\+\s*(0x[0-9a-fA-F]+|\d+)\s*\)",
+                r"\(\s*\w+\s*\+\s*(0x[0-9a-fA-F]+|\d+)\s*\)",
+            ]:
+                for m in re.finditer(p, code):
+                    off = int(m.group(1), 0)
+                    if 0 < off < 0x2000:
+                        candidates.append(off)
+            chosen = None
+            expected = FIELD_EXPECTED_RANGE.get(field)
+            for off in candidates:
+                if expected and not (expected[0] <= off <= expected[1]):
+                    rejected.append((field, n, off, "range"))
+                    continue
+                chosen = off
                 break
+            if chosen is not None:
+                struct_offsets[field] = chosen
+                break
+    for field, n, off, reason in rejected[:20]:
+        print("[!] rejected {} ({}) offset=0x{:x} reason={}".format(
+            field, n, off, reason))
     return struct_offsets
 
 
@@ -693,18 +759,6 @@ def _collect_syscall_offsets(sysent_entries):
     return offsets
 
 
-XNU_KNOWN_OFFSETS = {
-    "proc_p_pid":    0x68,
-    "proc_p_ppid":   0x70,
-    "proc_p_ucred":  0x100,
-    "task_bsd_info": 0x3A0,
-    "task_vm_map":   0x28,
-    "ipc_port_kobject": 0x48,
-    "kauth_cred_uid":   0x18,
-    "kauth_cred_gid":   0x1C,
-}
-
-
 def _validate_with_xnu(field, offset):
     if field in XNU_KNOWN_OFFSETS:
         known = XNU_KNOWN_OFFSETS[field]
@@ -713,6 +767,30 @@ def _validate_with_xnu(field, offset):
                 field, offset, known))
             return False
     return True
+
+
+def _find_kalloc_ext(kfree_ext):
+    for a, n in syms_named("kalloc_ext"):
+        if _validate_addr(a, "ktext"):
+            return a
+    for a, n in syms_named("kalloc_canblock"):
+        if _validate_addr(a, "ktext"):
+            return a
+    if kfree_ext:
+        best = None
+        best_delta = 0x10000
+        for a, n in _syms_index:
+            if "kalloc" not in n.lower():
+                continue
+            if not _validate_addr(a, "ktext"):
+                continue
+            delta = abs(a - kfree_ext)
+            if delta < best_delta:
+                best_delta = delta
+                best = a
+        if best:
+            return best
+    return None
 
 
 def _find_ctrr_patches():
@@ -779,7 +857,7 @@ def _find_iokit():
 
 
 def main():
-    print("=== kernel_rw.py ===")
+    print("=== kernel_rw.py (2026 edition) ===")
     print("[*] program: " + currentProgram.getName())
 
     _load_symbols()
@@ -965,7 +1043,7 @@ def main():
 
     print("[*] kalloc/kfree...")
     kfree_ext   = sym_get("_kfree_ext")
-    kalloc_ext  = sym_get("_kalloc_ext")
+    kalloc_ext  = _find_kalloc_ext(kfree_ext)
     kalloc_hint = sym_get("_kalloc_canblock")
     kfree_callers = set()
     if kfree_ext:
