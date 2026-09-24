@@ -175,7 +175,6 @@ jobs:
             -process "kernelcache.release.iPhone14,5" \
             -noanalysis \
             -postScript decompile.py \
-            -postScript necp_extract.py \
             -scriptPath "${GITHUB_WORKSPACE}/scripts" \
             2>&1 | tee "${GITHUB_WORKSPACE}/ghidra.log"
 
@@ -191,7 +190,6 @@ jobs:
             "${GITHUB_WORKSPACE}/ghidra_project" KernelProject \
             -import "${KERNEL}" \
             -postScript decompile.py \
-            -postScript necp_extract.py \
             -scriptPath "${GITHUB_WORKSPACE}/scripts" \
             -max-cpu 4 \
             -analysisTimeoutPerFile 9000 \
@@ -204,7 +202,6 @@ jobs:
           name: kernel-offsets-${{ github.sha }}
           path: |
             ${{ github.workspace }}/offsets.txt
-            ${{ github.workspace }}/necp_decom.txt
             ${{ github.workspace }}/symbols.json
             ${{ github.workspace }}/ghidra.log
           retention-days: 30
