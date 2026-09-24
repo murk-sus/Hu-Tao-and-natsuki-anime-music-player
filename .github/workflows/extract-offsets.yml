@@ -131,7 +131,7 @@ jobs:
           set -euo pipefail
           ipsw kernel symbolicate \
             --signatures "${GITHUB_WORKSPACE}/symbolicator/kernel" \
-            "${KERNEL}"
+            --json "${KERNEL}"
           SRC="${KERNEL}.symbols.json"
           if [[ ! -f "${SRC}" ]]; then
             echo "ERROR: ${SRC} not produced"
