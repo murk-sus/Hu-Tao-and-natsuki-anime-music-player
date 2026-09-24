@@ -13,10 +13,11 @@ except NameError:
 
 WORKSPACE = os.environ.get("GITHUB_WORKSPACE", "/tmp")
 
-OUT_TXT   = os.path.join(WORKSPACE, "sptm_report.txt")
-OUT_H     = os.path.join(WORKSPACE, "sptm_offsets.h")
-OUT_JSON  = os.path.join(WORKSPACE, "sptm_offsets.json")
-OUT_PATCH = os.path.join(WORKSPACE, "sptm_patches.json")
+OUT_TXT    = os.path.join(WORKSPACE, "sptm_report.txt")
+OUT_H      = os.path.join(WORKSPACE, "sptm_offsets.h")
+OUT_JSON   = os.path.join(WORKSPACE, "sptm_offsets.json")
+OUT_PATCH  = os.path.join(WORKSPACE, "sptm_patches.json")
+OUT_DISASM = os.path.join(WORKSPACE, "sptm_disasm.txt")
 
 _sym_cache        = None
 _string_map       = None
@@ -27,26 +28,18 @@ _valid_addr_cache = {}
 
 
 def _write_placeholder():
-    try:
-        with open(OUT_TXT, "w") as fh:
-            fh.write("=== sptm_rw.py ===\n")
-    except Exception:
-        pass
-    try:
-        with open(OUT_H, "w") as fh:
-            fh.write("#ifndef SPTM_OFFSETS_H\n#define SPTM_OFFSETS_H\n#endif\n")
-    except Exception:
-        pass
-    try:
-        with open(OUT_JSON, "w") as fh:
-            fh.write("{}\n")
-    except Exception:
-        pass
-    try:
-        with open(OUT_PATCH, "w") as fh:
-            fh.write("{}\n")
-    except Exception:
-        pass
+    for path, content in [
+        (OUT_TXT, "=== sptm_rw.py ===\n"),
+        (OUT_H, "#ifndef SPTM_OFFSETS_H\n#define SPTM_OFFSETS_H\n#endif\n"),
+        (OUT_JSON, "{}\n"),
+        (OUT_PATCH, "{}\n"),
+        (OUT_DISASM, "=== no disasm ===\n"),
+    ]:
+        try:
+            with open(path, "w") as fh:
+                fh.write(content)
+        except Exception:
+            pass
 
 
 _write_placeholder()
@@ -142,15 +135,66 @@ PATCH_TEMPLATES = {
     },
 }
 
+DISASM_TARGETS_SPTM = [
+    "ctrr_lock_boot",
+    "cpu_lock_system_registers",
+    "sptm_determine_kernel_ctrr",
+    "sptm_enter",
+    "sptm_exit",
+    "sptm_map",
+    "sptm_lock",
+    "sptm_bootstrap",
+    "sptm_panic",
+    "sptm_trap",
+    "genter",
+    "gexit",
+    "ctrr_map_lock_group",
+    "ctrr_dt_get_lock_group",
+    "ctrr_dt_get_lock_type",
+    "key_sptm_ctrr",
+    "key_xnu_ctrr",
+    "amcc_ctrr",
+    "xnu_ctrr_dispatch_table",
+    "kernel_ctrr_to_be_enabled",
+]
+
+MAX_DISASM_LINES = 250
+
 
 def _to_u(v):
     return int(v) & 0xFFFFFFFFFFFFFFFF
 
 
+def _parse_addr(v):
+    if v is None:
+        return None
+    try:
+        if isinstance(v, (int, long)):
+            return _to_u(v)
+        if not isinstance(v, string_types):
+            return None
+        s = v.strip()
+        if not s:
+            return None
+        if s.startswith(("0x", "0X")):
+            return _to_u(int(s, 16))
+        return _to_u(int(s, 10))
+    except Exception:
+        return None
+
+
 def fmt(v):
     if v is None:
         return "0x0"
-    return "0x{:016X}".format(v & 0xFFFFFFFFFFFFFFFF)
+    if isinstance(v, string_types):
+        p = _parse_addr(v)
+        if p is None:
+            return "0x0"
+        return "0x{:016X}".format(p)
+    try:
+        return "0x{:016X}".format(int(v) & 0xFFFFFFFFFFFFFFFF)
+    except Exception:
+        return "0x0"
 
 
 def to_long(v):
@@ -286,6 +330,42 @@ def func_at(addr):
         return None
 
 
+def ensure_func(addr):
+    f = func_at(addr)
+    if f:
+        return f
+    ga = safe_addr(addr)
+    if ga is None:
+        return None
+    try:
+        disassemble(ga)
+    except Exception:
+        pass
+    try:
+        return createFunction(ga, None)
+    except Exception:
+        return None
+
+
+def decompile(f):
+    if f is None:
+        return ""
+    try:
+        from ghidra.app.decompiler import DecompInterface, DecompileOptions
+        from ghidra.util.task import ConsoleTaskMonitor
+        if _IFC[0] is None:
+            ifc = DecompInterface()
+            ifc.setOptions(DecompileOptions())
+            ifc.openProgram(currentProgram)
+            _IFC[0] = ifc
+        r = _IFC[0].decompileFunction(f, 60, ConsoleTaskMonitor())
+        if r.decompileCompleted():
+            return r.getDecompiledFunction().getC()
+    except Exception:
+        pass
+    return ""
+
+
 def _scan_function_insns(addr, max_n=0x400):
     out = []
     a = addr
@@ -296,6 +376,36 @@ def _scan_function_insns(addr, max_n=0x400):
         out.append((a, w))
         a += 4
     return out
+
+
+def disasm_func(addr, max_lines=MAX_DISASM_LINES):
+    lines = []
+    f = func_at(addr)
+    if f is None:
+        f = ensure_func(addr)
+    if f is None:
+        return lines
+    try:
+        listing = currentProgram.getListing()
+        body = f.getBody()
+        if body is None:
+            return lines
+        insn = listing.getInstructionAt(body.getMinAddress())
+        count = 0
+        while insn is not None and body.contains(insn.getAddress()) and count < max_lines:
+            try:
+                a = _to_u(insn.getAddress().getOffset())
+                w = read_u32(a)
+                mnem = insn.getMnemonicString().lower()
+                txt = insn.toString()
+                lines.append("{:016X}  {:08X}  {:<10} {}".format(a, w or 0, mnem, txt))
+            except Exception:
+                pass
+            insn = insn.getNext()
+            count += 1
+    except Exception:
+        pass
+    return lines
 
 
 def is_ctrr_lock_boot(insns):
@@ -431,7 +541,34 @@ def _find_msr_ctrr_count():
                     break
                 if (w & 0xFFFFFFE0) == 0xD5180000:
                     count += 1
-                    if len(addrs) < 32:
+                    if len(addrs) < 64:
+                        addrs.append(a)
+                a += 4
+    except Exception:
+        pass
+    return count, addrs
+
+
+def _find_mrs_ctrr_count():
+    count = 0
+    addrs = []
+    try:
+        mem = currentProgram.getMemory()
+        for b in mem.getBlocks():
+            if not b.isInitialized():
+                continue
+            s = _to_u(b.getStart().getOffset())
+            e = _to_u(b.getEnd().getOffset())
+            if e - s > 0x1000000:
+                continue
+            a = s
+            while a < e:
+                w = read_u32(a)
+                if w is None:
+                    break
+                if (w & 0xFFFFFFE0) == 0xD5380000:
+                    count += 1
+                    if len(addrs) < 64:
                         addrs.append(a)
                 a += 4
     except Exception:
@@ -471,6 +608,47 @@ def _generate_patches(validated):
     return patches
 
 
+def _build_disasm_report(by_str, by_sym, ctrr, validated, key_funcs):
+    lines = []
+    lines.append("=== SPTM DISASSEMBLY ===")
+    lines.append("")
+
+    all_targets = {}
+
+    for label, eps in by_str.items():
+        for ep in eps:
+            all_targets.setdefault(ep, set()).add("str:" + label)
+    for label, eps in by_sym.items():
+        for ep in eps:
+            all_targets.setdefault(ep, set()).add("sym:" + label)
+    for label, eps in validated.items():
+        for ep in eps:
+            all_targets.setdefault(ep, set()).add("VALID:" + label)
+    for label, eps in key_funcs.items():
+        for ep in eps:
+            all_targets.setdefault(ep, set()).add("key:" + label)
+
+    for a, n in ctrr:
+        all_targets.setdefault(a, set()).add("ctrr:" + n)
+
+    for ep in sorted(all_targets.keys()):
+        tags = ",".join(sorted(all_targets[ep]))
+        lines.append("=== {} [{}] ===".format(fmt(ep), tags))
+        lines.append("")
+        for l in disasm_func(ep):
+            lines.append(l)
+        lines.append("")
+        f = func_at(ep)
+        code = decompile(f)
+        if code:
+            lines.append("--- decompiled ---")
+            lines.append(code)
+            lines.append("")
+        lines.append("")
+
+    return lines
+
+
 def write_lines(path, lines):
     d = os.path.dirname(path)
     if d and not os.path.isdir(d):
@@ -488,7 +666,7 @@ def norm(s):
 
 
 def main():
-    print("=== sptm_rw.py (iOS 27 SPTM patchfinder) ===")
+    print("=== sptm_rw.py (iOS 27 SPTM patchfinder + disasm) ===")
     try:
         print("[*] program: " + currentProgram.getName())
     except Exception:
@@ -582,18 +760,32 @@ def main():
     except Exception as e:
         print("[-] msr scan error: {}".format(e))
 
+    print("[*] MRS CTRR instructions...")
+    mrs_count = 0
+    mrs_addrs = []
+    try:
+        mrs_count, mrs_addrs = _find_mrs_ctrr_count()
+    except Exception as e:
+        print("[-] mrs scan error: {}".format(e))
+
     report.append("")
-    report.append("=== [6] MSR CTRR INSTRUCTIONS ===")
-    report.append("count = " + str(msr_count))
-    hdr.append("// MSR CTRR INSTRUCTIONS")
+    report.append("=== [6] CTRR INSTRUCTIONS ===")
+    report.append("MSR count = " + str(msr_count))
+    report.append("MRS count = " + str(mrs_count))
+    hdr.append("// CTRR INSTRUCTIONS")
     hdr.append("#define SPTM_MSR_CTRR_COUNT       " + str(msr_count))
+    hdr.append("#define SPTM_MRS_CTRR_COUNT       " + str(mrs_count))
     for i, a in enumerate(msr_addrs):
-        report.append("  [{}] {}".format(i, fmt(a)))
         hdr.append("#define SPTM_MSR_CTRR_{:<28} {}ULL".format(
+            norm("{:02X}".format(i)), fmt(a)))
+    for i, a in enumerate(mrs_addrs):
+        hdr.append("#define SPTM_MRS_CTRR_{:<28} {}ULL".format(
             norm("{:02X}".format(i)), fmt(a)))
     hdr.append("")
     jout["msr_ctrr_count"] = msr_count
     jout["msr_ctrr_addrs"] = [fmt(a) for a in msr_addrs]
+    jout["mrs_ctrr_count"] = mrs_count
+    jout["mrs_ctrr_addrs"] = [fmt(a) for a in mrs_addrs]
 
     print("[*] key SPTM functions...")
     key_funcs = _find_key_functions()
@@ -636,6 +828,7 @@ def main():
         "validated":       sum(len(v) for v in validated.values()),
         "ctrr_candidates": len(ctrr),
         "msr_ctrr_count":  msr_count,
+        "mrs_ctrr_count":  mrs_count,
         "key_functions":   sum(len(v) for v in key_funcs.values()),
         "patches":         len(patches),
     }
@@ -644,6 +837,14 @@ def main():
     report.append("=== [9] SUMMARY ===")
     for k, v in sorted(summary.items()):
         report.append("  {:<20} {}".format(k, v))
+
+    print("[*] building disasm report...")
+    try:
+        disasm_lines = _build_disasm_report(by_str, by_sym, ctrr, validated, key_funcs)
+        write_lines(OUT_DISASM, disasm_lines)
+        print("[+] wrote " + OUT_DISASM + " ({} lines)".format(len(disasm_lines)))
+    except Exception as e:
+        print("[-] disasm error: {}".format(e))
 
     write_lines(OUT_TXT, report)
     print("[+] wrote " + OUT_TXT)
