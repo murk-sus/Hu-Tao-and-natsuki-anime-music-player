@@ -1,13 +1,3 @@
-# -*- coding: utf-8 -*-
-#
-# SINGLE self-contained kernel R/W offset collector.
-# No dependencies on other scripts.
-#
-# Outputs:
-#   nk_kernel_rw.txt   - human-readable report
-#   offsets.h          - #define header for exploit code
-#   offsets.json       - machine-readable
-
 import os
 import re
 import json
@@ -18,8 +8,7 @@ except NameError:
     string_types = (str,)
 
 WORKSPACE    = os.environ.get("GITHUB_WORKSPACE", "/tmp")
-SYMBOLS_JSON = os.environ.get("SYMBOLS_JSON",
-                 os.path.join(WORKSPACE, "symbols.json"))
+SYMBOLS_JSON = os.environ.get("SYMBOLS_JSON", os.path.join(WORKSPACE, "symbols.json"))
 
 OUT_TXT  = os.path.join(WORKSPACE, "nk_kernel_rw.txt")
 OUT_H    = os.path.join(WORKSPACE, "offsets.h")
@@ -29,17 +18,13 @@ KERNEL_UNSLID_BASE = 0xFFFFFFF007004000
 MASK48   = 0x0000FFFFFFFFFFFF
 KTEXT_LO = 0xFFF007004000
 KTEXT_HI = 0xFFF200000000
-STRIDE   = 16
 
-# ============================================================ state
+_sym_cache   = None
+_string_map  = None
+_string_list = None
+_syms_index  = None
+_IFC         = [None]
 
-_sym_cache    = None
-_string_map   = None
-_string_list  = None
-_syms_index   = None
-_IFC          = [None]
-
-# ============================================================ basic
 
 def _to_u(v):
     return int(v) & 0xFFFFFFFFFFFFFFFF
@@ -56,7 +41,7 @@ def _parse_addr(v):
         s = v.strip()
         if not s:
             return None
-        return _to_u(int(s, 16) if s.startswith(("0x","0X")) else int(s, 10))
+        return _to_u(int(s, 16) if s.startswith(("0x", "0X")) else int(s, 10))
     except Exception:
         return None
 
@@ -99,11 +84,19 @@ def read_u32(a):
         return None
 
 
+def read_u16(a):
+    ga = safe_addr(a)
+    if ga is None:
+        return None
+    try:
+        return int(currentProgram.getMemory().getShort(ga)) & 0xFFFF
+    except Exception:
+        return None
+
+
 def is_kva(v):
     return v is not None and 0xFFFFFFF000000000 <= v < 0xFFFFFFF200000000
 
-
-# ============================================================ symbols.json
 
 def _load_symbols():
     global _sym_cache
@@ -173,8 +166,6 @@ def sym_get(name):
     return None
 
 
-# ============================================================ string cache
-
 def _build_strings():
     global _string_map, _string_list
     if _string_map is not None:
@@ -220,8 +211,6 @@ def _str_addr(s):
     return None
 
 
-# ============================================================ symbol table cache
-
 def _build_symidx():
     global _syms_index
     if _syms_index is not None:
@@ -231,8 +220,7 @@ def _build_symidx():
     try:
         for sym in st.getAllSymbols(True):
             try:
-                _syms_index.append((_to_u(sym.getAddress().getOffset()),
-                                    sym.getName()))
+                _syms_index.append((_to_u(sym.getAddress().getOffset()), sym.getName()))
             except Exception:
                 pass
     except Exception:
@@ -277,8 +265,6 @@ def funcs_named(pat):
                 out.append((a, n))
     return out
 
-
-# ============================================================ func/decompile
 
 def xrefs_to(addr):
     ga = safe_addr(addr)
@@ -366,14 +352,15 @@ def resolve_adrp_pairs(func, lo=0xFFFFFFF000000000, hi=0xFFFFFFF200000000):
                 prev = (toks[1], page)
             except Exception:
                 prev = None
-        elif prev is not None and mn in ("add","ldr","str","ldrb","strb",
-                                          "ldrh","strh","ldrsw","ldur","stur"):
+        elif prev is not None and mn in ("add", "ldr", "str", "ldrb", "strb",
+                                          "ldrh", "strh", "ldrsw", "ldur", "stur"):
             try:
                 toks = txt.replace(",", " ").replace("[", " ").replace("]", " ").split()
                 imm = 0
                 for t in toks:
                     if t.startswith("#0x"):
-                        imm = int(t[3:], 16); break
+                        imm = int(t[3:], 16)
+                        break
                 base_reg = toks[2] if len(toks) > 2 else ""
                 if base_reg == prev[0]:
                     tgt = (prev[1] + imm) & 0xFFFFFFFFFFFFFFFF
@@ -383,7 +370,7 @@ def resolve_adrp_pairs(func, lo=0xFFFFFFF000000000, hi=0xFFFFFFF200000000):
                 pass
             prev = None
         else:
-            if mn not in ("nop","bti","pacibsp","hint"):
+            if mn not in ("nop", "bti", "pacibsp", "hint"):
                 prev = None
         insn = insn.getNext()
     return out
@@ -404,8 +391,6 @@ def write_lines(path, lines):
 def norm(s):
     return re.sub(r"[^A-Za-z0-9_]", "_", s)
 
-
-# ============================================================ PAC helpers
 
 def _is_ktext(p):
     if p is None or p == 0:
@@ -431,8 +416,6 @@ def _is_exec(p):
         return False
 
 
-# ============================================================ ==== MAIN ====
-
 def main():
     print("=== kernel_rw.py ===")
     print("[*] program: " + currentProgram.getName())
@@ -446,7 +429,6 @@ def main():
 
     img_base = int(currentProgram.getImageBase().getOffset()) & 0xFFFFFFFFFFFFFFFF
 
-    # ---------------------------------------------------- 1. BASE
     report.append("=== [1] KERNEL BASE ===")
     report.append("image_base      = " + fmt(img_base))
     report.append("unslid_base     = " + fmt(KERNEL_UNSLID_BASE))
@@ -462,123 +444,159 @@ def main():
     json_out["kernel_base"] = fmt(KERNEL_UNSLID_BASE)
     json_out["image_base"]  = fmt(img_base)
 
-    # ---------------------------------------------------- 2. SYSENT
     print("[*] sysent discovery...")
 
-    def _entry_ok(a):
-        p = read_u64(a)
-        if p is None: return (False, 0, 0, 0)
-        if p == 0:    return (True, 0, 0, 0)
-        if not _is_ktext(p) or not _is_exec(p):
-            return (False, 0, 0, 0)
-        return (True, _strip_pac(p), read_u32(a+8) or 0, read_u32(a+12) or 0)
+    SYSENT_STRIDE = 32
+    EXPECTED_NARGS = {0: 0, 1: 1, 2: 0, 3: 3, 4: 3, 5: 3, 6: 1, 7: 4}
 
-    def _looks(base, need=40):
-        if base is None or not (0xFFFFFFF000000000 <= base < 0xFFFFFFF200000000):
-            return False
+    def _sysent_entry(base, i):
+        a = base + i * SYSENT_STRIDE
+        call = read_u64(a)
+        if call is None:
+            return None
+        if call != 0:
+            if not _is_ktext(call) or not _is_exec(call):
+                return None
+        ret_type = read_u32(a + 24)
+        narg = read_u16(a + 28)
+        if narg is None or narg > 32:
+            return None
+        if ret_type is None or ret_type > 8:
+            return None
+        handler = _strip_pac(call) if call else 0
+        return (handler, narg, ret_type)
+
+    def _looks_like_sysent(base):
+        for i, exp in EXPECTED_NARGS.items():
+            e = _sysent_entry(base, i)
+            if e is None or e[0] == 0:
+                return False
+            if e[1] != exp:
+                return False
         hits = 0
-        for i in range(need):
-            if _entry_ok(base + i * STRIDE)[0]:
+        for i in range(60):
+            if _sysent_entry(base, i) is not None:
                 hits += 1
-        return hits >= need - 2
+        return hits >= 40
 
     def _walk(base, limit=1200):
         out = []
         bad = 0
         for i in range(limit):
-            a = base + i * STRIDE
-            ok, p, ab, _ = _entry_ok(a)
-            if not ok:
+            e = _sysent_entry(base, i)
+            if e is None:
                 bad += 1
-                if bad > 30: break
+                if bad > 30:
+                    break
                 continue
             bad = 0
-            if p == 0:
-                out.append((i, 0, 0, "NOSYS"))
+            handler, narg, rtype = e
+            if handler == 0:
+                out.append((i, 0, narg, "NOSYS"))
                 continue
-            f = func_at(p)
-            out.append((i, p, ab, f.getName() if f else "?"))
+            f = func_at(handler)
+            out.append((i, handler, narg, f.getName() if f else "?"))
         return out
 
     sysent_base = None
     sysent_src  = "NOT_FOUND"
 
-    for nm in ("_sysent","sysent","_unix_sysent","unix_sysent","_unix_sysent_table"):
+    for nm in ("_sysent", "sysent", "_unix_sysent"):
         a = sym_get(nm)
-        if a and _looks(a, 20):
+        if a and _looks_like_sysent(a):
             sysent_base = a; sysent_src = "sym:" + nm; break
 
     if sysent_base is None:
-        for a, n in syms_named("sysent"):
-            if _looks(a, 20):
-                sysent_base = a; sysent_src = "ghidra:" + n; break
+        names_arr = None
+        for s in ("nosys", "exit", "fork", "read", "write", "open", "close"):
+            sa = _str_addr(s)
+            if sa is None:
+                continue
+            for xr in xrefs_to(sa):
+                names_start = xr
+                for off in range(0, 0x20000, 32):
+                    cand = names_start - off
+                    if cand < 0xFFFFFFF000000000:
+                        break
+                    if _looks_like_sysent(cand):
+                        sysent_base = cand
+                        sysent_src = "syscallnames_back"
+                        break
+                if sysent_base:
+                    break
+            if sysent_base:
+                break
 
     if sysent_base is None:
-        for name in ("unix_syscall64","unix_syscall","unix_syscall_return"):
+        for name in ("unix_syscall64", "unix_syscall"):
             for a, n in funcs_named(name):
                 f = ensure_func(a)
-                if f is None: continue
+                if f is None:
+                    continue
                 for _, tgt, _ in resolve_adrp_pairs(f):
-                    if _looks(tgt, 20):
+                    if _looks_like_sysent(tgt):
                         sysent_base = tgt; sysent_src = n + "_adrp"; break
-                if sysent_base: break
-            if sysent_base: break
+                if sysent_base:
+                    break
+            if sysent_base:
+                break
 
     if sysent_base is None:
-        print("[*] scanning blocks for sysent...")
+        print("[*] scanning blocks for sysent (stride=32)...")
+        mem = currentProgram.getMemory()
         blocks = []
-        for b in currentProgram.getMemory().getBlocks():
-            if not b.isInitialized(): continue
+        for b in mem.getBlocks():
+            if not b.isInitialized():
+                continue
             s = _to_u(b.getStart().getOffset())
-            if not (0xFFFFFFF000000000 <= s < 0xFFFFFFF200000000): continue
+            if not (0xFFFFFFF000000000 <= s < 0xFFFFFFF200000000):
+                continue
             n = b.getName()
-            if "DATA_CONST" in n: prio = 0
-            elif n.startswith("__const"): prio = 1
-            elif "DATA" in n: prio = 2
-            else: continue
+            if "DATA_CONST" in n:
+                prio = 0
+            elif n.startswith("__const"):
+                prio = 1
+            elif "DATA" in n:
+                prio = 2
+            else:
+                continue
             blocks.append((prio, b))
         blocks.sort(key=lambda x: x[0])
         for _, b in blocks:
             s = _to_u(b.getStart().getOffset())
             e = _to_u(b.getEnd().getOffset())
             print("[*]   {} {} - {}".format(b.getName(), fmt(s), fmt(e)))
-            if e - s < STRIDE * 100: continue
+            if e - s < SYSENT_STRIDE * 100:
+                continue
             a = s + ((-s) % 16)
-            max_a = e - STRIDE * 100
-            found = None
+            max_a = e - SYSENT_STRIDE * 100
             while a < max_a:
-                if not _entry_ok(a)[0]:
-                    a += 16; continue
-                quick = sum(1 for k in (1,2,3) if _entry_ok(a+k*STRIDE)[0])
-                if quick < 3:
-                    a += 16; continue
-                if _looks(a, 40):
-                    found = a; break
+                if _looks_like_sysent(a):
+                    sysent_base = a
+                    sysent_src = "scan:" + b.getName()
+                    break
                 a += 16
-            if found:
-                sysent_base = found
-                sysent_src  = "scan:" + b.getName()
+            if sysent_base:
                 break
 
     sysent_entries = _walk(sysent_base) if sysent_base else []
-    print("[+] sysent: {} ({} entries)".format(
-        sysent_src, len(sysent_entries)))
+    print("[+] sysent: {} ({} entries)".format(sysent_src, len(sysent_entries)))
 
     report.append("")
-    report.append("=== [2] SYSENT ===")
+    report.append("=== [2] SYSENT (stride=32) ===")
     report.append("source  = " + sysent_src)
     report.append("base    = " + (fmt(sysent_base) if sysent_base else "n/a"))
     report.append("entries = " + str(len(sysent_entries)))
-    for i, h, ab, name in sysent_entries:
-        report.append("  {:>4}  {:<20}  ab={:<3}  {}".format(
-            i, fmt(h) if h else "0", ab, name))
+    for i, h, narg, name in sysent_entries[:80]:
+        report.append("  {:>4}  {:<20}  narg={:<3}  {}".format(
+            i, fmt(h) if h else "0", narg, name))
 
-    hdr.append("// === [2] SYSENT ===")
+    hdr.append("// === [2] SYSENT (stride=32) ===")
     if sysent_base:
         hdr.append("#define NK_SYSENT_BASE          " + fmt(sysent_base) + "ULL")
-        hdr.append("#define NK_SYSENT_ENTRY_SZ      16")
+        hdr.append("#define NK_SYSENT_ENTRY_SZ      32")
         hdr.append("#define NK_SYSENT_COUNT         " + str(len(sysent_entries)))
-        for i, h, ab, name in sysent_entries:
+        for i, h, narg, name in sysent_entries:
             if not h or not name or name in ("?", "NOSYS") \
                or name.startswith("FUN_") or name.startswith("s_"):
                 continue
@@ -586,12 +604,12 @@ def main():
                 norm(name).upper(), fmt(h), i))
     hdr.append("")
     json_out["sysent_base"]  = fmt(sysent_base) if sysent_base else None
+    json_out["sysent_stride"] = 32
     json_out["sysent_count"] = len(sysent_entries)
     json_out["sysent"] = [{"num": i, "handler": fmt(h) if h else None,
-                            "arg_bytes": ab, "name": name}
-                           for i, h, ab, name in sysent_entries]
+                            "narg": narg, "name": name}
+                           for i, h, narg, name in sysent_entries]
 
-    # ---------------------------------------------------- 3. GLOBALS via adrp
     print("[*] globals via adrp...")
     ANCHORS = {
         "kernproc":      ["p != kernproc", "so != NULL || p == kernproc"],
@@ -611,10 +629,12 @@ def main():
     for label, strs in ANCHORS.items():
         for s in strs:
             sa = _str_addr(s)
-            if sa is None: continue
+            if sa is None:
+                continue
             for xr in xrefs_to(sa):
                 f = func_at(xr)
-                if f is None: continue
+                if f is None:
+                    continue
                 for _, tgt, kind in resolve_adrp_pairs(f):
                     if kind == "ldr":
                         globals_map.setdefault(tgt, set()).add(label)
@@ -629,11 +649,10 @@ def main():
     for k in sorted(globals_map.keys()):
         labels = "_".join(sorted(globals_map[k]))
         hdr.append("#define {:<40} {}ULL".format(
-            norm("NK_G_"+labels).upper()[:40], fmt(k)))
+            norm("NK_G_" + labels).upper()[:40], fmt(k)))
     hdr.append("")
     json_out["globals"] = {fmt(k): sorted(list(v)) for k, v in globals_map.items()}
 
-    # ---------------------------------------------------- 4. KALLOC/KFREE
     print("[*] kalloc/kfree...")
     kfree_ext = sym_get("_kfree_ext")
     kfree_callers = set()
@@ -656,8 +675,6 @@ def main():
     report.append("_kfree_ext = " + (fmt(kfree_ext) if kfree_ext else "NOT_FOUND"))
     for ep in sorted(kfree_callers):
         report.append("  kfree caller: " + fmt(ep))
-    for ep in sorted(kalloc_type_refs):
-        report.append("  kalloc.type.var ref: " + fmt(ep))
 
     hdr.append("// === [4] KALLOC/KFREE ===")
     if kfree_ext:
@@ -672,7 +689,6 @@ def main():
     json_out["kfree_ext"]     = fmt(kfree_ext) if kfree_ext else None
     json_out["kfree_callers"] = [fmt(x) for x in sorted(kfree_callers)]
 
-    # ---------------------------------------------------- 5. ZONES
     print("[*] zones...")
     ZSTR = [
         "site.struct necp_client_flow_registration",
@@ -693,7 +709,8 @@ def main():
     zones = {}
     for z in ZSTR:
         sa = _str_addr(z)
-        if sa is None: continue
+        if sa is None:
+            continue
         kv = [xr for xr in xrefs_to(sa)
               if 0xFFFFFFF000000000 <= xr < 0xFFFFFFF200000000]
         if kv:
@@ -714,12 +731,11 @@ def main():
     hdr.append("")
     json_out["zones"] = {k: [fmt(x) for x in v] for k, v in zones.items()}
 
-    # ---------------------------------------------------- 6. PAC GADGETS
     print("[*] PAC gadgets...")
-    PAC = ("braa","brab","blraa","blrab","autia","autib",
-           "pacia","pacib","paciza","pacizb","pacda","pacdb",
-           "xpaci","xpacd","retaa","retab","paciasp","pacibsp",
-           "autiasp","autibsp")
+    PAC = ("braa", "brab", "blraa", "blrab", "autia", "autib",
+           "pacia", "pacib", "paciza", "pacizb", "pacda", "pacdb",
+           "xpaci", "xpacd", "retaa", "retab", "paciasp", "pacibsp",
+           "autiasp", "autibsp")
     pac = []
     fm = currentProgram.getFunctionManager()
     fc = 0
@@ -728,7 +744,8 @@ def main():
         if fc % 2000 == 0:
             print("[*]   pac scan {} funcs, {} hits".format(fc, len(pac)))
         body = f.getBody()
-        if body is None: continue
+        if body is None:
+            continue
         insn = currentProgram.getListing().getInstructionAt(body.getMinAddress())
         n = 0
         while insn is not None and body.contains(insn.getAddress()) and n < 3000:
@@ -736,8 +753,10 @@ def main():
             if m in PAC:
                 pac.append((_to_u(insn.getAddress().getOffset()),
                             f.getName(), m, insn.toString().strip()))
-            insn = insn.getNext(); n += 1
-        if len(pac) > 30000: break
+            insn = insn.getNext()
+            n += 1
+        if len(pac) > 30000:
+            break
 
     report.append("")
     report.append("=== [6] PAC GADGETS ({} total) ===".format(len(pac)))
@@ -752,20 +771,50 @@ def main():
     json_out["pac_gadgets"] = [{"addr": fmt(a), "mnem": m, "text": t, "fn": f}
                                for a, f, m, t in pac]
 
-    # ---------------------------------------------------- 7. COPYIN/OUT
     print("[*] copyin/copyout...")
-    COPY_SYMS = ["_copyin","_copyout","_copyinstr","_copyoutstr",
-                 "_copyin_word","_copyout_word","_memmove_phys","_bcopy",
-                 "_copyio","_copyinmsg","_copyoutmsg"]
     copy = {}
-    for s in COPY_SYMS:
+
+    for s in ("_copyin", "_copyout", "_copyinstr", "_copyoutstr",
+              "_copyin_word", "_copyout_word", "_memmove_phys", "_bcopy",
+              "_copyio", "_copyinmsg", "_copyoutmsg"):
         a = sym_get(s)
         if a:
             copy[s] = a
-        else:
-            hits = funcs_named(s.lstrip("_"))
-            if hits:
-                copy[s] = hits[0][0]
+            continue
+        hits = funcs_named(s.lstrip("_"))
+        if hits:
+            copy[s] = hits[0][0]
+
+    stub_map = {
+        "copyin":  "thunk_FUN_fffffff00a368ec0",
+        "copyout": "thunk_FUN_fffffff00a369a3c",
+    }
+    if "_copyin" not in copy or "_copyout" not in copy:
+        print("[*] searching __auth_stubs for copyin/copyout thunks...")
+        fm = currentProgram.getFunctionManager()
+        for f in fm.getFunctions(True):
+            n = f.getName()
+            for label, tname in stub_map.items():
+                if tname in n:
+                    ep = _to_u(f.getEntryPoint().getOffset())
+                    if label == "copyin" and "_copyin" not in copy:
+                        copy["_copyin"] = ep
+                        print("[+] copyin thunk: " + fmt(ep))
+                    elif label == "copyout" and "_copyout" not in copy:
+                        copy["_copyout"] = ep
+                        print("[+] copyout thunk: " + fmt(ep))
+
+    for needle, key in (("ipc_object_copyin_from_kernel", "_copyin_hint"),
+                        ("ipc_object_copyout_dest",        "_copyout_hint")):
+        sa = _str_addr(needle)
+        if sa is None:
+            continue
+        for xr in xrefs_to(sa):
+            f = func_at(xr)
+            if f:
+                ep = _to_u(f.getEntryPoint().getOffset())
+                if key not in copy:
+                    copy[key] = ep
 
     report.append("")
     report.append("=== [7] COPYIN/COPYOUT ===")
@@ -778,7 +827,6 @@ def main():
     hdr.append("")
     json_out["copyin_copyout"] = {k: fmt(v) for k, v in copy.items()}
 
-    # ---------------------------------------------------- 8. IOKIT
     print("[*] iokit...")
     IOKIT = {
         "IOUserClient_externalMethod":   "externalMethod",
@@ -793,7 +841,8 @@ def main():
     iokit = {}
     for label, needle in IOKIT.items():
         sa = _str_addr(needle)
-        if sa is None: continue
+        if sa is None:
+            continue
         for xr in xrefs_to(sa):
             f = func_at(xr)
             if f:
@@ -815,7 +864,6 @@ def main():
     hdr.append("")
     json_out["iokit"] = {k: [fmt(x) for x in sorted(v)] for k, v in iokit.items()}
 
-    # ---------------------------------------------------- 9. STRUCT OFFSETS
     STATIC = [
         ("PROC_TASK_OFF",       0x10),
         ("PROC_PID_OFF",        0x68),
@@ -854,7 +902,6 @@ def main():
     hdr.append("")
     json_out["struct_offsets"] = {n: v for n, v in STATIC}
 
-    # ---------------------------------------------------- WRITE OUTPUTS
     write_lines(OUT_TXT, report)
     print("[+] wrote " + OUT_TXT)
 
@@ -874,7 +921,6 @@ def main():
     except Exception as e:
         print("[-] json write failed: " + str(e))
 
-    # ---------------------------------------------------- SUMMARY
     print("")
     print("=============== SUMMARY ===============")
     print("  kernel_base      : " + fmt(KERNEL_UNSLID_BASE))
