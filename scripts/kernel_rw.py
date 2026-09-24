@@ -14,9 +14,10 @@ except NameError:
 WORKSPACE    = os.environ.get("GITHUB_WORKSPACE", "/tmp")
 SYMBOLS_JSON = os.environ.get("SYMBOLS_JSON", os.path.join(WORKSPACE, "symbols.json"))
 
-OUT_TXT  = os.path.join(WORKSPACE, "nk_kernel_rw.txt")
-OUT_H    = os.path.join(WORKSPACE, "offsets.h")
-OUT_JSON = os.path.join(WORKSPACE, "offsets.json")
+OUT_TXT   = os.path.join(WORKSPACE, "nk_kernel_rw.txt")
+OUT_H     = os.path.join(WORKSPACE, "offsets.h")
+OUT_JSON  = os.path.join(WORKSPACE, "offsets.json")
+OUT_DISASM = os.path.join(WORKSPACE, "disasm.txt")
 
 KERNEL_UNSLID_BASE = 0xFFFFFFF007004000
 MASK48             = 0x0000FFFFFFFFFFFF
@@ -33,21 +34,17 @@ _valid_addr_cache = {}
 
 
 def _write_placeholder():
-    try:
-        with open(OUT_TXT, "w") as fh:
-            fh.write("=== kernel_rw.py ===\n")
-    except Exception:
-        pass
-    try:
-        with open(OUT_H, "w") as fh:
-            fh.write("#ifndef NK_OFFSETS_H\n#define NK_OFFSETS_H\n#endif\n")
-    except Exception:
-        pass
-    try:
-        with open(OUT_JSON, "w") as fh:
-            fh.write("{}\n")
-    except Exception:
-        pass
+    for path, content in [
+        (OUT_TXT, "=== placeholder ===\n"),
+        (OUT_H, "#ifndef NK_OFFSETS_H\n#define NK_OFFSETS_H\n#endif\n"),
+        (OUT_JSON, "{}\n"),
+        (OUT_DISASM, "=== no disasm ===\n"),
+    ]:
+        try:
+            with open(path, "w") as fh:
+                fh.write(content)
+        except Exception:
+            pass
 
 
 _write_placeholder()
@@ -186,7 +183,6 @@ GLOBAL_ANCHORS = {
     "kernproc":          ["p != kernproc", "so != NULL || p == kernproc"],
     "allproc":           ["allproc"],
     "initproc":          ["initproc"],
-    "kernel_task":       ["kernel_task"],
     "kernel_map":        ["kernel_map"],
     "init_task":         ["init_task"],
     "task_list":         ["task_list"],
@@ -250,6 +246,19 @@ PRIMITIVE_FUNCS = [
     "_task_reference", "_task_deallocate",
     "_proc_reference", "_proc_rele",
     "_zone_alloc", "_zone_free",
+    "_vm_map_enter", "_vm_map_remove",
+    "_pmap_enter", "_pmap_remove",
+    "_page_alloc", "_page_free",
+]
+
+DISASM_TARGETS = [
+    "_kfree_ext", "_kalloc_ext", "_copyin", "_copyout",
+    "_proc_task", "_proc_ucred", "_proc_pid",
+    "_get_bsdtask_info", "task_get_itk_space", "ipc_space_get_table",
+    "task_reference", "proc_reference",
+    "_vm_map_enter", "_vm_map_remove", "_pmap_enter",
+    "_ipc_port_alloc", "_ipc_port_dealloc",
+    "_zone_alloc", "_zone_free",
 ]
 
 
@@ -268,7 +277,9 @@ def _parse_addr(v):
         s = v.strip()
         if not s:
             return None
-        return _to_u(int(s, 16) if s.startswith(("0x", "0X")) else int(s, 10))
+        if s.startswith(("0x", "0X")):
+            return _to_u(int(s, 16))
+        return _to_u(int(s, 10))
     except Exception:
         return None
 
@@ -276,7 +287,15 @@ def _parse_addr(v):
 def fmt(v):
     if v is None:
         return "0x0"
-    return "0x{:016X}".format(v & 0xFFFFFFFFFFFFFFFF)
+    if isinstance(v, string_types):
+        p = _parse_addr(v)
+        if p is None:
+            return "0x0"
+        return "0x{:016X}".format(p)
+    try:
+        return "0x{:016X}".format(int(v) & 0xFFFFFFFFFFFFFFFF)
+    except Exception:
+        return "0x0"
 
 
 def to_long(v):
@@ -622,6 +641,59 @@ def decompile(f):
     return ""
 
 
+def disasm_func(addr, max_lines=200):
+    lines = []
+    f = func_at(addr)
+    if f is None:
+        f = ensure_func(addr)
+    if f is None:
+        return lines
+    try:
+        listing = currentProgram.getListing()
+        body = f.getBody()
+        if body is None:
+            return lines
+        insn = listing.getInstructionAt(body.getMinAddress())
+        count = 0
+        while insn is not None and body.contains(insn.getAddress()) and count < max_lines:
+            try:
+                a = _to_u(insn.getAddress().getOffset())
+                txt = insn.toString()
+                mnem = insn.getMnemonicString().lower()
+                lines.append("{:016X}  {:<10} {}".format(a, mnem, txt))
+            except Exception:
+                pass
+            insn = insn.getNext()
+            count += 1
+    except Exception:
+        pass
+    return lines
+
+
+def _build_disasm_report():
+    print("[*] disassembling targets...")
+    lines = []
+    for name in DISASM_TARGETS:
+        try:
+            a = sym_get(name)
+            if a is None or not _validate_addr(a, "ktext"):
+                continue
+            lines.append("=== {} @ {} ===".format(name, fmt(a)))
+            lines.append("")
+            for l in disasm_func(a):
+                lines.append(l)
+            lines.append("")
+            f = func_at(a)
+            code = decompile(f)
+            if code:
+                lines.append("=== decompiled {} ===".format(name))
+                lines.append(code)
+                lines.append("")
+        except Exception:
+            pass
+    return lines
+
+
 def resolve_adrp_pairs(func):
     if func is None:
         return []
@@ -872,9 +944,8 @@ def _collect_globals():
 def _collect_globals_by_symbol():
     print("[*] globals via symbol...")
     result = {}
-    for label in ("kernproc", "allproc", "initproc", "kernel_task",
-                   "kernel_map", "zone_map", "ipc_space_kernel",
-                   "task_list", "pmap_kernel", "proc_list", "rootvnode"):
+    for label in ("allproc", "initproc", "zone_map", "zones_built",
+                   "ipc_space_kernel", "proc_list", "rootvnode"):
         try:
             a = sym_get("_" + label)
             if a is None:
@@ -932,10 +1003,15 @@ def _collect_struct_offsets_from_globals(globals_map):
     print("[*] struct offsets via known globals...")
     out = {}
 
-    kernproc_var = globals_map.get("kernproc") or CONFIRMED_GLOBALS.get("kernproc")
-    kernel_task_var = globals_map.get("kernel_task") or CONFIRMED_GLOBALS.get("kernel_task")
-    allproc_var = globals_map.get("allproc")
-    ipc_space_kernel_var = globals_map.get("ipc_space_kernel")
+    kernproc_var = globals_map.get("kernproc")
+    if kernproc_var is None:
+        kernproc_var = _parse_addr(CONFIRMED_GLOBALS.get("kernproc"))
+    kernel_task_var = globals_map.get("kernel_task")
+    if kernel_task_var is None:
+        kernel_task_var = _parse_addr(CONFIRMED_GLOBALS.get("kernel_task"))
+
+    kernproc_var = _parse_addr(kernproc_var) if isinstance(kernproc_var, string_types) else kernproc_var
+    kernel_task_var = _parse_addr(kernel_task_var) if isinstance(kernel_task_var, string_types) else kernel_task_var
 
     first_proc = None
     if kernproc_var and _validate_addr(kernproc_var, "data"):
@@ -943,12 +1019,6 @@ def _collect_struct_offsets_from_globals(globals_map):
         if v and _is_data_ptr(v):
             first_proc = v
             print("[+] kernproc deref -> {}".format(fmt(v)))
-
-    if first_proc is None and allproc_var and _validate_addr(allproc_var, "data"):
-        v = read_u64(allproc_var)
-        if v and _is_data_ptr(v):
-            first_proc = v
-            print("[+] allproc deref -> {}".format(fmt(v)))
 
     if first_proc is not None:
         for off in range(0x08, 0x80, 8):
@@ -1036,19 +1106,6 @@ def _collect_struct_offsets_from_globals(globals_map):
             except Exception:
                 pass
 
-    if ipc_space_kernel_var and _validate_addr(ipc_space_kernel_var, "data"):
-        isp = read_u64(ipc_space_kernel_var)
-        if isp and _is_data_ptr(isp):
-            for off in range(0x10, 0x40, 8):
-                try:
-                    v = read_u64(isp + off)
-                    if v and _is_data_ptr(v):
-                        out["ipc_space_is_table"] = off
-                        print("[+] ipc_space_is_table = 0x{:x}".format(off))
-                        break
-                except Exception:
-                    pass
-
     return out
 
 
@@ -1111,6 +1168,21 @@ def _find_primitives():
                 out[name] = a
         except Exception:
             pass
+    return out
+
+
+def _normalize_globals(globals_map):
+    out = {}
+    for k, v in globals_map.items():
+        if isinstance(v, string_types):
+            p = _parse_addr(v)
+            if p is not None:
+                out[k] = p
+        else:
+            try:
+                out[k] = int(v) & 0xFFFFFFFFFFFFFFFF
+            except Exception:
+                pass
     return out
 
 
@@ -1200,9 +1272,13 @@ def main():
         globals_map.update(_collect_globals())
     except Exception as e:
         print("[-] globals_adrp error: {}".format(e))
+
+    globals_map = _normalize_globals(globals_map)
+
     for k, v in CONFIRMED_GLOBALS.items():
-        if k not in globals_map:
-            globals_map[k] = v
+        p = _parse_addr(v)
+        if p is not None:
+            globals_map[k] = p
 
     report.append("")
     report.append("=== [4] GLOBALS ===")
@@ -1258,14 +1334,14 @@ def main():
 
     print("[*] kalloc/kfree...")
     try:
-        kfree_ext = sym_get("_kfree_ext") or CONFIRMED.get("kfree_ext")
+        kfree_ext = sym_get("_kfree_ext") or _parse_addr(CONFIRMED.get("kfree_ext"))
     except Exception:
-        kfree_ext = CONFIRMED.get("kfree_ext")
+        kfree_ext = _parse_addr(CONFIRMED.get("kfree_ext"))
     try:
-        kalloc_ext = _find_kalloc(kfree_ext) or CONFIRMED.get("kalloc_ext")
+        kalloc_ext = _find_kalloc(kfree_ext) or _parse_addr(CONFIRMED.get("kalloc_ext"))
     except Exception as e:
         print("[-] kalloc error: {}".format(e))
-        kalloc_ext = CONFIRMED.get("kalloc_ext")
+        kalloc_ext = _parse_addr(CONFIRMED.get("kalloc_ext"))
 
     kfree_callers = set()
     if kfree_ext is not None:
@@ -1330,8 +1406,12 @@ def main():
                 copy[s] = hits[0][0]
         except Exception:
             pass
-    copy["_copyin"]  = CONFIRMED.get("copyin", copy.get("_copyin"))
-    copy["_copyout"] = CONFIRMED.get("copyout", copy.get("_copyout"))
+    ci = _parse_addr(CONFIRMED.get("copyin"))
+    co = _parse_addr(CONFIRMED.get("copyout"))
+    if ci:
+        copy["_copyin"] = ci
+    if co:
+        copy["_copyout"] = co
 
     report.append("")
     report.append("=== [8] COPYIN/COPYOUT ===")
@@ -1342,7 +1422,7 @@ def main():
         report.append("  {:<20} {}".format(s, fmt(a)))
         hdr.append("#define NK_{:<30} {}ULL".format(norm(s).upper(), fmt(a)))
     hdr.append("")
-    jout["copyin_copyout"] = {k: fmt(v) for k, v in copy.items() if v}
+    jout["copyin_copyout"] = {k: fmt(v) for k, v in copy.items() if v is not None}
 
     jout.setdefault("sptm", {})
     for k, v in CONFIRMED_SPTM.items():
@@ -1353,6 +1433,13 @@ def main():
             continue
         if not jout.get(key):
             jout[key] = val
+
+    try:
+        disasm_lines = _build_disasm_report()
+        write_lines(OUT_DISASM, disasm_lines)
+        print("[+] wrote " + OUT_DISASM + " ({} lines)".format(len(disasm_lines)))
+    except Exception as e:
+        print("[-] disasm error: {}".format(e))
 
     try:
         write_lines(OUT_TXT, report)
