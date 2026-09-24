@@ -4,7 +4,6 @@
 import os
 import re
 import json
-import struct
 import traceback
 
 try:
@@ -30,7 +29,7 @@ _valid_addr_cache = {}
 def _write_placeholder():
     try:
         with open(OUT_TXT, "w") as fh:
-            fh.write("=== sptm_rw.py placeholder ===\n")
+            fh.write("=== sptm_rw.py ===\n")
     except Exception:
         pass
     try:
@@ -53,6 +52,19 @@ def _write_placeholder():
 _write_placeholder()
 
 
+CONFIRMED_SPTM = {
+    "image_base":                 "0xFFFFFFF027004000",
+    "ctrr_lock_boot":             "0xFFFFFFF027006E62",
+    "cpu_lock_system_registers":  "0xFFFFFFF0270B39B4",
+    "sptm_determine_kernel_ctrr": "0xFFFFFFF0270B2224",
+    "sptm_bootstrap":             "0xFFFFFFF0270D21CC",
+    "sptm_map":                   "0xFFFFFFF0270E97BC",
+    "sptm_region":                "0xFFFFFFF0270ECFF0",
+    "sptm_panic":                 "0xFFFFFFF0270BEE18",
+    "sptm_page_table":            "0xFFFFFFF0270D13D4",
+    "str_ctrr":                   "0xFFFFFFF0270B5440",
+}
+
 SPTM_STRING_ANCHORS = {
     "ctrr_lock_boot":             ["ctrr_lock_boot", "CTRR lockdown", "ctrr_lock"],
     "cpu_lock_system_registers":  ["cpu_lock_system_registers", "cpu lock system"],
@@ -65,6 +77,9 @@ SPTM_STRING_ANCHORS = {
     "ctrr_map_lock_group":        ["ctrr_map_lock_group"],
     "ctrr_dt_get_lock_group":     ["ctrr_dt_get_lock_group"],
     "ctrr_dt_get_lock_type":      ["ctrr_dt_get_lock_type"],
+    "ctrr_dt_get_uint32":         ["ctrr_dt_get_uint32"],
+    "ctrr_dt_memcache_stat":      ["ctrr_dt_get_memcache_enable_stat"],
+    "ctrr_dt_force_flush":        ["ctrr_dt_get_force_flush_offset"],
     "sptm_map":                   ["sptm_map"],
     "sptm_lock":                  ["sptm_lock"],
     "sptm_panic":                 ["SPTM PANIC", "sptm_panic"],
@@ -100,36 +115,32 @@ SPTM_SYMBOL_ANCHORS = {
 
 PATCH_TEMPLATES = {
     "ctrr_lock_boot": {
-        "purpose": "Force early return — CTRR stays unlocked",
-        "patch_type": "TBNZ→B",
+        "purpose": "force early return; CTRR stays unlocked",
+        "patch_type": "TBNZ->B",
         "encoding": {
-            "original_tbnz": "0x36000000",
-            "patched_b": "0x14000000",
-            "mask": "0x7F000000",
+            "original_tbnz_mask": "0x7F000000",
+            "original_tbnz_val":  "0x36000000",
+            "patched_b_mask":     "0xFC000000",
+            "patched_b_val":      "0x14000000",
         },
-        "validate": "is_ctrr_lock_boot",
     },
     "cpu_lock_system_registers": {
-        "purpose": "Stub — system registers stay unlocked",
-        "patch_type": "MOV W0, #0; RET",
+        "purpose": "stub; system registers stay unlocked",
+        "patch_type": "MOV W0,#0; RET",
         "encoding": {
-            "mov_w0_0": 0x52800000,
-            "ret": 0xD65F03C0,
+            "mov_w0_0":  "0x52800000",
+            "ret":       "0xD65F03C0",
         },
-        "validate": "is_cpu_lock_sysreg",
     },
     "sptm_determine_kernel_ctrr": {
-        "purpose": "Stub — no CTRR ranges configured",
-        "patch_type": "MOV W0, #0; RET",
+        "purpose": "stub; no CTRR ranges configured",
+        "patch_type": "MOV W0,#0; RET",
         "encoding": {
-            "mov_w0_0": 0x52800000,
-            "ret": 0xD65F03C0,
+            "mov_w0_0":  "0x52800000",
+            "ret":       "0xD65F03C0",
         },
-        "validate": "is_determine_ctrr",
     },
 }
-
-MAX_FUNCTION_SCAN = 0x400
 
 
 def _to_u(v):
@@ -162,28 +173,6 @@ def read_u32(a):
         return None
     try:
         return int(currentProgram.getMemory().getInt(ga)) & 0xFFFFFFFF
-    except Exception:
-        return None
-
-
-def read_u64(a):
-    ga = safe_addr(a)
-    if ga is None:
-        return None
-    try:
-        return int(currentProgram.getMemory().getLong(ga)) & 0xFFFFFFFFFFFFFFFF
-    except Exception:
-        return None
-
-
-def read_bytes(a, n):
-    ga = safe_addr(a)
-    if ga is None:
-        return None
-    try:
-        buf = bytearray(n)
-        currentProgram.getMemory().getBytes(ga, buf)
-        return bytes(buf)
     except Exception:
         return None
 
@@ -297,43 +286,7 @@ def func_at(addr):
         return None
 
 
-def ensure_func(addr):
-    f = func_at(addr)
-    if f:
-        return f
-    ga = safe_addr(addr)
-    if ga is None:
-        return None
-    try:
-        disassemble(ga)
-    except Exception:
-        pass
-    try:
-        return createFunction(ga, None)
-    except Exception:
-        return None
-
-
-def decompile(f):
-    if f is None:
-        return ""
-    try:
-        from ghidra.app.decompiler import DecompInterface, DecompileOptions
-        from ghidra.util.task import ConsoleTaskMonitor
-        if _IFC[0] is None:
-            ifc = DecompInterface()
-            ifc.setOptions(DecompileOptions())
-            ifc.openProgram(currentProgram)
-            _IFC[0] = ifc
-        r = _IFC[0].decompileFunction(f, 60, ConsoleTaskMonitor())
-        if r.decompileCompleted():
-            return r.getDecompiledFunction().getC()
-    except Exception:
-        pass
-    return ""
-
-
-def _scan_function_insns(addr, max_n=MAX_FUNCTION_SCAN):
+def _scan_function_insns(addr, max_n=0x400):
     out = []
     a = addr
     for _ in range(max_n):
@@ -349,16 +302,16 @@ def is_ctrr_lock_boot(insns):
     if not insns:
         return False
     has_tbnz = False
-    has_mrs_ctrr = False
-    has_msr_ctrr = False
+    has_mrs = False
+    has_msr = False
     for a, w in insns:
         if (w & 0x7F000000) == 0x36000000:
             has_tbnz = True
         if (w & 0xFFFFFFE0) == 0xD5380000:
-            has_mrs_ctrr = True
+            has_mrs = True
         if (w & 0xFFFFFFE0) == 0xD5180000:
-            has_msr_ctrr = True
-    return has_tbnz and (has_mrs_ctrr or has_msr_ctrr)
+            has_msr = True
+    return has_tbnz and (has_mrs or has_msr)
 
 
 def is_cpu_lock_sysreg(insns):
@@ -459,32 +412,15 @@ def _find_ctrr_candidates():
     return out
 
 
-def _find_sptm_functions():
-    cands = {}
-    for label, strs in SPTM_STRING_ANCHORS.items():
-        for s in strs:
-            sa = _str_addr(s)
-            if sa is None:
-                continue
-            for xr in xrefs_to(sa):
-                f = func_at(xr)
-                if f is None:
-                    continue
-                ep = _to_u(f.getEntryPoint().getOffset())
-                if _validate_addr(ep):
-                    cands.setdefault(label, set()).add(ep)
-    return cands
-
-
 def _find_msr_ctrr_count():
-    count = 0get
+    count = 0
     addrs = []
     try:
         mem = currentProgram.getMemory()
         for b in mem.getBlocks():
             if not b.isInitialized():
                 continue
-            s = _to_u(b.getStart().Offset())
+            s = _to_u(b.getStart().getOffset())
             e = _to_u(b.getEnd().getOffset())
             if e - s > 0x1000000:
                 continue
@@ -495,7 +431,7 @@ def _find_msr_ctrr_count():
                     break
                 if (w & 0xFFFFFFE0) == 0xD5180000:
                     count += 1
-                    if len(addrs) < 16:
+                    if len(addrs) < 32:
                         addrs.append(a)
                 a += 4
     except Exception:
@@ -574,7 +510,7 @@ def main():
     _build_symidx()
 
     print("[*] SPTM functions via strings...")
-    by_str = _find_sptm_functions()
+    by_str = _find_by_strings()
     report.append("")
     report.append("=== [2] SPTM FUNCTIONS (via strings) ===")
     for label, eps in sorted(by_str.items()):
@@ -639,7 +575,13 @@ def main():
     jout["ctrr_candidates"] = [{"addr": fmt(a), "name": n} for a, n in ctrr]
 
     print("[*] MSR CTRR instructions...")
-    msr_count, msr_addrs = _find_msr_ctrr_count()
+    msr_count = 0
+    msr_addrs = []
+    try:
+        msr_count, msr_addrs = _find_msr_ctrr_count()
+    except Exception as e:
+        print("[-] msr scan error: {}".format(e))
+
     report.append("")
     report.append("=== [6] MSR CTRR INSTRUCTIONS ===")
     report.append("count = " + str(msr_count))
@@ -684,14 +626,18 @@ def main():
     hdr.append("")
     jout["patches"] = patches
 
+    for k, v in CONFIRMED_SPTM.items():
+        jout.setdefault("confirmed", {})
+        jout["confirmed"][k] = v
+
     summary = {
-        "sptm_strings":   sum(len(v) for v in by_str.values()),
-        "sptm_symbols":   sum(len(v) for v in by_sym.values()),
-        "validated":      sum(len(v) for v in validated.values()),
+        "sptm_strings":    sum(len(v) for v in by_str.values()),
+        "sptm_symbols":    sum(len(v) for v in by_sym.values()),
+        "validated":       sum(len(v) for v in validated.values()),
         "ctrr_candidates": len(ctrr),
-        "msr_ctrr_count": msr_count,
-        "key_functions":  sum(len(v) for v in key_funcs.values()),
-        "patches":        len(patches),
+        "msr_ctrr_count":  msr_count,
+        "key_functions":   sum(len(v) for v in key_funcs.values()),
+        "patches":         len(patches),
     }
     jout["summary"] = summary
     report.append("")
