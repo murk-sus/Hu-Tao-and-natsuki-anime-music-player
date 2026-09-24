@@ -150,7 +150,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}/ghidra_project
-          key: ghidra-project-${{ env.DEVICE_SLUG }}-${{ env.IOS_BUILD }}-v1
+          key: ghidra-project-${{ env.DEVICE_SLUG }}-${{ env.IOS_BUILD }}-v2
 
       - name: Run Ghidra (warm)
         if: steps.cache-project.outputs.cache-hit == 'true'
@@ -162,8 +162,7 @@ jobs:
             "${GITHUB_WORKSPACE}/ghidra_project" KernelProject \
             -process "kernelcache.release.iPhone14,5" \
             -noanalysis \
-            -postScript necp_dump_offsets.py \
-            -postScript necp_full_audit.py \
+            -postScript spectre_find_sysent.py \
             -scriptPath "${GITHUB_WORKSPACE}/scripts" \
             2>&1 | tee "${GITHUB_WORKSPACE}/ghidra.log"
 
@@ -177,8 +176,7 @@ jobs:
           "${GHIDRA_ROOT}/support/analyzeHeadless" \
             "${GITHUB_WORKSPACE}/ghidra_project" KernelProject \
             -import "${KERNEL}" \
-            -postScript necp_dump_offsets.py \
-            -postScript necp_full_audit.py \
+            -postScript spectre_find_sysent.py \
             -scriptPath "${GITHUB_WORKSPACE}/scripts" \
             -max-cpu 4 \
             -analysisTimeoutPerFile 9000 \
@@ -189,20 +187,18 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: ${{ github.workspace }}/ghidra_project
-          key: ghidra-project-${{ env.DEVICE_SLUG }}-${{ env.IOS_BUILD }}-v1
+          key: ghidra-project-${{ env.DEVICE_SLUG }}-${{ env.IOS_BUILD }}-v2
 
       - name: Upload artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: kernel-offsets-${{ github.sha }}
+          name: spectre-gadgets-${{ github.sha }}
           path: |
-            ${{ github.workspace }}/necp_offsets.h
-            ${{ github.workspace }}/necp_offsets_report.txt
-            ${{ github.workspace }}/necp_zones.txt
-            ${{ github.workspace }}/necp_sizes.txt
-            ${{ github.workspace }}/necp_uaf.txt
-            ${{ github.workspace }}/necp_strings.txt
+            ${{ github.workspace }}/spectre_sysent.txt
+            ${{ github.workspace }}/spectre_gadgets.txt
+            ${{ github.workspace }}/spectre_candidates.txt
+            ${{ github.workspace }}/spectre_strings.txt
             ${{ github.workspace }}/ghidra.log
           retention-days: 30
           if-no-files-found: warn
