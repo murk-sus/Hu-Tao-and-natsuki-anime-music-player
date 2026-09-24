@@ -14,7 +14,7 @@ permissions:
 jobs:
   offsets:
     runs-on: ubuntu-latest
-    timeout-minutes: 240
+    timeout-minutes: 120
 
     env:
       DEVICE: "iPhone14,5"
@@ -138,14 +138,10 @@ jobs:
 
           if [[ -z "${SRC}" ]]; then
             echo "ERROR: symbolication output not found"
-            ls -la "$(dirname "${KERNEL}")"
-            find /home/runner /tmp -name '*.json' -size +1k 2>/dev/null | head -20
             exit 1
           fi
 
-          echo "[+] found: ${SRC}"
           cp "${SRC}" "${GITHUB_WORKSPACE}/symbols.json"
-          ls -lh "${GITHUB_WORKSPACE}/symbols.json"
           SZ="$(stat -c %s "${GITHUB_WORKSPACE}/symbols.json")"
           if [[ "${SZ}" -lt 1000 ]]; then
             echo "ERROR: symbols.json too small (${SZ} bytes)"
@@ -166,12 +162,12 @@ jobs:
           _JAVA_OPTIONS: "-Xmx6g -Djava.awt.headless=true"
         run: |
           set -euo pipefail
-          echo "[+] Warm start"
           "${GHIDRA_ROOT}/support/analyzeHeadless" \
             "${GITHUB_WORKSPACE}/ghidra_project" KernelProject \
             -process "kernelcache.release.iPhone14,5" \
             -noanalysis \
             -postScript offsets.py \
+            -postScript necp_extract.py \
             -scriptPath "${GITHUB_WORKSPACE}/scripts" \
             2>&1 | tee "${GITHUB_WORKSPACE}/ghidra.log"
 
@@ -181,18 +177,18 @@ jobs:
           _JAVA_OPTIONS: "-Xmx6g -Djava.awt.headless=true"
         run: |
           set -euo pipefail
-          echo "[+] Cold start"
           mkdir -p "${GITHUB_WORKSPACE}/ghidra_project"
           "${GHIDRA_ROOT}/support/analyzeHeadless" \
             "${GITHUB_WORKSPACE}/ghidra_project" KernelProject \
             -import "${KERNEL}" \
             -postScript offsets.py \
+            -postScript necp_extract.py \
             -scriptPath "${GITHUB_WORKSPACE}/scripts" \
             -max-cpu 4 \
-            -analysisTimeoutPerFile 9000 \
+            -analysisTimeoutPerFile 5400 \
             2>&1 | tee "${GITHUB_WORKSPACE}/ghidra.log"
 
-      - name: Save Ghidra project to cache after cold
+      - name: Save Ghidra project after cold
         if: steps.cache-project.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
@@ -206,6 +202,7 @@ jobs:
           name: kernel-offsets-${{ github.sha }}
           path: |
             ${{ github.workspace }}/offsets.txt
+            ${{ github.workspace }}/necp_decom.txt
             ${{ github.workspace }}/symbols.json
             ${{ github.workspace }}/ghidra.log
           retention-days: 30
