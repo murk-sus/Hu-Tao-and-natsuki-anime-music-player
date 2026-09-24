@@ -161,8 +161,6 @@ jobs:
           set -euo pipefail
           rm -f "${GITHUB_WORKSPACE}"/nk_*.txt \
                 "${GITHUB_WORKSPACE}"/nk_*.h \
-                "${GITHUB_WORKSPACE}"/offsets.h \
-                "${GITHUB_WORKSPACE}"/offsets.json \
                 "${GITHUB_WORKSPACE}"/ghidra.log
 
       - name: Run Ghidra (warm)
@@ -170,6 +168,7 @@ jobs:
         env:
           _JAVA_OPTIONS: "-Xmx8g -Djava.awt.headless=true"
           SYMBOLS_JSON: ${{ github.workspace }}/symbols.json
+          GITHUB_WORKSPACE: ${{ github.workspace }}
         run: |
           set -euo pipefail
           "${GHIDRA_ROOT}/support/analyzeHeadless" \
@@ -183,8 +182,6 @@ jobs:
             -postScript 04_find_copyio.py \
             -postScript 05_find_iokit.py \
             -postScript 06_find_task_proc.py \
-            -postScript 07_find_gadgets.py \
-            -postScript 08_collect_offsets.py \
             -scriptPath "${GITHUB_WORKSPACE}/scripts" \
             2>&1 | tee "${GITHUB_WORKSPACE}/ghidra.log"
 
@@ -193,6 +190,7 @@ jobs:
         env:
           _JAVA_OPTIONS: "-Xmx8g -Djava.awt.headless=true"
           SYMBOLS_JSON: ${{ github.workspace }}/symbols.json
+          GITHUB_WORKSPACE: ${{ github.workspace }}
         run: |
           set -euo pipefail
           mkdir -p "${GITHUB_WORKSPACE}/ghidra_project"
@@ -206,23 +204,10 @@ jobs:
             -postScript 04_find_copyio.py \
             -postScript 05_find_iokit.py \
             -postScript 06_find_task_proc.py \
-            -postScript 07_find_gadgets.py \
-            -postScript 08_collect_offsets.py \
             -scriptPath "${GITHUB_WORKSPACE}/scripts" \
             -max-cpu 4 \
             -analysisTimeoutPerFile 12000 \
             2>&1 | tee "${GITHUB_WORKSPACE}/ghidra.log"
-
-      - name: Build offsets header
-        if: always()
-        run: |
-          set -euo pipefail
-          if [[ -f "${GITHUB_WORKSPACE}/scripts/build_offsets.py" ]]; then
-            python3 "${GITHUB_WORKSPACE}/scripts/build_offsets.py" \
-              --workspace "${GITHUB_WORKSPACE}"
-          else
-            echo "[!] build_offsets.py not found, skipping"
-          fi
 
       - name: Upload artifacts
         if: always()
@@ -237,10 +222,7 @@ jobs:
             ${{ github.workspace }}/nk_copyio.txt
             ${{ github.workspace }}/nk_iokit.txt
             ${{ github.workspace }}/nk_task_proc.txt
-            ${{ github.workspace }}/nk_gadgets.txt
             ${{ github.workspace }}/nk_report.txt
-            ${{ github.workspace }}/offsets.h
-            ${{ github.workspace }}/offsets.json
             ${{ github.workspace }}/symbols.json
             ${{ github.workspace }}/ghidra.log
           retention-days: 30
