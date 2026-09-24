@@ -4,227 +4,337 @@ import os
 import re
 import json
 
-WORKSPACE = os.environ.get("GITHUB_WORKSPACE", "/tmp")
-OUT_PATH = os.path.join(WORKSPACE, "offsets.txt")
+WORKSPACE  = os.environ.get("GITHUB_WORKSPACE", "/tmp")
+OUT_PATH   = os.path.join(WORKSPACE, "necp_decom.txt")
 SYMBOLS_JSON = os.path.join(WORKSPACE, "symbols.json")
 
-INSTR_LIMIT = 500
-FUNC_SIZE_LIMIT = 96
-FIELD_OFFSET_MAX = 0x2000
-ACCESSOR_CANDIDATE_LIMIT = 5000
-DECOM_TIMEOUT_SECS = 120
+DECOM_TIMEOUT = 120
+INSTR_LIMIT   = 300
+MAX_XREFS_PER_STRING = 12
 
-TARGET_SYMBOLS = [
-    "_allproc", "_kernproc", "_nprocs",
-    "_proc_pid", "_proc_task", "_proc_ucred", "_proc_fd", "_proc_textvp",
-    "_proc_ppid", "_proc_list_entry",
-    "_kauth_cred_getuid", "_kauth_cred_getruid", "_kauth_cred_getsvuid",
-    "_kauth_cred_getgid", "_kauth_cred_getrgid", "_kauth_cred_getsvgid",
-    "_kauth_cred_getgroups", "_kauth_cred_getngroups",
-    "_cs_enforcement_disable", "_amfi_get_out_of_my_way",
-    "_necp_client_action", "_necp_client_copy_result",
-    "_necp_client_add_flow", "_necp_client_remove_flow", "_necp_update_flow",
-    "_necp_client_copy", "_necp_client_copy_internal",
-    "_necp_client_update_cache", "_necp_client_update_flows",
-    "_necp_client_acquire_agent_token", "_necp_arena_initialize",
-    "_necp_session_action", "_necp_session_add_policy",
-    "_task_for_pid", "_task_map", "_get_task_ipcspace",
-    "_vm_map_pmap", "_vm_map_lookup_entry", "_pmap_enter_options",
-    "_vnode_mount", "_vnode_data", "_vnode_vtype",
-    "_fd_ofiles", "_fileproc_fglob",
-    "_socket_so_rcv", "_socket_so_snd",
-    "_rootvnode", "_kernel_map", "_host_priv_self",
-    "_bsd_syscall_table", "_mach_trap_table", "_mig_kern_subsystem",
-    "_vm_kernel_slide", "_kernproc_self", "_procs_tree",
-    "_kalloc_init", "_kalloc_large", "_kalloc_heap_init",
-    "_kalloc_type_validate_flags",
-    "_dlil_ifaddr_bytes", "_route_output", "_rtinit_locked",
-    "_pmap_enter_pte", "_pmap_expand",
-    "_resolve_kernel_task", "_task_info",
-    "_proc_info_internal",
-    "_sptm_get_page_table_refcnt",
+TARGET_SYMS = [
+    "necp_client_action",
+    "necp_client_copy",
+    "necp_client_copy_internal",
+    "necp_client_copy_parameters",
+    "necp_client_copy_result",
+    "necp_client_add_flow",
+    "necp_client_remove_flow",
+    "necp_session_action",
+    "necp_session_add_policy",
+    "necp_session_remove_policy",
+    "necp_client_update_cache",
+    "necp_client_update_flows",
+    "necp_client_acquire_agent_token",
+    "necp_client_agent_use",
+    "necp_arena_initialize",
+    "necp_destroy_client_flow_registration",
+    "necp_create_client_flow_common",
+    "necp_client_map_sysctls",
+    "necp_client_qualify_flow",
+    "necp_client_collect_stats",
+    "necp_request_tcp_netstats",
+    "necp_request_udp_netstats",
+    "necp_request_quic_netstats",
+    "necp_request_aop_tcp_netstats",
+    "necp_request_aop_quic_netstats",
+    "necp_process_defunct_list",
+    "necp_client_copy_agent",
+    "necp_update_qos_marking",
+    "necp_ip_output_find_policy_match",
+    "necp_ip6_output_find_policy_match",
+    "necp_flow_registration_release",
 ]
 
-ANCHOR_STRINGS = [
-    "allproc", "kernproc",
-    "necp_client", "necp_session", "necp_arena",
-    "cs_enforcement", "amfi_get_out_of_my_way",
-    "task_for_pid", "proc_info",
-    "kalloc_type",
-    "dlil_ifaddr", "rtm_scrub",
-    "vm_kernel_slide",
+ANCHORS = [
+    "necp_client_action",
+    "necp_client_copy",
+    "necp_client_copy_parameters",
+    "necp_client_copy_result",
+    "necp_client_add_flow",
+    "necp_client_remove_flow",
+    "necp_client_update_cache",
+    "necp_client_update_flows",
+    "necp_client_acquire_agent_token",
+    "necp_client_agent_use",
+    "necp_session_action",
+    "necp_session_add_policy",
+    "necp_session_remove_policy",
+    "necp_arena_initialize",
+    "necp_destroy_client_flow_registration",
+    "necp_create_client_flow_common",
+    "necp_flow_registration_release",
+    "necp_client_qualify_flow",
+    "necp_client_copy_agent",
+    "necp_process_defunct_list",
+    "necp_client",
+    "necp_session",
+    "necp_arena",
+    "necp_flow",
 ]
 
-SYSCALL_TABLE_SYMS = ["_bsd_syscall_table", "bsd_syscall_table"]
-MACH_TRAP_SYMS    = ["_mach_trap_table",    "mach_trap_table"]
-MIG_SUBSYS_SYMS   = ["_mig_kern_subsystem", "mig_kern_subsystem"]
+PRIORITY_ADDRS = [
+    0xfffffff00a4c9c28,
+    0xfffffff00a4cbbe8,
+    0xfffffff00a4d66f0,
+    0xfffffff00a4a1438,
+    0xfffffff00a4a18c4,
+    0xfffffff00a4cfd58,
+    0xfffffff00a4ceb50,
+    0xfffffff00a4ce778,
+    0xfffffff00a4cec7c,
+    0xfffffff00a4cfa0c,
+    0xfffffff00a4ca0dc,
+    0xfffffff00a4cb6f4,
+    0xfffffff00a4cc0fc,
+    0xfffffff00a4cd904,
+    0xfffffff00a4ce0b4,
+    0xfffffff00a4cc43c,
+    0xfffffff00a4cd3c4,
+    0xfffffff00a4cf704,
+    0xfffffff00a4cfd58,
+    0xfffffff00a4d0264,
+    0xfffffff00a4d05d8,
+    0xfffffff00a4d1170,
+]
 
-SYSCALL_INTERESTING_IDX = (
-    0, 1, 2, 3, 4, 5, 6, 20, 27, 32, 33, 47, 49, 50,
-    65, 66, 97, 116, 128, 144, 147, 149, 154, 170,
-    202, 220, 224, 226, 250, 286, 294, 301, 302, 322,
-    336, 337, 501, 502,
-)
+SYMBOLS_JSON_CANDIDATES = [
+    SYMBOLS_JSON,
+    os.path.expanduser("~/symbols.json"),
+    os.path.expanduser("~/natsuk1/symbols.json"),
+    "/tmp/symbols.json",
+]
 
 
-def _to_unsigned(v):
+def to_unsigned(v):
     return int(v) & 0xFFFFFFFFFFFFFFFF
 
 
-def _to_java_long(v):
-    v = _to_unsigned(v)
+def to_java_long(v):
+    v = to_unsigned(v)
     if v >= 0x8000000000000000:
         v -= 0x10000000000000000
     return int(v)
 
 
-def _fmt(v):
-    return "0x{:016X}".format(_to_unsigned(v))
+def fmt_hex(v):
+    return "0x{:016X}".format(to_unsigned(v))
+
+
+def safe_addr(addr):
+    try:
+        return toAddr(to_java_long(addr))
+    except Exception:
+        return None
+
+
+def get_func_at(addr):
+    ga = safe_addr(addr)
+    if ga is None:
+        return None
+    try:
+        return getFunctionAt(ga)
+    except Exception:
+        return None
+
+
+def get_func_containing(addr):
+    ga = safe_addr(addr)
+    if ga is None:
+        return None
+    try:
+        return getFunctionContaining(ga)
+    except Exception:
+        return None
 
 
 def load_symbols_json():
     result = {}
-    if not os.path.exists(SYMBOLS_JSON):
-        return result
-    try:
-        with open(SYMBOLS_JSON) as fh:
-            raw = fh.read().strip()
-        if not raw:
-            return result
-        data = json.loads(raw)
-    except Exception:
-        return result
-
-    def _add(name, addr):
-        if not name or addr is None:
-            return
+    for p in SYMBOLS_JSON_CANDIDATES:
+        if not os.path.exists(p):
+            continue
         try:
-            if isinstance(addr, str):
-                addr_int = int(addr, 16) if addr.startswith(("0x", "0X")) else int(addr, 0)
-            else:
-                addr_int = int(addr)
-            u = _to_unsigned(addr_int)
-            result[name] = u
-            if not name.startswith("_"):
-                result["_" + name] = u
+            with open(p) as f:
+                data = json.load(f)
+        except Exception:
+            continue
+
+        def add(name, addr):
+            if not name or addr is None:
+                return
+            try:
+                if isinstance(addr, str):
+                    addr_int = int(addr, 16) if addr.startswith(("0x", "0X")) else int(addr, 0)
+                else:
+                    addr_int = int(addr)
+                result[name] = addr_int & 0xFFFFFFFFFFFFFFFF
+                if not name.startswith("_"):
+                    result["_" + name] = addr_int & 0xFFFFFFFFFFFFFFFF
+            except Exception:
+                pass
+
+        def walk(node):
+            if isinstance(node, dict):
+                n = node.get("name") or node.get("symbol")
+                a = node.get("address") or node.get("addr") or node.get("value")
+                if n and a is not None:
+                    add(n, a)
+                    return
+                for k, v in node.items():
+                    if isinstance(v, str) and (v.startswith("0x") or v.startswith("0X")):
+                        add(k, v)
+                    else:
+                        walk(v)
+            elif isinstance(node, list):
+                for it in node:
+                    walk(it)
+
+        walk(data)
+        if result:
+            print("[+] loaded {} symbols from {}".format(len(result), p))
+            return result
+    print("[-] no symbols.json found")
+    return {}
+
+
+def sym_addr(name, symbols):
+    candidates = []
+    if name in symbols:
+        candidates.append(symbols[name])
+    if "_" + name in symbols:
+        candidates.append(symbols["_" + name])
+
+    st = currentProgram.getSymbolTable()
+    for bare in (name, "_" + name):
+        try:
+            for s in st.getSymbols(bare):
+                a = to_unsigned(s.getAddress().getOffset())
+                if a not in candidates:
+                    candidates.append(a)
         except Exception:
             pass
 
-    def _walk(node):
-        if isinstance(node, dict):
-            name = node.get("name") or node.get("symbol")
-            addr = node.get("address") or node.get("addr") or node.get("value")
-            if name and addr is not None:
-                _add(name, addr)
-                return
-            for k, v in node.items():
-                if isinstance(v, str) and v.startswith(("0x", "0X")):
-                    try:
-                        _add(k, v)
-                        continue
-                    except Exception:
-                        pass
-                _walk(v)
-        elif isinstance(node, list):
-            for item in node:
-                _walk(item)
-
-    _walk(data)
-    return result
+    if not candidates:
+        lower = name.lower()
+        try:
+            it = st.getSymbolIterator(True)
+            while it.hasNext():
+                s = it.next()
+                n = s.getName().lower()
+                if n.endswith(lower) or lower in n:
+                    a = to_unsigned(s.getAddress().getOffset())
+                    if a not in candidates:
+                        candidates.append(a)
+                    if len(candidates) >= 8:
+                        break
+        except Exception:
+            pass
+    return candidates
 
 
-def find_symbol_address(name, symbols):
-    if name in symbols:
-        return symbols[name]
-    bare = name.lstrip("_")
-    for candidate in (bare, "_" + name, name.lower()):
-        if candidate in symbols:
-            return symbols[candidate]
-    lower = name.lower()
-    for k, v in symbols.items():
-        if k.lower() == lower:
-            return v
-    for k, v in symbols.items():
-        if k.lower().endswith(lower):
-            return v
-    st = currentProgram.getSymbolTable()
-    try:
-        for sym in st.getSymbols(name):
-            return _to_unsigned(sym.getAddress().getOffset())
-    except Exception:
-        pass
-    try:
-        for sym in st.getSymbols(bare):
-            return _to_unsigned(sym.getAddress().getOffset())
-    except Exception:
-        pass
-    return None
-
-
-def _safe_addr(addr):
-    try:
-        return toAddr(_to_java_long(addr))
-    except Exception:
-        return None
-
-
-def read_u64(addr):
-    ga = _safe_addr(addr)
-    if ga is None:
-        return None
-    try:
-        return _to_unsigned(getLong(ga))
-    except Exception:
-        return None
-
-
-def read_u32(addr):
-    ga = _safe_addr(addr)
-    if ga is None:
-        return None
-    try:
-        return _to_unsigned(getInt(ga)) & 0xFFFFFFFF
-    except Exception:
-        return None
-
-
-def scan_strings():
+def scan_strings_for(keywords):
     result = {}
     listing = currentProgram.getListing()
     it = listing.getDefinedData(True)
     while it.hasNext():
         d = it.next()
         try:
-            if d.hasStringValue():
-                val = d.getValue()
-                if val is not None:
-                    s = str(val)
-                    if s:
-                        result[s] = _to_unsigned(d.getAddress().getOffset())
+            if not d.hasStringValue():
+                continue
+            val = d.getValue()
+            if val is None:
+                continue
+            s = str(val)
+            if any(kw in s for kw in keywords):
+                result[s] = to_unsigned(d.getAddress().getOffset())
         except Exception:
             continue
     return result
 
 
-def find_xrefs_to(addr):
+def find_bytes_ascii(key):
+    from ghidra.util.task import ConsoleTaskMonitor
+    mem = currentProgram.getMemory()
+    results = []
+    try:
+        pattern = key.encode("ascii")
+    except Exception:
+        return results
+    monitor = ConsoleTaskMonitor()
+    try:
+        addr = mem.getMinAddress()
+    except Exception:
+        return results
+    while addr is not None:
+        try:
+            found = mem.findBytes(addr, pattern, None, True, monitor)
+        except Exception:
+            break
+        if found is None:
+            break
+        results.append(to_unsigned(found.getOffset()))
+        try:
+            addr = found.add(1)
+        except Exception:
+            break
+        if len(results) >= 16:
+            break
+    return results
+
+
+def xrefs_to(addr):
     refs = []
-    ga = _safe_addr(addr)
+    ga = safe_addr(addr)
     if ga is None:
         return refs
     rm = currentProgram.getReferenceManager()
     try:
         for r in rm.getReferencesTo(ga):
-            refs.append(_to_unsigned(r.getFromAddress().getOffset()))
+            refs.append(to_unsigned(r.getFromAddress().getOffset()))
     except Exception:
         pass
     return refs
 
 
-def dump_instructions_from(addr, limit=INSTR_LIMIT):
+def make_decompiler():
+    from ghidra.app.decompiler import DecompInterface, DecompileOptions
+    ifc = DecompInterface()
+    ifc.setOptions(DecompileOptions())
+    ifc.openProgram(currentProgram)
+    return ifc
+
+
+def decom_func(func, ifc):
+    from ghidra.util.task import ConsoleTaskMonitor
+    try:
+        r = ifc.decompileFunction(func, DECOM_TIMEOUT, ConsoleTaskMonitor())
+        if r.decompileCompleted():
+            return r.getDecompiledFunction().getC()
+    except Exception:
+        pass
+    return ""
+
+
+def ensure_func_at(addr, ifc):
+    f = get_func_at(addr)
+    if f is None:
+        ga = safe_addr(addr)
+        if ga:
+            try:
+                disassemble(ga)
+                f = createFunction(ga, None)
+            except Exception:
+                pass
+    if f is None:
+        f = get_func_containing(addr)
+    return f
+
+
+def disasm_at(addr, limit=INSTR_LIMIT):
     lines = []
-    ga = _safe_addr(addr)
+    ga = safe_addr(addr)
     if ga is None:
-        return ["  ERROR: bad addr {}".format(_fmt(addr))]
+        return ["  ERROR: bad addr {}".format(fmt_hex(addr))]
     instr = getInstructionAt(ga)
     if instr is None:
         try:
@@ -233,281 +343,165 @@ def dump_instructions_from(addr, limit=INSTR_LIMIT):
         except Exception:
             pass
     if instr is None:
-        return ["  no instruction at {}".format(_fmt(addr))]
+        return ["  no instruction at {}".format(fmt_hex(addr))]
     count = 0
     while instr is not None and count < limit:
         lines.append("  {}  {}".format(
-            _fmt(_to_unsigned(instr.getAddress().getOffset())), instr))
+            fmt_hex(to_unsigned(instr.getAddress().getOffset())), instr))
         instr = instr.getNext()
         count += 1
     return lines
 
 
-def _make_decompiler():
-    from ghidra.app.decompiler import DecompInterface, DecompileOptions
-    ifc = DecompInterface()
-    ifc.setOptions(DecompileOptions())
-    ifc.openProgram(currentProgram)
-    return ifc
-
-
-def decompile_function(func, ifc):
-    from ghidra.util.task import ConsoleTaskMonitor
-    try:
-        res = ifc.decompileFunction(func, DECOM_TIMEOUT_SECS, ConsoleTaskMonitor())
-        if res.decompileCompleted():
-            return res.getDecompiledFunction().getC()
-    except Exception:
-        pass
-    return ""
-
-
-def decompile_at(addr, ifc):
-    ga = _safe_addr(addr)
-    if ga is None:
-        return ""
-    try:
-        func = getFunctionAt(ga)
-        if func is None:
-            disassemble(ga)
-            func = createFunction(ga, None)
-        if func is None:
-            return ""
-        return decompile_function(func, ifc)
-    except Exception:
-        return ""
-
-
-_FIELD_RE = re.compile(
-    r"\((?P<type>[A-Za-z_][A-Za-z0-9_ ]*?)\s*\*\)\s*"
-    r"\((?P<var>a1|param_1|arg1|self)\s*\+\s*"
-    r"(?P<off>0x[0-9a-fA-F]+|\d+)\)"
-)
-
-
-def extract_field_offsets(code):
-    hits = []
-    for m in _FIELD_RE.finditer(code):
+def extract_switch_cases(code):
+    cases = set()
+    for m in re.finditer(r"case\s+(0x[0-9a-fA-F]+|\d+)\s*:", code):
         try:
-            hits.append((int(m.group("off"), 0), m.group("type").strip()))
+            v = int(m.group(1), 0)
+            if 0 < v < 0x200:
+                cases.add(v)
+        except Exception:
+            pass
+    return sorted(cases)
+
+
+def extract_ldr_offsets(code):
+    hits = {}
+    pat = re.compile(
+        r"\(\s*([A-Za-z_][\w \*]*?)\s*\*\s*\)\s*\(\s*(\w+)\s*\+\s*(0x[0-9a-fA-F]+|\d+)\s*\)"
+    )
+    for m in pat.finditer(code):
+        try:
+            off = int(m.group(3), 0)
+            if 0 < off < 0x4000:
+                key = off
+                if key not in hits:
+                    hits[key] = m.group(1).strip()
         except Exception:
             pass
     return hits
 
 
-def parse_table(addr, count, stride=8):
-    entries = []
-    for i in range(count):
-        e = read_u64(addr + i * stride)
-        if e is None:
-            break
-        entries.append(e)
-    return entries
+def collect_candidates(symbols):
+    candidates = {}
 
+    for addr in PRIORITY_ADDRS:
+        candidates[addr] = "priority:hardcoded"
 
-def emit_symbol_table(out, symbols, target_list, section_name):
-    out.write("\n=== {} ===\n".format(section_name))
-    found = 0
-    for name in target_list:
-        addr = find_symbol_address(name, symbols)
-        if addr is not None:
-            tag = "  (json)" if name in symbols else "  (ghidra)"
-            line = "{:<45} {}{}".format(name, _fmt(addr), tag)
-            found += 1
-        else:
-            line = "{:<45} NOT_FOUND".format(name)
-        out.write(line + "\n")
-    out.flush()
-    out.write("  --- found: {}/{}\n".format(found, len(target_list)))
+    for name in TARGET_SYMS:
+        for addr in sym_addr(name, symbols):
+            candidates[addr] = "sym:{}".format(name)
 
+    strings = scan_strings_for(ANCHORS)
+    print("[*] string hits in defined data: {}".format(len(strings)))
 
-def section_syscall_table(out, symbols):
-    out.write("\n=== SYSCALL TABLE ===\n")
-    for tname in SYSCALL_TABLE_SYMS:
-        taddr = find_symbol_address(tname, symbols)
-        if taddr is None:
-            continue
-        out.write("table {} @ {}\n".format(tname, _fmt(taddr)))
-        entries = parse_table(taddr, 600, 8)
-        for idx in SYSCALL_INTERESTING_IDX:
-            if idx < len(entries) and entries[idx]:
-                out.write("  sysent[{}] = {}\n".format(idx, _fmt(entries[idx])))
-        out.flush()
-        return
-    out.write("  NOT_FOUND\n")
+    for s, saddr in strings.items():
+        refs = xrefs_to(saddr)
+        for xaddr in refs[:MAX_XREFS_PER_STRING]:
+            f = get_func_containing(xaddr)
+            if f is not None:
+                faddr = to_unsigned(f.getEntryPoint().getOffset())
+                if faddr not in candidates:
+                    candidates[faddr] = "xref:{}".format(repr(s[:48]))
+            else:
+                if xaddr not in candidates:
+                    candidates[xaddr] = "raw_xref:{}".format(repr(s[:48]))
 
+    for key in ("necp_client_action", "necp_client_copy", "necp_client_update_flows",
+                "necp_arena_initialize", "necp_client_add_flow", "necp_client_remove_flow"):
+        for saddr in find_bytes_ascii(key)[:4]:
+            for xaddr in xrefs_to(saddr)[:MAX_XREFS_PER_STRING]:
+                f = get_func_containing(xaddr)
+                if f is not None:
+                    faddr = to_unsigned(f.getEntryPoint().getOffset())
+                    if faddr not in candidates:
+                        candidates[faddr] = "memscan:{}".format(key)
+                else:
+                    if xaddr not in candidates:
+                        candidates[xaddr] = "memscan_raw:{}".format(key)
 
-def section_mach_traps(out, symbols):
-    out.write("\n=== MACH TRAP TABLE ===\n")
-    for tname in MACH_TRAP_SYMS:
-        taddr = find_symbol_address(tname, symbols)
-        if taddr is None:
-            continue
-        out.write("table {} @ {}\n".format(tname, _fmt(taddr)))
-        entries = parse_table(taddr, 128, 8)
-        for idx in range(min(64, len(entries))):
-            if entries[idx]:
-                out.write("  trap[{}] = {}\n".format(idx, _fmt(entries[idx])))
-        out.flush()
-        return
-    out.write("  NOT_FOUND\n")
-
-
-def section_mig_subsystem(out, symbols):
-    out.write("\n=== MIG SUBSYSTEM ===\n")
-    for tname in MIG_SUBSYS_SYMS:
-        taddr = find_symbol_address(tname, symbols)
-        if taddr is None:
-            continue
-        out.write("subsystem {} @ {}\n".format(tname, _fmt(taddr)))
-
-        maxsize = read_u32(taddr + 0x00)
-        if maxsize is not None:
-            out.write("  maxsize = {}\n".format(maxsize))
-
-        count = None
-        routines_ptr = None
-        for count_off, ptr_off in ((0x20, 0x28), (0x18, 0x20), (0x24, 0x30)):
-            candidate_count = read_u32(taddr + count_off)
-            candidate_ptr   = read_u64(taddr + ptr_off)
-            if candidate_count and 0 < candidate_count < 2048 and candidate_ptr:
-                first = read_u64(candidate_ptr)
-                if first and first > 0xFFFFFFF000000000:
-                    count = candidate_count
-                    routines_ptr = candidate_ptr
-                    out.write("  layout offsets: count@+{:#x} ptr@+{:#x}\n".format(
-                        count_off, ptr_off))
-                    break
-
-        if count is None:
-            out.write("  WARNING: could not determine layout — dumping raw words\n")
-            for off in range(0, 0x40, 4):
-                w = read_u32(taddr + off)
-                if w is not None:
-                    out.write("    +{:#04x} = {:#010x}\n".format(off, w))
-            out.flush()
-            return
-
-        out.write("  routine count = {}\n".format(count))
-        out.write("  routines table @ {}\n".format(_fmt(routines_ptr)))
-        for i in range(min(count, 32)):
-            r = read_u64(routines_ptr + i * 0x18)
-            if r:
-                out.write("    routine[{}] = {}\n".format(i, _fmt(r)))
-        out.flush()
-        return
-    out.write("  NOT_FOUND\n")
-
-
-def section_string_anchors(out, symbols, strings):
-    out.write("\n=== STRING ANCHORS ===\n")
-    out.write("total strings: {}\n".format(len(strings)))
-    for key in ANCHOR_STRINGS:
-        hit = False
-        for s, a in strings.items():
-            if key in s:
-                out.write("  {:<50} {}\n".format(repr(s[:46]), _fmt(a)))
-                for x in find_xrefs_to(a)[:20]:
-                    out.write("      xref <- {}\n".format(_fmt(x)))
-                hit = True
-                break
-        if not hit:
-            out.write("  {:<50} NOT_FOUND\n".format(key))
-    out.flush()
-
-
-def section_accessor_candidates(out):
-    out.write("\n=== ACCESSOR CANDIDATES ===\n")
-    out.flush()
-
-    ifc = _make_decompiler()
-    fm = currentProgram.getFunctionManager()
-    total = 0
-    candidates = []
-
-    for f in fm.getFunctions(True):
-        total += 1
-        body = f.getBody()
-        if body.getNumAddresses() > FUNC_SIZE_LIMIT:
-            continue
-
-        code = decompile_function(f, ifc)
-        if not code:
-            continue
-
-        hits = extract_field_offsets(code)
-        if len(hits) == 1 and 0 < hits[0][0] < FIELD_OFFSET_MAX:
-            candidates.append((
-                f.getName(),
-                _to_unsigned(f.getEntryPoint().getOffset()),
-                hits[0][0],
-                hits[0][1],
-            ))
-
-    out.write("scanned: {}\n".format(total))
-    out.write("candidates: {}\n\n".format(len(candidates)))
-    for name, addr, off, typ in candidates[:ACCESSOR_CANDIDATE_LIMIT]:
-        out.write("  {:<45} {}  +0x{:x}  {}\n".format(name, _fmt(addr), off, typ))
-    out.flush()
-
-
-def section_anchor_disasm(out, strings):
-    out.write("\n=== ANCHOR XREF DISASM ===\n")
-    keys = ("necp_client", "necp_session", "necp_arena",
-            "dlil_ifaddr", "allproc", "proc_info")
-    for key in keys:
-        for s, a in strings.items():
-            if key in s:
-                for x in find_xrefs_to(a)[:2]:
-                    out.write("\n--- xref of '{}' at {} ---\n".format(key, _fmt(x)))
-                    for ln in dump_instructions_from(x, limit=80):
-                        out.write(ln + "\n")
-                break
-    out.flush()
-
-
-def section_manual_disasm(out):
-    out.write("\n=== MANUAL DISASM ===\n")
-    manual = os.environ.get("MANUAL_ADDRS", "").split(",")
-    for a in manual:
-        a = a.strip()
-        if not a:
-            continue
-        try:
-            addr = int(a, 0)
-        except ValueError:
-            continue
-        out.write("\n--- {} ---\n".format(_fmt(addr)))
-        for ln in dump_instructions_from(addr):
-            out.write(ln + "\n")
-    out.flush()
+    return candidates
 
 
 def main():
-    symbols = load_symbols_json()
     print("[*] Program: " + currentProgram.getName())
-    print("[*] Symbols loaded: {}".format(len(symbols)))
+    symbols = load_symbols_json()
+    ifc = make_decompiler()
 
-    strings = scan_strings()
-    print("[*] Defined strings: {}".format(len(strings)))
+    candidates = collect_candidates(symbols)
+    print("[*] total candidate addrs: {}".format(len(candidates)))
+
+    seen = set()
+    entries = []
+
+    for addr in PRIORITY_ADDRS:
+        f = ensure_func_at(addr, ifc)
+        if f is None:
+            continue
+        fentry = to_unsigned(f.getEntryPoint().getOffset())
+        if fentry in seen:
+            continue
+        seen.add(fentry)
+        code = decom_func(f, ifc)
+        if code:
+            entries.append((fentry, "priority", f.getName(), code))
+        else:
+            entries.append((fentry, "priority", f.getName(),
+                            "\n".join(disasm_at(fentry, INSTR_LIMIT))))
+
+    for addr, label in sorted(candidates.items()):
+        if addr in seen:
+            continue
+        f = ensure_func_at(addr, ifc)
+        if f is not None:
+            fentry = to_unsigned(f.getEntryPoint().getOffset())
+            if fentry in seen:
+                continue
+            seen.add(fentry)
+            code = decom_func(f, ifc)
+            if code:
+                entries.append((fentry, label, f.getName(), code))
+            else:
+                entries.append((fentry, label, f.getName(),
+                                "\n".join(disasm_at(fentry, INSTR_LIMIT))))
+        else:
+            if addr in seen:
+                continue
+            seen.add(addr)
+            entries.append((addr, label, "???",
+                            "\n".join(disasm_at(addr, INSTR_LIMIT))))
+
+    print("[*] entries to write: {}".format(len(entries)))
 
     with open(OUT_PATH, "w") as out:
-        out.write("=== KERNEL OFFSETS REPORT ===\n")
+        out.write("=== NECP DEEP DECOM REPORT ===\n")
         out.write("Program: {}\n".format(currentProgram.getName()))
-        out.write("ImageBase: {}\n".format(
-            _fmt(_to_unsigned(currentProgram.getImageBase().getOffset()))))
         out.write("SymbolsLoaded: {}\n".format(len(symbols)))
+        out.write("Entries: {}\n\n".format(len(entries)))
 
-        emit_symbol_table(out, symbols, TARGET_SYMBOLS, "SYMBOLS")
-        section_string_anchors(out, symbols, strings)
-        section_syscall_table(out, symbols)
-        section_mach_traps(out, symbols)
-        section_mig_subsystem(out, symbols)
-        section_accessor_candidates(out)
-        section_anchor_disasm(out, strings)
-        section_manual_disasm(out)
+        for (addr, label, fname, body) in entries:
+            out.write("=" * 16 + " {} ".format(fmt_hex(addr)) + "=" * 16 + "\n")
+            out.write("label  : {}\n".format(label))
+            out.write("func   : {}\n".format(fname))
 
-        out.write("\n=== DONE ===\n")
+            cases = extract_switch_cases(body)
+            if cases:
+                out.write("switch : " + ", ".join(["0x{:x}".format(c) for c in cases]) + "\n")
+
+            offsets = extract_ldr_offsets(body)
+            if offsets:
+                out.write("fields :\n")
+                for off in sorted(offsets.keys()):
+                    out.write("  +0x{:x}  ({})\n".format(off, offsets[off]))
+
+            out.write("-" * 60 + "\n")
+            out.write(body)
+            if not body.endswith("\n"):
+                out.write("\n")
+            out.write("\n")
+            out.flush()
+
+        out.write("=== DONE ===\n")
 
     print("[*] wrote: " + OUT_PATH)
 
