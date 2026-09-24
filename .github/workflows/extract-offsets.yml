@@ -1,4 +1,3 @@
-
 name: Extract Kernel Offsets
 
 on:
@@ -81,7 +80,6 @@ jobs:
             --build "${IOS_BUILD}" \
             --output "${GITHUB_WORKSPACE}/ipsw" \
             --confirm
-          find "${GITHUB_WORKSPACE}/ipsw" -type f -exec ls -lh {} \;
 
       - name: Extract Kernelcache
         run: |
@@ -92,17 +90,16 @@ jobs:
             exit 1
           fi
           mkdir -p "${GITHUB_WORKSPACE}/kernel"
-          if [[ ! -f "${GITHUB_WORKSPACE}/kernel/.done" ]]; then
-            ipsw extract --kernel "${IPSW}" --output "${GITHUB_WORKSPACE}/kernel"
-            touch "${GITHUB_WORKSPACE}/kernel/.done"
-          fi
           KERNEL="$(find "${GITHUB_WORKSPACE}/kernel" -type f \( -name 'kernelcache*' -o -name '*.kernelcache' \) -print -quit)"
           if [[ -z "${KERNEL}" ]]; then
-            echo "ERROR: no kernelcache found"
+            ipsw extract --kernel "${IPSW}" --output "${GITHUB_WORKSPACE}/kernel"
+            KERNEL="$(find "${GITHUB_WORKSPACE}/kernel" -type f \( -name 'kernelcache*' -o -name '*.kernelcache' \) -print -quit)"
+          fi
+          if [[ -z "${KERNEL}" ]]; then
+            echo "ERROR: kernelcache not found"
             exit 1
           fi
           echo "KERNEL=${KERNEL}" >> "${GITHUB_ENV}"
-          echo "[+] KERNEL=${KERNEL}"
           ls -lh "${KERNEL}"
 
       - name: Cache symbolicator signatures
@@ -119,47 +116,42 @@ jobs:
           git clone --depth 1 https://github.com/blacktop/symbolicator.git \
             "${GITHUB_WORKSPACE}/symbolicator"
 
-      - name: Cache symbols.json
-        id: cache-symbols
-        uses: actions/cache@v4
-        with:
-          path: ${{ github.workspace }}/symbols.json
-          key: symbols-${{ env.DEVICE_SLUG }}-${{ env.IOS_BUILD }}-v4
-
       - name: Symbolicate Kernelcache
-        if: steps.cache-symbols.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
+          rm -f "${GITHUB_WORKSPACE}/symbols.json"
           ipsw kernel symbolicate \
             --signatures "${GITHUB_WORKSPACE}/symbolicator/kernel" \
             --json "${KERNEL}"
-          SRC="${KERNEL}.symbols.json"
-          if [[ ! -f "${SRC}" ]]; then
-            echo "ERROR: ${SRC} not produced"
-            ls -la "$(dirname "${KERNEL}")"
-            exit 1
-          fi
-          cp "${SRC}" "${GITHUB_WORKSPACE}/symbols.json"
-          wc -c "${GITHUB_WORKSPACE}/symbols.json"
 
-      - name: Verify symbols.json
-        run: |
-          set -euo pipefail
-          ls -lh "${GITHUB_WORKSPACE}/symbols.json" || true
-          if [[ ! -f "${GITHUB_WORKSPACE}/symbols.json" ]]; then
-            echo "ERROR: symbols.json missing"
+          SRC=""
+          for cand in "${KERNEL}.symbols.json" "${GITHUB_WORKSPACE}/symbols.json"; do
+            if [[ -f "${cand}" ]] && [[ -s "${cand}" ]]; then
+              SRC="${cand}"
+              break
+            fi
+          done
+
+          if [[ -z "${SRC}" ]]; then
+            SRC="$(find "${GITHUB_WORKSPACE}" /tmp /home/runner -name '*.symbols.json' -size +1k -print -quit 2>/dev/null || true)"
+          fi
+
+          if [[ -z "${SRC}" ]]; then
+            echo "ERROR: symbolication output not found"
+            ls -la "$(dirname "${KERNEL}")"
+            find /home/runner /tmp -name '*.json' -size +1k 2>/dev/null | head -20
             exit 1
           fi
+
+          echo "[+] found: ${SRC}"
+          cp "${SRC}" "${GITHUB_WORKSPACE}/symbols.json"
+          ls -lh "${GITHUB_WORKSPACE}/symbols.json"
           SZ="$(stat -c %s "${GITHUB_WORKSPACE}/symbols.json")"
           if [[ "${SZ}" -lt 1000 ]]; then
             echo "ERROR: symbols.json too small (${SZ} bytes)"
             exit 1
           fi
           echo "[+] symbols.json OK (${SZ} bytes)"
-
-      - name: List scripts
-        run: |
-          ls -la "${GITHUB_WORKSPACE}/scripts/"
 
       - name: Cache Ghidra project
         id: cache-project
@@ -180,7 +172,6 @@ jobs:
             -process "kernelcache.release.iPhone14,5" \
             -noanalysis \
             -postScript offsets.py \
-            -postScript necp_extract.py \
             -scriptPath "${GITHUB_WORKSPACE}/scripts" \
             2>&1 | tee "${GITHUB_WORKSPACE}/ghidra.log"
 
@@ -196,11 +187,17 @@ jobs:
             "${GITHUB_WORKSPACE}/ghidra_project" KernelProject \
             -import "${KERNEL}" \
             -postScript offsets.py \
-            -postScript necp_extract.py \
             -scriptPath "${GITHUB_WORKSPACE}/scripts" \
             -max-cpu 4 \
             -analysisTimeoutPerFile 9000 \
             2>&1 | tee "${GITHUB_WORKSPACE}/ghidra.log"
+
+      - name: Save Ghidra project to cache after cold
+        if: steps.cache-project.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ github.workspace }}/ghidra_project
+          key: ghidra-project-${{ env.DEVICE_SLUG }}-${{ env.IOS_BUILD }}-v1
 
       - name: Upload artifacts
         if: always()
@@ -209,7 +206,6 @@ jobs:
           name: kernel-offsets-${{ github.sha }}
           path: |
             ${{ github.workspace }}/offsets.txt
-            ${{ github.workspace }}/necp_decom.txt
             ${{ github.workspace }}/symbols.json
             ${{ github.workspace }}/ghidra.log
           retention-days: 30
