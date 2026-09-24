@@ -163,8 +163,7 @@ jobs:
             "${GITHUB_WORKSPACE}/ghidra_project" KernelProject \
             -process "kernelcache.release.iPhone14,5" \
             -noanalysis \
-            -postScript offsets.py \
-            -postScript necp_targets.py \
+            -postScript necp_dump_offsets.py \
             -scriptPath "${GITHUB_WORKSPACE}/scripts" \
             2>&1 | tee "${GITHUB_WORKSPACE}/ghidra.log"
 
@@ -179,8 +178,7 @@ jobs:
           "${GHIDRA_ROOT}/support/analyzeHeadless" \
             "${GITHUB_WORKSPACE}/ghidra_project" KernelProject \
             -import "${KERNEL}" \
-            -postScript offsets.py \
-            -postScript necp_targets.py \
+            -postScript necp_dump_offsets.py \
             -scriptPath "${GITHUB_WORKSPACE}/scripts" \
             -max-cpu 4 \
             -analysisTimeoutPerFile 9000 \
@@ -199,9 +197,8 @@ jobs:
         with:
           name: kernel-offsets-${{ github.sha }}
           path: |
-            ${{ github.workspace }}/offsets.txt
-            ${{ github.workspace }}/necp_targets.txt
-            ${{ github.workspace }}/symbols.json
+            ${{ github.workspace }}/necp_offsets.h
+            ${{ github.workspace }}/necp_offsets_report.txt
             ${{ github.workspace }}/ghidra.log
           retention-days: 30
           if-no-files-found: warn
