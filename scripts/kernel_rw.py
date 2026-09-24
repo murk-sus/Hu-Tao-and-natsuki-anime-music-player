@@ -231,15 +231,27 @@ def _build_symidx():
     if _syms_index is not None:
         return
     _syms_index = []
+    seen = set()
     st = currentProgram.getSymbolTable()
     try:
         for sym in st.getAllSymbols(True):
             try:
-                _syms_index.append((_to_u(sym.getAddress().getOffset()), sym.getName()))
+                a = _to_u(sym.getAddress().getOffset())
+                n = sym.getName()
+                if (a, n) in seen:
+                    continue
+                _syms_index.append((a, n))
+                seen.add((a, n))
             except Exception:
                 pass
     except Exception:
         pass
+    _load_symbols()
+    for n, a in _sym_cache.items():
+        if (a, n) in seen:
+            continue
+        _syms_index.append((a, n))
+        seen.add((a, n))
     print("[+] symtable indexed: " + str(len(_syms_index)))
 
 
@@ -440,11 +452,11 @@ def _decode_sysent_ptr(raw):
     low = raw & 0xFFFFFFFF
     if low < 0x10000000:
         return (KERNEL_UNSLID_BASE + low) & 0xFFFFFFFFFFFFFFFF
-    returnscore None
+    return None
 
 
 def _sysent_entry(base, i):
-    a =_s base + i * SYSENT_STRIDE
+    a = base + i * SYSENT_STRIDE
     raw_call = read_u64(a)
     if raw_call is None:
         return None
@@ -465,7 +477,7 @@ def _sysent_entry(base, i):
     return (call, narg, ret_type, arg_bytes)
 
 
-def _ysent(base, sample=80):
+def _score_sysent(base, sample=80):
     hits = 0
     for i in range(sample):
         e = _sysent_entry(base, i)
