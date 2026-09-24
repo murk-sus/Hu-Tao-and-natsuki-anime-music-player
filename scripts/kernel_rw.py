@@ -1,3 +1,6 @@
+# -*- coding: utf-8 -*-
+# @runtime Jython
+
 import os
 import re
 import json
@@ -7,7 +10,7 @@ try:
 except NameError:
     string_types = (str,)
 
-WORKSPACE    = os.environ.get("GITHUB_WORKSPACE", "/tmp")
+WORKSPACE   = os.environ.get("GITHUB_WORKSPACE", "/tmp")
 SYMBOLS_JSON = os.environ.get("SYMBOLS_JSON", os.path.join(WORKSPACE, "symbols.json"))
 
 OUT_TXT  = os.path.join(WORKSPACE, "nk_kernel_rw.txt")
@@ -15,9 +18,10 @@ OUT_H    = os.path.join(WORKSPACE, "offsets.h")
 OUT_JSON = os.path.join(WORKSPACE, "offsets.json")
 
 KERNEL_UNSLID_BASE = 0xFFFFFFF007004000
-MASK48   = 0x0000FFFFFFFFFFFF
-KTEXT_LO = 0xFFF007004000
-KTEXT_HI = 0xFFF200000000
+MASK48             = 0x0000FFFFFFFFFFFF
+KTEXT_LO           = 0xFFF007004000
+KTEXT_HI           = 0xFFF200000000
+SYSENT_STRIDE      = 24
 
 _sym_cache   = None
 _string_map  = None
@@ -92,10 +96,6 @@ def read_u16(a):
         return int(currentProgram.getMemory().getShort(ga)) & 0xFFFF
     except Exception:
         return None
-
-
-def is_kva(v):
-    return v is not None and 0xFFFFFFF000000000 <= v < 0xFFFFFFF200000000
 
 
 def _load_symbols():
@@ -197,17 +197,13 @@ def find_str_exact(s):
     return _string_map.get(s)
 
 
-def find_str_contains(sub):
-    _build_strings()
-    return [(a, s) for a, s in _string_list if sub in s]
-
-
 def _str_addr(s):
     a = find_str_exact(s)
     if a is not None:
         return a
-    for a, _ in find_str_contains(s)[:1]:
-        return a
+    for a, val in _string_list:
+        if s in val:
+            return a
     return None
 
 
@@ -242,11 +238,11 @@ def _is_junk(n):
     return False
 
 
-def syms_named(pat, include_junk=False):
+def syms_named(pat):
     _build_symidx()
     out = []
     for a, n in _syms_index:
-        if not include_junk and _is_junk(n):
+        if _is_junk(n):
             continue
         if pat in n:
             out.append((a, n))
@@ -353,7 +349,8 @@ def resolve_adrp_pairs(func, lo=0xFFFFFFF000000000, hi=0xFFFFFFF200000000):
             except Exception:
                 prev = None
         elif prev is not None and mn in ("add", "ldr", "str", "ldrb", "strb",
-                                          "ldrh", "strh", "ldrsw", "ldur", "stur"):
+                                          "ldrh", "strh", "ldrsw", "ldur", "stur",
+                                          "ldp", "stp"):
             try:
                 toks = txt.replace(",", " ").replace("[", " ").replace("]", " ").split()
                 imm = 0
@@ -416,6 +413,137 @@ def _is_exec(p):
         return False
 
 
+def _decode_sysent_ptr(raw):
+    if raw is None:
+        return None
+    if raw >= 0xFFFF000000000000:
+        return _strip_pac(raw)
+    low = raw & 0xFFFFFFFF
+    if low < 0x10000000:
+        return (KERNEL_UNSLID_BASE + low) & 0xFFFFFFFFFFFFFFFF
+    return None
+
+
+def _sysent_entry(base, i):
+    a = base + i * SYSENT_STRIDE
+    raw_call = read_u64(a)
+    if raw_call is None:
+        return None
+    call = _decode_sysent_ptr(raw_call)
+    if call is None or call == 0:
+        return None
+    if not _is_ktext(call) or not _is_exec(call):
+        return None
+    ret_type = read_u32(a + 16)
+    narg     = read_u16(a + 20)
+    arg_bytes = read_u16(a + 22)
+    if ret_type is None or ret_type > 9:
+        return None
+    if narg is None or narg > 12:
+        return None
+    if arg_bytes is None or arg_bytes > 96:
+        return None
+    return (call, narg, ret_type, arg_bytes)
+
+
+def _looks_like_sysent(base):
+    if base is None:
+        return False
+    if not (0xFFFFFFF000000000 <= base < 0xFFFFFFF200000000):
+        return False
+    if _sysent_entry(base, 0) is None:
+        return False
+    hits = 0
+    for i in range(60):
+        if _sysent_entry(base, i) is not None:
+            hits += 1
+    return hits >= 40
+
+
+def _walk_sysent(base, limit=1500):
+    out = []
+    bad = 0
+    for i in range(limit):
+        e = _sysent_entry(base, i)
+        if e is None:
+            bad += 1
+            if bad > 30:
+                break
+            continue
+        bad = 0
+        call, narg, ret_type, arg_bytes = e
+        f = func_at(call)
+        name = f.getName() if f else "?"
+        out.append((i, call, narg, ret_type, arg_bytes, name))
+    return out
+
+
+def _find_sysent():
+    for nm in ("_sysent", "sysent", "_unix_sysent", "unix_sysent"):
+        a = sym_get(nm)
+        if a and _looks_like_sysent(a):
+            return a, "sym:" + nm
+    for a, n in syms_named("sysent"):
+        if _looks_like_sysent(a):
+            return a, "ghidra:" + n
+    for a, n in funcs_named("unix_syscall"):
+        f = ensure_func(a)
+        if f is None:
+            continue
+        for _, tgt, _ in resolve_adrp_pairs(f):
+            if _looks_like_sysent(tgt):
+                return tgt, n + "_adrp"
+    mem = currentProgram.getMemory()
+    blocks = []
+    for b in mem.getBlocks():
+        if not b.isInitialized():
+            continue
+        s = _to_u(b.getStart().getOffset())
+        if not (0xFFFFFFF000000000 <= s < 0xFFFFFFF200000000):
+            continue
+        n = b.getName()
+        if "DATA_CONST" in n:
+            prio = 0
+        elif n.startswith("__const"):
+            prio = 1
+        elif "DATA" in n:
+            prio = 2
+        else:
+            continue
+        blocks.append((prio, b))
+    blocks.sort(key=lambda x: x[0])
+    for _, b in blocks:
+        s = _to_u(b.getStart().getOffset())
+        e = _to_u(b.getEnd().getOffset())
+        if e - s < SYSENT_STRIDE * 100:
+            continue
+        a = s + ((-s) % 8)
+        max_a = e - SYSENT_STRIDE * 100
+        while a < max_a:
+            if _looks_like_sysent(a):
+                return a, "scan:" + b.getName()
+            a += 8
+    return None, "NOT_FOUND"
+
+
+def _find_mach_traps():
+    for nm in ("_mach_trap_table", "mach_trap_table"):
+        a = sym_get(nm)
+        if a:
+            return a, "sym:" + nm
+    for a, n in syms_named("mach_trap"):
+        if 0xFFFFFFF000000000 <= a < 0xFFFFFFF200000000:
+            return a, "ghidra:" + n
+    for a, n in funcs_named("mach_call_munger"):
+        f = ensure_func(a)
+        if f is None:
+            continue
+        for _, tgt, _ in resolve_adrp_pairs(f):
+            if 0xFFFFFFF000000000 <= tgt < 0xFFFFFFF200000000:
+                return tgt, n + "_adrp"
+    return None, "NOT_FOUND"
+
+
 def main():
     print("=== kernel_rw.py ===")
     print("[*] program: " + currentProgram.getName())
@@ -424,195 +552,74 @@ def main():
     _build_strings()
 
     report = []
-    hdr    = []
-    json_out = {}
+    hdr = []
+    jout = {}
 
     img_base = int(currentProgram.getImageBase().getOffset()) & 0xFFFFFFFFFFFFFFFF
 
     report.append("=== [1] KERNEL BASE ===")
-    report.append("image_base      = " + fmt(img_base))
-    report.append("unslid_base     = " + fmt(KERNEL_UNSLID_BASE))
-    report.append("KASLR slide     = <runtime only>")
+    report.append("image_base   = " + fmt(img_base))
+    report.append("unslid_base  = " + fmt(KERNEL_UNSLID_BASE))
     _vks = sym_get("_vm_kernel_slide")
-    report.append("_vm_kernel_slide= " + (fmt(_vks) if _vks else "NOT_FOUND"))
-
-    hdr.append("// === [1] BASE ===")
+    report.append("_vm_kernel_slide = " + (fmt(_vks) if _vks else "runtime-only"))
     hdr.append("#define NK_KERNEL_UNSLID_BASE   " + fmt(KERNEL_UNSLID_BASE) + "ULL")
     hdr.append("#define NK_IMAGE_BASE           " + fmt(img_base) + "ULL")
     hdr.append("")
-
-    json_out["kernel_base"] = fmt(KERNEL_UNSLID_BASE)
-    json_out["image_base"]  = fmt(img_base)
+    jout["kernel_base"] = fmt(KERNEL_UNSLID_BASE)
+    jout["image_base"]  = fmt(img_base)
 
     print("[*] sysent discovery...")
-
-    SYSENT_STRIDE = 32
-    EXPECTED_NARGS = {0: 0, 1: 1, 2: 0, 3: 3, 4: 3, 5: 3, 6: 1, 7: 4}
-
-    def _sysent_entry(base, i):
-        a = base + i * SYSENT_STRIDE
-        call = read_u64(a)
-        if call is None:
-            return None
-        if call != 0:
-            if not _is_ktext(call) or not _is_exec(call):
-                return None
-        ret_type = read_u32(a + 24)
-        narg = read_u16(a + 28)
-        if narg is None or narg > 32:
-            return None
-        if ret_type is None or ret_type > 8:
-            return None
-        handler = _strip_pac(call) if call else 0
-        return (handler, narg, ret_type)
-
-    def _looks_like_sysent(base):
-        for i, exp in EXPECTED_NARGS.items():
-            e = _sysent_entry(base, i)
-            if e is None or e[0] == 0:
-                return False
-            if e[1] != exp:
-                return False
-        hits = 0
-        for i in range(60):
-            if _sysent_entry(base, i) is not None:
-                hits += 1
-        return hits >= 40
-
-    def _walk(base, limit=1200):
-        out = []
-        bad = 0
-        for i in range(limit):
-            e = _sysent_entry(base, i)
-            if e is None:
-                bad += 1
-                if bad > 30:
-                    break
-                continue
-            bad = 0
-            handler, narg, rtype = e
-            if handler == 0:
-                out.append((i, 0, narg, "NOSYS"))
-                continue
-            f = func_at(handler)
-            out.append((i, handler, narg, f.getName() if f else "?"))
-        return out
-
-    sysent_base = None
-    sysent_src  = "NOT_FOUND"
-
-    for nm in ("_sysent", "sysent", "_unix_sysent"):
-        a = sym_get(nm)
-        if a and _looks_like_sysent(a):
-            sysent_base = a; sysent_src = "sym:" + nm; break
-
-    if sysent_base is None:
-        names_arr = None
-        for s in ("nosys", "exit", "fork", "read", "write", "open", "close"):
-            sa = _str_addr(s)
-            if sa is None:
-                continue
-            for xr in xrefs_to(sa):
-                names_start = xr
-                for off in range(0, 0x20000, 32):
-                    cand = names_start - off
-                    if cand < 0xFFFFFFF000000000:
-                        break
-                    if _looks_like_sysent(cand):
-                        sysent_base = cand
-                        sysent_src = "syscallnames_back"
-                        break
-                if sysent_base:
-                    break
-            if sysent_base:
-                break
-
-    if sysent_base is None:
-        for name in ("unix_syscall64", "unix_syscall"):
-            for a, n in funcs_named(name):
-                f = ensure_func(a)
-                if f is None:
-                    continue
-                for _, tgt, _ in resolve_adrp_pairs(f):
-                    if _looks_like_sysent(tgt):
-                        sysent_base = tgt; sysent_src = n + "_adrp"; break
-                if sysent_base:
-                    break
-            if sysent_base:
-                break
-
-    if sysent_base is None:
-        print("[*] scanning blocks for sysent (stride=32)...")
-        mem = currentProgram.getMemory()
-        blocks = []
-        for b in mem.getBlocks():
-            if not b.isInitialized():
-                continue
-            s = _to_u(b.getStart().getOffset())
-            if not (0xFFFFFFF000000000 <= s < 0xFFFFFFF200000000):
-                continue
-            n = b.getName()
-            if "DATA_CONST" in n:
-                prio = 0
-            elif n.startswith("__const"):
-                prio = 1
-            elif "DATA" in n:
-                prio = 2
-            else:
-                continue
-            blocks.append((prio, b))
-        blocks.sort(key=lambda x: x[0])
-        for _, b in blocks:
-            s = _to_u(b.getStart().getOffset())
-            e = _to_u(b.getEnd().getOffset())
-            print("[*]   {} {} - {}".format(b.getName(), fmt(s), fmt(e)))
-            if e - s < SYSENT_STRIDE * 100:
-                continue
-            a = s + ((-s) % 16)
-            max_a = e - SYSENT_STRIDE * 100
-            while a < max_a:
-                if _looks_like_sysent(a):
-                    sysent_base = a
-                    sysent_src = "scan:" + b.getName()
-                    break
-                a += 16
-            if sysent_base:
-                break
-
-    sysent_entries = _walk(sysent_base) if sysent_base else []
+    sysent_base, sysent_src = _find_sysent()
+    sysent_entries = _walk_sysent(sysent_base) if sysent_base else []
     print("[+] sysent: {} ({} entries)".format(sysent_src, len(sysent_entries)))
-
     report.append("")
-    report.append("=== [2] SYSENT (stride=32) ===")
+    report.append("=== [2] SYSENT ===")
     report.append("source  = " + sysent_src)
     report.append("base    = " + (fmt(sysent_base) if sysent_base else "n/a"))
     report.append("entries = " + str(len(sysent_entries)))
-    for i, h, narg, name in sysent_entries[:80]:
-        report.append("  {:>4}  {:<20}  narg={:<3}  {}".format(
-            i, fmt(h) if h else "0", narg, name))
-
-    hdr.append("// === [2] SYSENT (stride=32) ===")
+    hdr.append("// SYSENT")
     if sysent_base:
         hdr.append("#define NK_SYSENT_BASE          " + fmt(sysent_base) + "ULL")
-        hdr.append("#define NK_SYSENT_ENTRY_SZ      32")
+        hdr.append("#define NK_SYSENT_ENTRY_SZ      " + str(SYSENT_STRIDE))
         hdr.append("#define NK_SYSENT_COUNT         " + str(len(sysent_entries)))
-        for i, h, narg, name in sysent_entries:
+        for i, h, narg, rt, ab, name in sysent_entries:
             if not h or not name or name in ("?", "NOSYS") \
                or name.startswith("FUN_") or name.startswith("s_"):
                 continue
             hdr.append("#define NK_SYSENT_{:<32} {}ULL /* #{} */".format(
                 norm(name).upper(), fmt(h), i))
     hdr.append("")
-    json_out["sysent_base"]  = fmt(sysent_base) if sysent_base else None
-    json_out["sysent_stride"] = 32
-    json_out["sysent_count"] = len(sysent_entries)
-    json_out["sysent"] = [{"num": i, "handler": fmt(h) if h else None,
-                            "narg": narg, "name": name}
-                           for i, h, narg, name in sysent_entries]
+    jout["sysent_base"]  = fmt(sysent_base) if sysent_base else None
+    jout["sysent_count"] = len(sysent_entries)
+    jout["sysent"] = [{"num": i, "handler": fmt(h) if h else None,
+                        "narg": narg, "ret": rt, "arg_bytes": ab, "name": name}
+                       for i, h, narg, rt, ab, name in sysent_entries]
+
+    print("[*] mach traps...")
+    mt_base, mt_src = _find_mach_traps()
+    report.append("")
+    report.append("=== [2b] MACH TRAPS ===")
+    report.append("source = " + mt_src)
+    report.append("base   = " + (fmt(mt_base) if mt_base else "n/a"))
+    hdr.append("// MACH TRAPS")
+    if mt_base:
+        hdr.append("#define NK_MACH_TRAP_TABLE       " + fmt(mt_base) + "ULL")
+    hdr.append("")
+    jout["mach_trap_table"] = fmt(mt_base) if mt_base else None
 
     print("[*] globals via adrp...")
     ANCHORS = {
-        "kernproc":      ["p != kernproc", "so != NULL || p == kernproc"],
+        "kernproc":     ["p != kernproc", "so != NULL || p == kernproc"],
+        "allproc":      ["allproc"],
+        "initproc":     ["initproc"],
+        "kernel_task":  ["kernel_task"],
+        "kernel_map":   ["kernel_map"],
+        "init_task":    ["init_task"],
+        "task_list":    ["task_list"],
+        "procs_tree":   ["procs_tree"],
+        "vm_kernel_slide": ["vm_kernel_slide"],
+        "pmap_kernel":  ["pmap_kernel"],
+        "pti":          ["kern_return_t task_terminate_internal"],
         "task_init":     ["task_init @%s:%d"],
         "proc_ro":       ["proc_ro->task backref mismatch"],
         "task_map":      ["task->map->pmap"],
@@ -620,10 +627,40 @@ def main():
         "swap_task_map": ["swap_task_map @%s:%d"],
         "zone_require":  ["zone_require failed: address not in a zone"],
         "pmap_ro":       ["pmap_ro_zone_validate_element"],
-        "kernel_task":   ["kernel_task"],
         "task_for_pid":  ["task_for_pid-allow"],
-        "kauth":         ["kauth_cred_getuid"],
+        "task_reference": ["task_reference"],
+        "kauth_cred":    ["kauth_cred_getuid"],
+        "kauth_cred_label": ["kauth_cred_label_update"],
         "amfi":          ["AMFI: task_for_pid() not allowed"],
+        "csblob":        ["csblob_get_csblob"],
+        "trust_cache":   ["AMFI: trust cache"],
+        "pmap_cs":       ["pmap_cs_validate"],
+        "cs_enforcement": ["cs_enforcement_disable"],
+        "sandbox_root":  ["sandbox_kernel_extension"],
+        "sb_evaluate":   ["sb_evaluate_internal"],
+        "mac_policy":    ["mac_policy_register"],
+        "kalloc_type":   ["kalloc.type.var"],
+        "zone_map":      ["zone_map"],
+        "zone_array":    ["zone_array"],
+        "zones_built":   ["zones_built"],
+        "vm_map":        ["vm_map_enter"],
+        "vm_page":       ["vm_page_alloc"],
+        "pv_head":       ["pv_head"],
+        "ipc_space":     ["ipc_space_kernel"],
+        "ipc_port":      ["ipc_port_alloc_kernel"],
+        "ipc_kmsg_zone": ["ipc_kmsg_alloc"],
+        "mach_port":     ["mach_port_allocate_full"],
+        "vnode":         ["rootvnode"],
+        "chroot":        ["chroot"],
+        "fdesc":         ["fdesc_zone"],
+        "proc_list":     ["proc_list_mlock"],
+        "proc_find":     ["proc_find"],
+        "selinux":       ["selinux"],
+        "iokit":         ["IOCreateReceivePort"],
+        "driverkit":     ["DriverKit"],
+        "exclave":       ["ExclaveCore"],
+        "kernelkit":     ["KernelKit"],
+        "swift_runtime": ["Embedded Swift"],
     }
     globals_map = {}
     for label, strs in ANCHORS.items():
@@ -636,147 +673,163 @@ def main():
                 if f is None:
                     continue
                 for _, tgt, kind in resolve_adrp_pairs(f):
-                    if kind == "ldr":
+                    if kind in ("ldr", "ldp"):
                         globals_map.setdefault(tgt, set()).add(label)
-
     report.append("")
-    report.append("=== [3] GLOBALS (adrp-derived) ===")
+    report.append("=== [3] GLOBALS ===")
     for k in sorted(globals_map.keys()):
-        report.append("  {}  <- {}".format(
-            fmt(k), ",".join(sorted(globals_map[k]))))
-
-    hdr.append("// === [3] GLOBALS ===")
+        report.append("  {}  <- {}".format(fmt(k), ",".join(sorted(globals_map[k]))))
+    hdr.append("// GLOBALS")
     for k in sorted(globals_map.keys()):
         labels = "_".join(sorted(globals_map[k]))
         hdr.append("#define {:<40} {}ULL".format(
             norm("NK_G_" + labels).upper()[:40], fmt(k)))
     hdr.append("")
-    json_out["globals"] = {fmt(k): sorted(list(v)) for k, v in globals_map.items()}
+    jout["globals"] = {fmt(k): sorted(list(v)) for k, v in globals_map.items()}
+
+    print("[*] struct offsets...")
+    STRUCT_FUNCS = {
+        "task_bsd_info":   ["_get_bsdtask_info", "task_bsd_info", "get_bsdtask_info"],
+        "task_vm_map":     ["_task_vm_map", "task_vm_map", "get_task_map", "_get_task_map"],
+        "task_itk_self":   ["_task_get_itk_self", "task_get_itk_self"],
+        "task_itk_space":  ["_task_get_itk_space", "task_get_itk_space"],
+        "task_thread":     ["_task_thread", "task_thread", "get_task_thread"],
+        "task_proc":       ["_get_task_proc", "task_get_proc"],
+        "task_t_flags":    ["_task_get_t_flags", "task_get_t_flags"],
+        "proc_task":       ["_proc_task", "proc_task"],
+        "proc_pid":        ["_proc_pid", "proc_pid"],
+        "proc_ucred":      ["_proc_ucred", "proc_ucred"],
+        "proc_ppid":       ["_proc_ppid", "proc_ppid"],
+        "proc_textvp":     ["_proc_textvp", "proc_textvp"],
+        "proc_fd":         ["_proc_fd", "proc_fd"],
+        "proc_flag":       ["_proc_flag", "proc_flag"],
+        "proc_pptr":       ["_proc_pptr", "proc_pptr"],
+        "proc_pgrp":       ["_proc_pgrp", "proc_pgrp"],
+        "proc_ro":         ["_proc_ro", "proc_ro"],
+        "kauth_cred_uid":    ["_kauth_cred_getuid", "kauth_cred_getuid"],
+        "kauth_cred_ruid":   ["_kauth_cred_getruid", "kauth_cred_getruid"],
+        "kauth_cred_svuid":  ["_kauth_cred_getsvuid", "kauth_cred_getsvuid"],
+        "kauth_cred_gid":    ["_kauth_cred_getgid", "kauth_cred_getgid"],
+        "kauth_cred_rgid":   ["_kauth_cred_getrgid", "kauth_cred_getrgid"],
+        "kauth_cred_svgid":  ["_kauth_cred_getsvgid", "kauth_cred_getsvgid"],
+        "kauth_cred_label":  ["_kauth_cred_getlabel", "kauth_cred_getlabel",
+                              "_kauth_cred_get_label"],
+        "ipc_port_kobject":   ["_ipc_port_get_kobject", "ipc_port_get_kobject"],
+        "ipc_port_receiver":  ["_ipc_port_get_receiver", "ipc_port_get_receiver"],
+        "ipc_port_mscount":   ["_ipc_port_get_mscount", "ipc_port_get_mscount"],
+        "ipc_space_is_table": ["_ipc_space_get_table", "ipc_space_get_table"],
+        "vme_start":     ["_vm_map_entry_get_start", "vm_map_entry_get_start"],
+        "vme_end":       ["_vm_map_entry_get_end", "vm_map_entry_get_end"],
+        "vme_object":    ["_vm_map_entry_get_object", "vm_map_entry_get_object"],
+        "vme_offset":    ["_vm_map_entry_get_offset", "vm_map_entry_get_offset"],
+        "fd_ofiles":     ["_fdp_get_ofiles", "fdp_get_ofiles"],
+        "fileproc_fg":   ["_fp_get_fg", "fp_get_fg"],
+    }
+    struct_offsets = {}
+    for field, names in STRUCT_FUNCS.items():
+        for name in names:
+            hits = syms_named(name)
+            if not hits:
+                continue
+            a, n = hits[0]
+            f = ensure_func(a)
+            if f is None:
+                continue
+            code = decompile(f)
+            if not code:
+                continue
+            m = re.search(r"\*\([^)]*\*\)\s*\(\s*\w+\s*\+\s*(0x[0-9a-fA-F]+|\d+)\s*\)", code)
+            if not m:
+                m = re.search(r"return\s+\*\([^)]*\)\s*\(\s*\w+\s*\+\s*(0x[0-9a-fA-F]+|\d+)\s*\)", code)
+            if not m:
+                m = re.search(r"\(\s*\w+\s*\+\s*(0x[0-9a-fA-F]+|\d+)\s*\)", code)
+            if m:
+                off = int(m.group(1), 0)
+                if 0 < off < 0x2000:
+                    struct_offsets[field] = off
+                    break
+    report.append("")
+    report.append("=== [4] STRUCT OFFSETS ===")
+    for k, v in sorted(struct_offsets.items()):
+        report.append("  {:<25} 0x{:x}".format(k, v))
+    hdr.append("// STRUCT OFFSETS")
+    for k, v in sorted(struct_offsets.items()):
+        hdr.append("#define NK_{:<30} 0x{:x}".format(norm(k).upper(), v))
+    hdr.append("")
+    jout["struct_offsets"] = struct_offsets
 
     print("[*] kalloc/kfree...")
     kfree_ext = sym_get("_kfree_ext")
+    kalloc_ext = sym_get("_kalloc_ext")
     kfree_callers = set()
     if kfree_ext:
         for xr in xrefs_to(kfree_ext):
             f = func_at(xr)
             if f:
                 kfree_callers.add(_to_u(f.getEntryPoint().getOffset()))
-
-    kalloc_type_sa = _str_addr("kalloc.type.var")
-    kalloc_type_refs = set()
-    if kalloc_type_sa:
-        for xr in xrefs_to(kalloc_type_sa):
-            f = func_at(xr)
-            if f:
-                kalloc_type_refs.add(_to_u(f.getEntryPoint().getOffset()))
-
     report.append("")
-    report.append("=== [4] KALLOC/KFREE ===")
-    report.append("_kfree_ext = " + (fmt(kfree_ext) if kfree_ext else "NOT_FOUND"))
-    for ep in sorted(kfree_callers):
-        report.append("  kfree caller: " + fmt(ep))
-
-    hdr.append("// === [4] KALLOC/KFREE ===")
+    report.append("=== [5] KALLOC/KFREE ===")
+    report.append("_kfree_ext  = " + (fmt(kfree_ext) if kfree_ext else "NOT_FOUND"))
+    report.append("_kalloc_ext = " + (fmt(kalloc_ext) if kalloc_ext else "NOT_FOUND"))
+    hdr.append("// KALLOC/KFREE")
     if kfree_ext:
         hdr.append("#define NK_KFREE_EXT            " + fmt(kfree_ext) + "ULL")
-    for i, ep in enumerate(sorted(kfree_callers)):
+    if kalloc_ext:
+        hdr.append("#define NK_KALLOC_EXT           " + fmt(kalloc_ext) + "ULL")
+    for i, ep in enumerate(sorted(kfree_callers)[:64]):
         hdr.append("#define NK_KFREE_CALLER_{:<27} {}ULL".format(
             norm("{:04X}".format(i)), fmt(ep)))
-    for i, ep in enumerate(sorted(kalloc_type_refs)):
-        hdr.append("#define NK_KALLOC_TYPE_REF_{:<23} {}ULL".format(
-            norm("{:04X}".format(i)), fmt(ep)))
     hdr.append("")
-    json_out["kfree_ext"]     = fmt(kfree_ext) if kfree_ext else None
-    json_out["kfree_callers"] = [fmt(x) for x in sorted(kfree_callers)]
+    jout["kfree_ext"]  = fmt(kfree_ext) if kfree_ext else None
+    jout["kalloc_ext"] = fmt(kalloc_ext) if kalloc_ext else None
 
     print("[*] zones...")
     ZSTR = [
-        "site.struct necp_client_flow_registration",
-        "site.struct necp_fd_data",
-        "site.struct necp_session",
-        "site.struct necp_session_policy",
-        "site.struct necp_kernel_socket_policy",
-        "site.struct necp_arena_info",
-        "site.struct ipc_entry",
-        "site.struct ipc_kmsg",
-        "site.struct task",
-        "site.struct proc",
-        "site.struct thread",
-        "site.struct vm_map_entry",
-        "site.struct vm_map_copy",
+        "site.struct task", "site.struct proc", "site.struct thread",
+        "site.struct ucred", "site.struct uthread",
+        "site.struct ipc_port", "site.struct ipc_space", "site.struct ipc_entry",
+        "site.struct ipc_kmsg", "site.struct ipc_object",
+        "site.struct vm_map", "site.struct vm_map_entry", "site.struct vm_map_copy",
+        "site.struct vm_object", "site.struct vm_page",
+        "site.struct fileproc", "site.struct fileglob",
+        "site.struct vnode", "site.struct mount",
+        "site.struct necp_client_flow_registration", "site.struct necp_fd_data",
+        "site.struct necp_session", "site.struct necp_session_policy",
+        "site.struct necp_kernel_socket_policy", "site.struct necp_arena_info",
+        "site.struct knote", "site.struct pipe",
+        "site.struct posix_shm",
         "early.kalloc", "data.kalloc", "kalloc.type.var",
+        "site.struct exclave_core",
+        "site.struct kernelkit",
     ]
     zones = {}
     for z in ZSTR:
         sa = _str_addr(z)
         if sa is None:
             continue
-        kv = [xr for xr in xrefs_to(sa)
-              if 0xFFFFFFF000000000 <= xr < 0xFFFFFFF200000000]
+        kv = [xr for xr in xrefs_to(sa) if 0xFFFFFFF000000000 <= xr < 0xFFFFFFF200000000]
         if kv:
             zones[z] = kv
-
     report.append("")
-    report.append("=== [5] ZONES ===")
+    report.append("=== [6] ZONES ===")
     for z, kv in sorted(zones.items()):
         for kva in kv:
             report.append("  {}  {}".format(fmt(kva), z))
-
-    hdr.append("// === [5] ZONES ===")
+    hdr.append("// ZONES")
     for z, kv in sorted(zones.items()):
         key = norm(z).upper()[:40]
         for i, kva in enumerate(kv):
             hdr.append("#define {:<40} {}ULL".format(
                 key + ("_%d" % i if len(kv) > 1 else ""), fmt(kva)))
     hdr.append("")
-    json_out["zones"] = {k: [fmt(x) for x in v] for k, v in zones.items()}
-
-    print("[*] PAC gadgets...")
-    PAC = ("braa", "brab", "blraa", "blrab", "autia", "autib",
-           "pacia", "pacib", "paciza", "pacizb", "pacda", "pacdb",
-           "xpaci", "xpacd", "retaa", "retab", "paciasp", "pacibsp",
-           "autiasp", "autibsp")
-    pac = []
-    fm = currentProgram.getFunctionManager()
-    fc = 0
-    for f in fm.getFunctions(True):
-        fc += 1
-        if fc % 2000 == 0:
-            print("[*]   pac scan {} funcs, {} hits".format(fc, len(pac)))
-        body = f.getBody()
-        if body is None:
-            continue
-        insn = currentProgram.getListing().getInstructionAt(body.getMinAddress())
-        n = 0
-        while insn is not None and body.contains(insn.getAddress()) and n < 3000:
-            m = insn.getMnemonicString().lower()
-            if m in PAC:
-                pac.append((_to_u(insn.getAddress().getOffset()),
-                            f.getName(), m, insn.toString().strip()))
-            insn = insn.getNext()
-            n += 1
-        if len(pac) > 30000:
-            break
-
-    report.append("")
-    report.append("=== [6] PAC GADGETS ({} total) ===".format(len(pac)))
-    for a, fn, m, txt in pac[:800]:
-        report.append("  {}  {:<8}  {}  [{}]".format(fmt(a), m, txt, fn[:30]))
-
-    hdr.append("// === [6] PAC GADGETS (first 300) ===")
-    for a, fn, m, txt in pac[:300]:
-        hdr.append("#define NK_PAC_{}_{:08X}  {}ULL /* {} */".format(
-            m.upper(), a & 0xFFFFFFFF, fmt(a), txt))
-    hdr.append("")
-    json_out["pac_gadgets"] = [{"addr": fmt(a), "mnem": m, "text": t, "fn": f}
-                               for a, f, m, t in pac]
+    jout["zones"] = {k: [fmt(x) for x in v] for k, v in zones.items()}
 
     print("[*] copyin/copyout...")
     copy = {}
-
     for s in ("_copyin", "_copyout", "_copyinstr", "_copyoutstr",
               "_copyin_word", "_copyout_word", "_memmove_phys", "_bcopy",
-              "_copyio", "_copyinmsg", "_copyoutmsg"):
+              "_copyio", "_copyinmsg", "_copyoutmsg",
+              "_copyin_atomic32", "_copyout_atomic32"):
         a = sym_get(s)
         if a:
             copy[s] = a
@@ -784,26 +837,6 @@ def main():
         hits = funcs_named(s.lstrip("_"))
         if hits:
             copy[s] = hits[0][0]
-
-    stub_map = {
-        "copyin":  "thunk_FUN_fffffff00a368ec0",
-        "copyout": "thunk_FUN_fffffff00a369a3c",
-    }
-    if "_copyin" not in copy or "_copyout" not in copy:
-        print("[*] searching __auth_stubs for copyin/copyout thunks...")
-        fm = currentProgram.getFunctionManager()
-        for f in fm.getFunctions(True):
-            n = f.getName()
-            for label, tname in stub_map.items():
-                if tname in n:
-                    ep = _to_u(f.getEntryPoint().getOffset())
-                    if label == "copyin" and "_copyin" not in copy:
-                        copy["_copyin"] = ep
-                        print("[+] copyin thunk: " + fmt(ep))
-                    elif label == "copyout" and "_copyout" not in copy:
-                        copy["_copyout"] = ep
-                        print("[+] copyout thunk: " + fmt(ep))
-
     for needle, key in (("ipc_object_copyin_from_kernel", "_copyin_hint"),
                         ("ipc_object_copyout_dest",        "_copyout_hint")):
         sa = _str_addr(needle)
@@ -815,92 +848,193 @@ def main():
                 ep = _to_u(f.getEntryPoint().getOffset())
                 if key not in copy:
                     copy[key] = ep
-
     report.append("")
     report.append("=== [7] COPYIN/COPYOUT ===")
     for s, a in sorted(copy.items()):
-        report.append("  {:<20} {}".format(s, fmt(a)))
-
-    hdr.append("// === [7] COPYIN/COPYOUT ===")
+        report.append("  {:<24} {}".format(s, fmt(a)))
+    hdr.append("// COPYIN/COPYOUT")
     for s, a in sorted(copy.items()):
         hdr.append("#define NK_{:<36} {}ULL".format(norm(s).upper(), fmt(a)))
     hdr.append("")
-    json_out["copyin_copyout"] = {k: fmt(v) for k, v in copy.items()}
+    jout["copyin_copyout"] = {k: fmt(v) for k, v in copy.items()}
 
     print("[*] iokit...")
     IOKIT = {
-        "IOUserClient_externalMethod":   "externalMethod",
-        "AppleKeyStore":                  "AppleKeyStore",
-        "IOSurfaceRoot":                  "IOSurfaceRoot",
-        "IOMobileFramebuffer":            "IOMobileFramebuffer",
-        "IOConnectCallMethod":            "IOConnectCallMethod",
-        "IOServiceOpen":                  "IOServiceOpen",
-        "IOUserClient2022_extMethod":     "wrong externalMethod for IOUserClient2022",
-        "IOUserClientKernelCompletion":   "OSAction_IOUserClient_KernelCompletion",
+        "IOUserClient_externalMethod":      ["externalMethod"],
+        "IOUserClient2022_extMethod":       ["wrong externalMethod for IOUserClient2022"],
+        "IOUserClientKernelCompletion":     ["OSAction_IOUserClient_KernelCompletion"],
+        "IOConnectCallMethod":              ["IOConnectCallMethod"],
+        "IOServiceOpen":                    ["IOServiceOpen"],
+        "AppleKeyStore":                    ["AppleKeyStore"],
+        "IOSurfaceRoot":                    ["IOSurfaceRoot"],
+        "IOMobileFramebuffer":              ["IOMobileFramebuffer"],
+        "AppleMobileFileIntegrity":         ["AppleMobileFileIntegrity"],
+        "AppleSEPManager":                  ["AppleSEPManager"],
+        "AppleAPFSContainer":               ["AppleAPFSContainer"],
+        "IOHIDEventService":                ["IOHIDEventService"],
+        "IOHIDSystem":                      ["IOHIDSystem"],
+        "IOGraphicsAccelerator2":           ["IOGraphicsAccelerator2"],
+        "IOAESAccelerator":                 ["IOAESAccelerator"],
+        "AGXCommandQueue":                  ["AGXCommandQueue"],
+        "AppleCLCD2":                       ["AppleCLCD2"],
+        "AppleS8000AESAccelerator":         ["AppleS8000AESAccelerator"],
+        "IOSurfaceMemory":                  ["IOSurfaceMemory"],
+        "AppleSMC":                         ["AppleSMC"],
+        "AppleEffaceableStorage":           ["AppleEffaceableStorage"],
+        "AppleActuatorDevice":              ["AppleActuatorDevice"],
     }
     iokit = {}
-    for label, needle in IOKIT.items():
-        sa = _str_addr(needle)
-        if sa is None:
-            continue
-        for xr in xrefs_to(sa):
-            f = func_at(xr)
-            if f:
-                iokit.setdefault(label, set()).add(
-                    _to_u(f.getEntryPoint().getOffset()))
-
+    for label, needles in IOKIT.items():
+        for needle in needles:
+            sa = _str_addr(needle)
+            if sa is None:
+                continue
+            for xr in xrefs_to(sa):
+                f = func_at(xr)
+                if f:
+                    iokit.setdefault(label, set()).add(
+                        _to_u(f.getEntryPoint().getOffset()))
     report.append("")
     report.append("=== [8] IOKIT ===")
     for label, eps in sorted(iokit.items()):
         for ep in sorted(eps):
             report.append("  {:<30} {}".format(label, fmt(ep)))
-
-    hdr.append("// === [8] IOKIT ===")
+    hdr.append("// IOKIT")
     for label, eps in sorted(iokit.items()):
         key = norm(label).upper()
         for i, ep in enumerate(sorted(eps)):
             hdr.append("#define NK_IOKIT_{:<32} {}ULL".format(
                 key + ("_%d" % i if len(eps) > 1 else ""), fmt(ep)))
     hdr.append("")
-    json_out["iokit"] = {k: [fmt(x) for x in sorted(v)] for k, v in iokit.items()}
+    jout["iokit"] = {k: [fmt(x) for x in sorted(v)] for k, v in iokit.items()}
 
-    STATIC = [
-        ("PROC_TASK_OFF",       0x10),
-        ("PROC_PID_OFF",        0x68),
-        ("PROC_UCRED_OFF",      0xd0),
-        ("PROC_TEXTVP_OFF",     0xd8),
-        ("PROC_RO_OFF",         0x18),
-        ("PROC_PROC_RO_OFF",    0x18),
-        ("TASK_VM_MAP_OFF",     0x28),
-        ("TASK_IPC_SPACE_OFF",  0xd0),
-        ("TASK_BSD_INFO_OFF",   0x390),
-        ("TASK_PROC_RO_OFF",    0x3b0),
-        ("UCRED_UID_OFF",       0x18),
-        ("UCRED_RUID_OFF",      0x1c),
-        ("UCRED_SVUID_OFF",     0x20),
-        ("UCRED_GID_OFF",       0x24),
-        ("UCRED_RGID_OFF",      0x28),
-        ("UCRED_SVGID_OFF",     0x2c),
-        ("VM_MAP_PMAP_OFF",     0x48),
-        ("VM_MAP_HDR_OFF",      0x00),
-        ("FILEDESC_OFILES_OFF", 0x00),
-        ("IPC_PORT_IP_KOBJECT", 0x68),
-        ("IPC_VOUCHER_REF",     0x48),
-        ("IPC_ENTRY_IE_OBJECT", 0x00),
-        ("MOUNT_VNODE_DEV",     0x18),
-        ("VNODE_VDATA_OFF",     0xe0),
-    ]
-
+    print("[*] sandbox/macf...")
+    SBOX = {
+        "sb_evaluate":          ["sb_evaluate_internal", "sb_evaluate"],
+        "sandbox_check":        ["sandbox_check"],
+        "sandbox_extension":    ["sandbox_extension_consume"],
+        "mac_policy_register":  ["mac_policy_register"],
+        "mac_policy_unregister": ["mac_policy_unregister"],
+        "mac_policy_list":      ["mac_policy_list"],
+        "sandbox_label":        ["sandbox_label"],
+    }
+    sbox = {}
+    for label, needles in SBOX.items():
+        for needle in needles:
+            for a, n in funcs_named(needle):
+                sbox.setdefault(label, set()).add(a)
+            a = sym_get("_" + needle)
+            if a:
+                sbox.setdefault(label, set()).add(a)
     report.append("")
-    report.append("=== [9] STRUCT FIELD OFFSETS ===")
-    for n, v in STATIC:
-        report.append("  {:<28} 0x{:x}".format(n, v))
-
-    hdr.append("// === [9] STRUCT FIELD OFFSETS ===")
-    for n, v in STATIC:
-        hdr.append("#define {:<35} 0x{:x}".format(n, v))
+    report.append("=== [9] SANDBOX / MACF ===")
+    for label, eps in sorted(sbox.items()):
+        for ep in sorted(eps):
+            report.append("  {:<30} {}".format(label, fmt(ep)))
+    hdr.append("// SANDBOX / MACF")
+    for label, eps in sorted(sbox.items()):
+        key = norm(label).upper()
+        for i, ep in enumerate(sorted(eps)):
+            hdr.append("#define NK_SBOX_{:<33} {}ULL".format(
+                key + ("_%d" % i if len(eps) > 1 else ""), fmt(ep)))
     hdr.append("")
-    json_out["struct_offsets"] = {n: v for n, v in STATIC}
+    jout["sandbox"] = {k: [fmt(x) for x in sorted(v)] for k, v in sbox.items()}
+
+    print("[*] amfi/cs...")
+    AMFI = {
+        "amfi_check_dyld_policy":   ["amfi_check_dyld_policy"],
+        "amfi_get_out_of_my_way":   ["amfi_get_out_of_my_way"],
+        "cs_enforcement_disable":   ["cs_enforcement_disable"],
+        "csblob_entitlements":      ["csblob_entitlements"],
+        "cs_validate_page":         ["cs_validate_page"],
+        "csblob_validate":          ["csblob_validate"],
+        "pmap_cs_validate":         ["pmap_cs_validate"],
+        "trust_cache_lookup":       ["trust_cache_lookup"],
+        "trust_cache_add":          ["trust_cache_add"],
+    }
+    amfi = {}
+    for label, needles in AMFI.items():
+        for needle in needles:
+            for a, n in funcs_named(needle):
+                amfi.setdefault(label, set()).add(a)
+            a = sym_get("_" + needle)
+            if a:
+                amfi.setdefault(label, set()).add(a)
+    report.append("")
+    report.append("=== [10] AMFI / CS / TRUST CACHE ===")
+    for label, eps in sorted(amfi.items()):
+        for ep in sorted(eps):
+            report.append("  {:<30} {}".format(label, fmt(ep)))
+    hdr.append("// AMFI / CS / TRUST CACHE")
+    for label, eps in sorted(amfi.items()):
+        key = norm(label).upper()
+        for i, ep in enumerate(sorted(eps)):
+            hdr.append("#define NK_AMFI_{:<33} {}ULL".format(
+                key + ("_%d" % i if len(eps) > 1 else ""), fmt(ep)))
+    hdr.append("")
+    jout["amfi"] = {k: [fmt(x) for x in sorted(v)] for k, v in amfi.items()}
+
+    print("[*] kauth...")
+    KAUTH = {
+        "kauth_cred_get":       ["kauth_cred_get"],
+        "kauth_cred_unref":     ["kauth_cred_unref"],
+        "kauth_cred_ref":       ["kauth_cred_ref"],
+        "kauth_cred_proc_ref":  ["kauth_cred_proc_ref"],
+        "kauth_authorize_action": ["kauth_authorize_action"],
+        "suser":                ["suser"],
+        "proc_ucred_authorize": ["proc_ucred_authorize"],
+    }
+    kauth = {}
+    for label, needles in KAUTH.items():
+        for needle in needles:
+            a = sym_get("_" + needle)
+            if a:
+                kauth.setdefault(label, set()).add(a)
+            for a, n in funcs_named(needle):
+                kauth.setdefault(label, set()).add(a)
+    report.append("")
+    report.append("=== [11] KAUTH ===")
+    for label, eps in sorted(kauth.items()):
+        for ep in sorted(eps):
+            report.append("  {:<30} {}".format(label, fmt(ep)))
+    hdr.append("// KAUTH")
+    for label, eps in sorted(kauth.items()):
+        key = norm(label).upper()
+        for i, ep in enumerate(sorted(eps)):
+            hdr.append("#define NK_KAUTH_{:<32} {}ULL".format(
+                key + ("_%d" % i if len(eps) > 1 else ""), fmt(ep)))
+    hdr.append("")
+    jout["kauth"] = {k: [fmt(x) for x in sorted(v)] for k, v in kauth.items()}
+
+    print("[*] driverkit...")
+    DK = {
+        "IOService_driverkit":  ["IOService::start"],
+        "DriverKit_root":       ["DriverKit"],
+        "IOUserServer":         ["IOUserServer"],
+    }
+    dk = {}
+    for label, needles in DK.items():
+        for needle in needles:
+            sa = _str_addr(needle)
+            if sa is None:
+                continue
+            for xr in xrefs_to(sa):
+                f = func_at(xr)
+                if f:
+                    dk.setdefault(label, set()).add(_to_u(f.getEntryPoint().getOffset()))
+    report.append("")
+    report.append("=== [12] DRIVERKIT ===")
+    for label, eps in sorted(dk.items()):
+        for ep in sorted(eps):
+            report.append("  {:<30} {}".format(label, fmt(ep)))
+    hdr.append("// DRIVERKIT")
+    for label, eps in sorted(dk.items()):
+        key = norm(label).upper()
+        for i, ep in enumerate(sorted(eps)):
+            hdr.append("#define NK_DK_{:<34} {}ULL".format(
+                key + ("_%d" % i if len(eps) > 1 else ""), fmt(ep)))
+    hdr.append("")
+    jout["driverkit"] = {k: [fmt(x) for x in sorted(v)] for k, v in dk.items()}
 
     write_lines(OUT_TXT, report)
     print("[+] wrote " + OUT_TXT)
@@ -916,7 +1050,7 @@ def main():
 
     try:
         with open(OUT_JSON, "w") as fh:
-            fh.write(json.dumps(json_out, indent=2, sort_keys=True))
+            fh.write(json.dumps(jout, indent=2, sort_keys=True))
         print("[+] wrote " + OUT_JSON)
     except Exception as e:
         print("[-] json write failed: " + str(e))
@@ -926,14 +1060,17 @@ def main():
     print("  kernel_base      : " + fmt(KERNEL_UNSLID_BASE))
     print("  sysent_base      : " + (fmt(sysent_base) if sysent_base else "n/a"))
     print("  sysent_entries   : " + str(len(sysent_entries)))
+    print("  mach_trap_table  : " + (fmt(mt_base) if mt_base else "n/a"))
     print("  globals          : " + str(len(globals_map)))
+    print("  struct_offsets   : " + str(len(struct_offsets)))
     print("  kfree callers    : " + str(len(kfree_callers)))
-    print("  kalloc.type refs : " + str(len(kalloc_type_refs)))
     print("  zones            : " + str(len(zones)))
-    print("  PAC gadgets      : " + str(len(pac)))
-    print("  copyin/out syms  : " + str(len(copy)))
-    print("  iokit funcs      : " + str(sum(len(v) for v in iokit.values())))
-    print("  static offsets   : " + str(len(STATIC)))
+    print("  copyin/out       : " + str(len(copy)))
+    print("  iokit            : " + str(sum(len(v) for v in iokit.values())))
+    print("  sandbox          : " + str(sum(len(v) for v in sbox.values())))
+    print("  amfi             : " + str(sum(len(v) for v in amfi.values())))
+    print("  kauth            : " + str(sum(len(v) for v in kauth.values())))
+    print("  driverkit        : " + str(sum(len(v) for v in dk.values())))
     print("=======================================")
     print("[+] kernel_rw.py done")
 
