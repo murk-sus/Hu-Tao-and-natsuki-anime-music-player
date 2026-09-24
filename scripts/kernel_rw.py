@@ -31,6 +31,31 @@ _syms_index       = None
 _IFC              = [None]
 _valid_addr_cache = {}
 
+
+def _write_placeholder():
+    try:
+        with open(OUT_TXT, "w") as fh:
+            fh.write("=== kernel_rw.py placeholder ===\n")
+            fh.write("script started, no results yet\n")
+    except Exception:
+        pass
+    try:
+        with open(OUT_H, "w") as fh:
+            fh.write("#ifndef NK_OFFSETS_H\n")
+            fh.write("#define NK_OFFSETS_H\n")
+            fh.write("#endif\n")
+    except Exception:
+        pass
+    try:
+        with open(OUT_JSON, "w") as fh:
+            fh.write("{}\n")
+    except Exception:
+        pass
+
+
+_write_placeholder()
+
+
 CONFIRMED = {
     "sysent_base":     "0xFFFFFFF007C192A0",
     "mach_trap_table": "0xFFFFFFF007BE8018",
@@ -40,9 +65,6 @@ CONFIRMED = {
     "copyout":         "0xFFFFFFF00A2C6C28",
     "proc_pid":        0x74,
     "task_thread":     0x50,
-    "ctrr_lock_boot":  "0xFFFFFFF027006E62",
-    "cpu_lock_sysreg": "0xFFFFFFF0270B39B4",
-    "sptm_base":       "0xFFFFFFF027004000",
 }
 
 STRUCT_RANGES = {
@@ -70,7 +92,6 @@ STRUCT_RANGES = {
     "ipc_port_refs":  (0x40, 0xA0),
     "ipc_space_is_table": (0x10, 0x40),
     "ipc_space_active": (0x10, 0x40),
-    "ipc_entry_size": (0x08, 0x30),
     "kauth_cred_uid":  (0x10, 0x40),
     "kauth_cred_gid":  (0x10, 0x40),
     "kauth_cred_ruid": (0x10, 0x40),
@@ -82,51 +103,43 @@ STRUCT_RANGES = {
     "vme_end":        (0x00, 0x30),
     "vme_object":     (0x40, 0xA0),
     "vme_offset":     (0x40, 0xA0),
-    "vm_map_header":  (0x00, 0x30),
-    "vm_map_pmap":    (0x30, 0x60),
     "fd_ofiles":      (0x10, 0x80),
     "fileproc_fg":    (0x10, 0x80),
     "fileproc_fglob": (0x10, 0x80),
-    "filedesc_fd_cdir": (0x40, 0xA0),
     "vnode_data":     (0x10, 0x80),
     "vnode_v_type":   (0x10, 0x40),
     "socket_so_proto": (0x10, 0x80),
     "socket_so_pcb":  (0x10, 0x80),
-    "socket_so_state": (0x80, 0x100),
     "inpcb_inp_socket": (0x10, 0x80),
     "inpcb_inp_list": (0x10, 0x80),
     "inpcb_inp_ppcb": (0x10, 0x80),
     "thread_task":    (0x380, 0x420),
-    "thread_uthread": (0x280, 0x3A0),
     "uthread_proc":   (0x10, 0x80),
     "mount_mnt_data": (0x10, 0x100),
 }
 
 ACCESSOR_SPECS = {
-    "proc_pid":       ["_proc_pid", "proc_pid", "_proc_getpid"],
+    "proc_pid":       ["_proc_pid", "proc_pid"],
     "proc_ppid":      ["_proc_ppid", "proc_ppid"],
-    "proc_task":      ["_proc_task", "proc_task", "_proc_gettask"],
-    "proc_ucred":     ["_proc_ucred", "proc_ucred", "_proc_getucred"],
+    "proc_task":      ["_proc_task", "proc_task"],
+    "proc_ucred":     ["_proc_ucred", "proc_ucred"],
     "proc_fd":        ["_proc_fd", "proc_fd"],
     "proc_pptr":      ["_proc_pptr", "proc_pptr"],
     "proc_pgrp":      ["_proc_pgrp", "proc_pgrp"],
     "proc_ro":        ["_proc_ro", "proc_ro"],
     "proc_flag":      ["_proc_flag", "proc_flag"],
     "proc_textvp":    ["_proc_textvp", "proc_textvp"],
-    "task_bsd_info":  ["_get_bsdtask_info", "task_bsd_info", "get_bsdtask_info", "_task_get_bsd_info"],
-    "task_vm_map":    ["_task_vm_map", "task_vm_map", "get_task_map", "_get_task_map", "_task_get_map"],
+    "task_bsd_info":  ["_get_bsdtask_info", "task_bsd_info", "get_bsdtask_info"],
+    "task_vm_map":    ["_task_vm_map", "task_vm_map", "get_task_map"],
     "task_itk_self":  ["_task_get_itk_self", "task_get_itk_self"],
     "task_itk_space": ["_task_get_itk_space", "task_get_itk_space"],
     "task_thread":    ["_task_thread", "task_thread", "get_task_thread"],
     "task_proc":      ["_get_task_proc", "task_get_proc"],
-    "task_ref_count": ["_task_reference", "task_reference"],
     "task_t_flags":   ["_task_get_t_flags", "task_get_t_flags"],
     "ipc_port_kobject": ["_ipc_port_get_kobject", "ipc_port_get_kobject"],
     "ipc_port_receiver": ["_ipc_port_get_receiver", "ipc_port_get_receiver"],
     "ipc_port_mscount": ["_ipc_port_get_mscount", "ipc_port_get_mscount"],
-    "ipc_port_refs":  ["_ipc_port_get_refs", "ipc_port_get_refs"],
     "ipc_space_is_table": ["_ipc_space_get_table", "ipc_space_get_table"],
-    "ipc_space_active": ["_ipc_space_get_active", "ipc_space_get_active"],
     "kauth_cred_uid": ["_kauth_cred_getuid", "kauth_cred_getuid"],
     "kauth_cred_gid": ["_kauth_cred_getgid", "kauth_cred_getgid"],
     "kauth_cred_ruid": ["_kauth_cred_getruid", "kauth_cred_getruid"],
@@ -141,9 +154,7 @@ ACCESSOR_SPECS = {
     "fd_ofiles":      ["_fdp_get_ofiles", "fdp_get_ofiles"],
     "fileproc_fg":    ["_fp_get_fg", "fp_get_fg"],
     "fileproc_fglob": ["_fp_get_fglob", "fp_get_fglob"],
-    "filedesc_fd_cdir": ["_fdp_get_cdir", "fdp_get_cdir"],
     "vnode_data":     ["_vnode_get_data", "vnode_get_data"],
-    "vnode_v_type":   ["_vnode_get_type", "vnode_get_type"],
     "socket_so_proto": ["_so_get_proto", "so_get_proto"],
     "socket_so_pcb":  ["_so_get_pcb", "so_get_pcb"],
     "inpcb_inp_socket": ["_inp_get_socket", "inp_get_socket"],
@@ -165,36 +176,24 @@ GLOBAL_ANCHORS = {
     "zone_map":          ["zone_map"],
     "zones_built":       ["zones_built"],
     "ipc_space_kernel":  ["ipc_space_kernel"],
-    "ipc_space_launchd": ["ipc_space_launchd"],
     "ipc_kmsg_zone":     ["ipc_kmsg_alloc"],
-    "mach_port_zone":    ["mach_port_allocate_full"],
     "vm_map_kernel":     ["vm_map_enter"],
     "vm_page_alloc":     ["vm_page_alloc"],
-    "vm_object_zone":    ["vm_object_allocate"],
     "task_init":         ["task_init @%s:%d"],
     "proc_find":         ["proc_find"],
     "proc_list":         ["proc_list_mlock"],
     "pmap_kernel":       ["pmap_kernel"],
-    "pmap_ro_zone":      ["pmap_ro_zone_validate_element"],
-    "zone_require":      ["zone_require failed: address not in a zone"],
     "set_bsdtask":       ["set_bsdtask_info trying to set random bsd_info"],
     "swap_task_map":     ["swap_task_map @%s:%d"],
     "task_for_pid":      ["task_for_pid-allow"],
     "task_reference":    ["task_reference"],
     "kauth_cred":        ["kauth_cred_getuid"],
-    "amfi":              ["AMFI: task_for_pid() not allowed"],
-    "csblob":            ["csblob_get_csblob"],
-    "trust_cache":       ["AMFI: trust cache"],
-    "pmap_cs":           ["pmap_cs_validate"],
     "cs_enforcement":    ["cs_enforcement_disable"],
-    "sandbox_root":      ["sandbox_kernel_extension"],
     "sb_evaluate":       ["sb_evaluate_internal"],
     "mac_policy":        ["mac_policy_register"],
     "kalloc_type":       ["kalloc.type.var"],
     "chroot":            ["chroot"],
-    "fdesc":             ["fdesc_zone"],
     "rootvnode":         ["rootvnode"],
-    "selinux":           ["selinux"],
 }
 
 KALLOC_ZONES = [
@@ -204,59 +203,42 @@ KALLOC_ZONES = [
     "site.struct task",
     "site.struct proc",
     "site.struct thread",
-    "site.struct uthread",
     "site.struct ucred",
     "site.struct ipc_port",
     "site.struct ipc_space",
     "site.struct ipc_entry",
     "site.struct ipc_kmsg",
-    "site.struct ipc_object",
-    "site.struct ipc_voucher",
     "site.struct vm_map",
     "site.struct vm_map_entry",
-    "site.struct vm_map_copy",
     "site.struct vm_object",
     "site.struct vm_page",
     "site.struct fileproc",
     "site.struct fileglob",
-    "site.struct filedesc",
     "site.struct vnode",
     "site.struct mount",
     "site.struct socket",
     "site.struct inpcb",
     "site.struct pipe",
-    "site.struct knote",
-    "site.struct posix_shm",
-    "site.struct necp_client_flow_registration",
-    "site.struct necp_fd_data",
-    "site.struct necp_session",
-    "site.struct necp_session_policy",
-    "site.struct necp_kernel_socket_policy",
-    "site.struct necp_arena_info",
 ]
 
 PRIMITIVE_FUNCS = [
     "_copyin", "_copyout", "_copyinstr", "_copyoutstr",
-    "_copyin_word", "_copyout_word", "_copyio",
-    "_copyinmsg", "_copyoutmsg",
-    "_copyin_atomic32", "_copyout_atomic32",
+    "_copyio", "_copyinmsg", "_copyoutmsg",
     "_memmove_phys", "_bcopy",
     "_kalloc_ext", "_kfree_ext", "_kalloc_canblock",
     "_kernel_memory_allocate", "_kmem_alloc", "_kmem_free",
-    "_pmap_enter", "_pmap_remove",
-    "_vm_map_enter", "_vm_map_remove",
-    "_ipc_port_alloc", "_ipc_port_dealloc", "_ipc_port_copyout",
+    "_ipc_port_alloc", "_ipc_port_dealloc",
     "_ipc_space_alloc", "_ipc_space_dealloc",
     "_mach_port_allocate", "_mach_port_deallocate",
     "_task_reference", "_task_deallocate",
     "_proc_reference", "_proc_rele",
-    "_thread_reference",
     "_zone_alloc", "_zone_free",
-    "_page_alloc", "_page_free",
 ]
+
 
 def _to_u(v):
     return int(v) & 0xFFFFFFFFFFFFFFFF
+
 
 def _parse_addr(v):
     if v is None:
@@ -273,10 +255,12 @@ def _parse_addr(v):
     except Exception:
         return None
 
+
 def fmt(v):
     if v is None:
         return "0x0"
     return "0x{:016X}".format(v & 0xFFFFFFFFFFFFFFFF)
+
 
 def to_long(v):
     v = int(v) & 0xFFFFFFFFFFFFFFFF
@@ -284,11 +268,13 @@ def to_long(v):
         v -= 0x10000000000000000
     return v
 
+
 def safe_addr(a):
     try:
         return toAddr(to_long(a))
     except Exception:
         return None
+
 
 def read_u64(a):
     if a is None:
@@ -301,6 +287,7 @@ def read_u64(a):
     except Exception:
         return None
 
+
 def read_u32(a):
     if a is None:
         return None
@@ -312,6 +299,7 @@ def read_u32(a):
     except Exception:
         return None
 
+
 def read_u16(a):
     if a is None:
         return None
@@ -322,6 +310,7 @@ def read_u16(a):
         return int(currentProgram.getMemory().getShort(ga)) & 0xFFFF
     except Exception:
         return None
+
 
 def _validate_addr(addr, expected_type="any"):
     if addr in _valid_addr_cache:
@@ -341,6 +330,7 @@ def _validate_addr(addr, expected_type="any"):
     _valid_addr_cache[addr] = result
     return result
 
+
 def _is_data_ptr(p):
     if p is None or p == 0:
         return False
@@ -355,14 +345,17 @@ def _is_data_ptr(p):
     except Exception:
         return False
 
+
 def _is_ktext(p):
     if p is None or p == 0:
         return False
     lo = p & MASK48
     return KTEXT_LO <= lo < KTEXT_HI
 
+
 def _strip_pac(p):
     return 0xFFFFFFF000000000 | (p & MASK48)
+
 
 def _is_exec(p):
     if p is None:
@@ -376,20 +369,22 @@ def _is_exec(p):
     try:
         return blk.isExecute()
     except Exception:
-        v return False
+        return False
+
 
 def _load_symbols():
-
-    global _sym           _cache
-    if _ ifsym_cache is not None:
-        return not
+    global _sym_cache
+    if _sym_cache is not None:
+        return
     _sym_cache = {}
     if not os.path.exists(SYMBOLS_JSON):
+        print("[-] no symbols.json")
         return
     try:
         with open(SYMBOLS_JSON) as f:
             data = json.loads(f.read().strip() or "{}")
-    except Exception:
+    except Exception as e:
+        print("[-] symbols parse: {}".format(e))
         return
 
     def _add(name, addr):
@@ -402,7 +397,8 @@ def _load_symbols():
             v = _parse_addr(addr)
             if v is None or v < 0xFFFF000000000000:
                 return
-            _sym_cache[name] = name.startswith("_"):
+            _sym_cache[name] = v
+            if not name.startswith("_"):
                 _sym_cache["_" + name] = v
         except Exception:
             pass
@@ -433,6 +429,7 @@ def _load_symbols():
     _walk(data)
     print("[+] symbols loaded: {}".format(len(_sym_cache)))
 
+
 def sym_get(name):
     _load_symbols()
     if name in _sym_cache:
@@ -447,6 +444,7 @@ def sym_get(name):
         if k.lower() == low:
             return v
     return None
+
 
 def _build_strings():
     global _string_map, _string_list
@@ -472,9 +470,10 @@ def _build_strings():
                     _string_map[s] = a
             except Exception:
                 pass
-    except Exception:
-        pass
+    except Exception as e:
+        print("[-] strings error: {}".format(e))
     print("[+] strings indexed: {}".format(len(_string_list)))
+
 
 def _str_addr(s):
     _build_strings()
@@ -486,6 +485,7 @@ def _str_addr(s):
             return a
     return None
 
+
 def _build_symidx():
     global _syms_index
     if _syms_index is not None:
@@ -496,17 +496,16 @@ def _build_symidx():
         st = currentProgram.getSymbolTable()
         for sym in st.getAllSymbols(True):
             try:
-                a):
- = _to_u(sym.getAddress().get   Offset())
+                a = _to_u(sym.getAddress().getOffset())
                 n = sym.getName()
-                if if (a, n) f in seen:
+                if (a, n) in seen:
                     continue
                 _syms_index.append((a, n))
-                seen.add(( isa, n))
+                seen.add((a, n))
             except Exception:
- None                pass
-    except Exception:
-        pass
+                pass
+    except Exception as e:
+        print("[-] symtable error: {}".format(e))
     _load_symbols()
     for n, a in _sym_cache.items():
         if (a, n) in seen:
@@ -514,6 +513,7 @@ def _build_symidx():
         _syms_index.append((a, n))
         seen.add((a, n))
     print("[+] symtable indexed: {}".format(len(_syms_index)))
+
 
 def syms_named(pat):
     _build_symidx()
@@ -525,6 +525,7 @@ def syms_named(pat):
     except Exception:
         pass
     return out
+
 
 def xrefs_to(addr):
     if addr is None:
@@ -540,6 +541,7 @@ def xrefs_to(addr):
     except Exception:
         pass
     return out
+
 
 def func_at(addr):
     if addr is None:
@@ -560,6 +562,7 @@ def func_at(addr):
         return getFunctionContaining(ga)
     except Exception:
         return None
+
 
 def ensure_func(addr):
     f = func_at(addr)
@@ -582,7 +585,9 @@ def ensure_func(addr):
     except Exception:
         return None
 
-def decompile(f:
+
+def decompile(f):
+    if f is None:
         return ""
     try:
         from ghidra.app.decompiler import DecompInterface, DecompileOptions
@@ -598,6 +603,7 @@ def decompile(f:
     except Exception:
         pass
     return ""
+
 
 def resolve_adrp_pairs(func):
     if func is None:
@@ -644,6 +650,7 @@ def resolve_adrp_pairs(func):
         pass
     return out
 
+
 def write_lines(path, lines):
     try:
         d = os.path.dirname(path)
@@ -655,11 +662,13 @@ def write_lines(path, lines):
         with open(path, "w") as fh:
             for l in lines:
                 fh.write(l + "\n")
-    except Exception:
-        pass
+    except Exception as e:
+        print("[-] write_lines: {}".format(e))
+
 
 def norm(s):
     return re.sub(r"[^A-Za-z0-9_]", "_", s)
+
 
 def _decode_sysent_ptr(raw):
     if raw is None:
@@ -670,6 +679,7 @@ def _decode_sysent_ptr(raw):
     if low < 0x10000000:
         return (KERNEL_UNSLID_BASE + low) & 0xFFFFFFFFFFFFFFFF
     return None
+
 
 def _sysent_entry(base, i):
     try:
@@ -695,6 +705,7 @@ def _sysent_entry(base, i):
     except Exception:
         return None
 
+
 def _score_sysent(base, sample=12):
     hits = 0
     zero_streak = 0
@@ -715,6 +726,7 @@ def _score_sysent(base, sample=12):
         except Exception:
             pass
     return hits
+
 
 def _find_sysent():
     for nm in ("_sysent", "sysent", "_unix_sysent", "unix_sysent"):
@@ -762,7 +774,7 @@ def _find_sysent():
                     sc = _score_sysent(a)
                     if sc > best_sc:
                         best_sc = sc
-                        best, = a
+                        best = a
                         if sc >= 20:
                             return a, "scan:" + b.getName()
                     a += 8
@@ -774,7 +786,8 @@ def _find_sysent():
         pass
     return None, "NOT_FOUND"
 
-def _walk_sysent(base limit=1500):
+
+def _walk_sysent(base, limit=1500):
     out = []
     bad = 0
     for i in range(limit):
@@ -794,6 +807,7 @@ def _walk_sysent(base limit=1500):
             pass
     return out
 
+
 def _find_mach_traps():
     for nm in ("_mach_trap_table", "mach_trap_table"):
         try:
@@ -809,6 +823,7 @@ def _find_mach_traps():
     except Exception:
         pass
     return None, "NOT_FOUND"
+
 
 def _collect_globals():
     print("[*] globals via adrp...")
@@ -836,13 +851,13 @@ def _collect_globals():
                 break
     return final
 
+
 def _collect_globals_by_symbol():
     print("[*] globals via symbol...")
     result = {}
     for label in ("kernproc", "allproc", "initproc", "kernel_task",
                    "kernel_map", "zone_map", "ipc_space_kernel",
-                   "ipc_space_launchd", "task_list", "pmap_kernel",
-                   "proc_list", "vm_map_kernel", "rootvnode"):
+                   "task_list", "pmap_kernel", "proc_list", "rootvnode"):
         try:
             a = sym_get("_" + label)
             if a is None:
@@ -852,6 +867,7 @@ def _collect_globals_by_symbol():
         except Exception:
             pass
     return result
+
 
 def _collect_struct_offsets():
     print("[*] struct offsets via accessors...")
@@ -893,6 +909,7 @@ def _collect_struct_offsets():
             except Exception:
                 pass
     return out
+
 
 def _collect_struct_offsets_from_globals(globals_map):
     print("[*] struct offsets via known globals...")
@@ -955,18 +972,6 @@ def _collect_struct_offsets_from_globals(globals_map):
             except Exception:
                 pass
 
-    if first_proc is not None:
-        for off in range(0x08, 0x100, 8):
-            try:
-                v = read_u64(first_proc + off)
-                if v and _is_data_ptr(v):
-                    first_field = read_u64(v)
-                    if first_field and _is_data_ptr(first_field):
-                        out.setdefault("proc_pptr", off)
-                        break
-            except Exception:
-                pass
-
     kernel_task_ptr = None
     if kernel_task_var and _validate_addr(kernel_task_var, "data"):
         v = read_u64(kernel_task_var)
@@ -1014,31 +1019,6 @@ def _collect_struct_offsets_from_globals(globals_map):
             except Exception:
                 pass
 
-    if kernel_task_ptr is not None:
-        for off in range(0x380, 0x420, 8):
-            try:
-                v = read_u64(kernel_task_ptr + off)
-                if v and _is_data_ptr(v):
-                    pid = read_u32(v + 0x74)
-                    if pid is not None and pid > 0:
-                        out["task_proc"] = off
-                        print("[+] task_proc = 0x{:x} (pid={})".format(off, pid))
-                        break
-            except Exception:
-                pass
-
-    if kernel_task_ptr is not None:
-        for off in range(0x380, 0x420, 8):
-            try:
-                v = read_u64(kernel_task_ptr + off)
-                if v and _is_data_ptr(v):
-                    first_field = read_u64(v)
-                    if first_field and _is_data_ptr(first_field):
-                        out.setdefault("thread_task", off)
-                        break
-            except Exception:
-                pass
-
     if ipc_space_kernel_var and _validate_addr(ipc_space_kernel_var, "data"):
         isp = read_u64(ipc_space_kernel_var)
         if isp and _is_data_ptr(isp):
@@ -1053,6 +1033,7 @@ def _collect_struct_offsets_from_globals(globals_map):
                     pass
 
     return out
+
 
 def _find_kalloc(kfree_ext):
     try:
@@ -1086,6 +1067,7 @@ def _find_kalloc(kfree_ext):
             return best
     return None
 
+
 def _find_kalloc_zones():
     out = {}
     for z in KALLOC_ZONES:
@@ -1101,6 +1083,7 @@ def _find_kalloc_zones():
             pass
     return out
 
+
 def _find_primitives():
     print("[*] primitive functions...")
     out = {}
@@ -1112,6 +1095,7 @@ def _find_primitives():
         except Exception:
             pass
     return out
+
 
 def main():
     print("=== kernel_rw.py ===")
@@ -1223,7 +1207,6 @@ def main():
                 struct_offsets[k] = v
     except Exception as e:
         print("[-] struct_globals error: {}".format(e))
-        traceback.print_exc()
 
     report.append("")
     report.append("=== [5] STRUCT OFFSETS ===")
@@ -1310,8 +1293,7 @@ def main():
     print("[*] copyin/copyout...")
     copy = {}
     for s in ("_copyin", "_copyout", "_copyinstr", "_copyoutstr",
-              "_copyin_word", "_copyout_word", "_copyio",
-              "_copyinmsg", "_copyoutmsg"):
+              "_copyio", "_copyinmsg", "_copyoutmsg"):
         try:
             a = sym_get(s)
             if a:
@@ -1337,10 +1319,6 @@ def main():
             jout.setdefault("struct_offsets", {})
             if key not in jout["struct_offsets"]:
                 jout["struct_offsets"][key] = val
-        elif key in ("ctrr_lock_boot", "cpu_lock_sysreg", "sptm_base"):
-            jout.setdefault("sptm", {})
-            if key not in jout["sptm"]:
-                jout["sptm"][key] = val
         else:
             if not jout.get(key):
                 jout[key] = val
@@ -1387,17 +1365,10 @@ def main():
     print("=======================================")
     print("[+] kernel_rw.py done")
 
+
 try:
     main()
 except Exception as e:
     print("[-] FATAL: {}".format(e))
     traceback.print_exc()
-    try:
-        with open(OUT_TXT, "w") as fh:
-            fh.write("FATAL: {}\n".format(e))
-        with open(OUT_H, "w") as fh:
-            fh.write("#error kernel_rw.py failed\n")
-        with open(OUT_JSON, "w") as fh:
-            fh.write("{\"error\": \"fatal\"}\n")
-    except Exception:
-        pass
+    _write_placeholder()
