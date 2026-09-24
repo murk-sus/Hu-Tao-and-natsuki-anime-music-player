@@ -84,7 +84,6 @@ jobs:
           "$GHIDRA_ROOT/support/analyzeHeadless" \
             "$GITHUB_WORKSPACE/ghidra_project" KernelProject \
             -process "$KERNEL_NAME" -noanalysis \
-            -preScript import_symbols.py \
             -postScript kernel_rw.py \
             -scriptPath "$GITHUB_WORKSPACE/scripts" \
             2>&1 | tee ghidra.log
@@ -101,7 +100,6 @@ jobs:
           "$GHIDRA_ROOT/support/analyzeHeadless" \
             "$GITHUB_WORKSPACE/ghidra_project" KernelProject \
             -import "$KERNEL" \
-            -preScript import_symbols.py \
             -postScript kernel_rw.py \
             -scriptPath "$GITHUB_WORKSPACE/scripts" \
             -analysisTimeoutPerFile 12000 \
@@ -109,7 +107,9 @@ jobs:
             2>&1 | tee ghidra.log
 
       - name: Validate
+        if: always()
         run: |
+          ls -la offsets.json offsets.h nk_kernel_rw.txt 2>&1 || true
           test -s offsets.json
           test -s offsets.h
           jq empty offsets.json
@@ -126,4 +126,4 @@ jobs:
             ghidra.log
             symbols.json
           retention-days: 30
-          if-no-files-found: error
+          if-no-files-found: warn
