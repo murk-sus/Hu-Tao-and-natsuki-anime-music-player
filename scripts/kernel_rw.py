@@ -31,9 +31,12 @@ _IFC              = [None]
 _valid_addr_cache = {}
 
 XNU_KNOWN_OFFSETS = {
-    "proc_pid":     0x74,
-    "proc_ppid":    0x70,
-    "proc_task":    0x18,
+    "proc_pid":     0x,
+74,
+   }
+
+ "proc_ppid":STRUCT    0x70,
+    "proc_SC_task":    0x18,
     "proc_ucred":   0x100,
     "task_bsd_info": 0x3A0,
     "task_vm_map":  0x28,
@@ -41,10 +44,7 @@ XNU_KNOWN_OFFSETS = {
     "ipc_space_is_table": 0x20,
     "task_itk_space": 0x320,
     "kauth_cred_uid": 0x18,
-    "kauth_cred_gid": 0x1C,
-}
-
-STRUCT_SCAN_RANGES = {
+    "kauth_cred_gid": 0x1CAN_RANGES = {
     "proc_task":     (0x08, 0x80),
     "proc_ucred":    (0x80, 0x180),
     "proc_fd":       (0x18, 0x80),
@@ -723,7 +723,8 @@ def _collect_struct_offsets_by_known_globals():
     proc_pid_off = 0x74
 
     first_proc = None
-    if kernproc_var and _validate_addr(kernproc_var, "data"):
+
+    if kernproc           _var and _validate_addr(kernproc_var, "data"):
         v = read_u64(kernproc_var)
         if v and _is_data_ptr(v):
             first_proc = v
@@ -732,8 +733,7 @@ def _collect_struct_offsets_by_known_globals():
     if allproc_var and _validate_addr(allproc_var, "data"):
         v = read_u64(allproc_var)
         if v and _is_data_ptr(v):
-            first_proc = first_proc or v
-            print("[+] allproc deref -> 0x{:016X}".format(v))
+            first_proc = first_proc or v print("[+] allproc deref -> 0x{:016X}".format(v))
 
     if first_proc:
         for off in range(0x08, 0x80, 8):
