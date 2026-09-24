@@ -123,7 +123,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}/symbols.json
-          key: symbols-${{ env.DEVICE_SLUG }}-${{ env.IOS_BUILD }}-v2
+          key: symbols-${{ env.DEVICE_SLUG }}-${{ env.IOS_BUILD }}-v3
 
       - name: Symbolicate Kernelcache
         if: steps.cache-symbols.outputs.cache-hit != 'true'
@@ -139,25 +139,29 @@ jobs:
             exit 1
           fi
           cp "${SRC}" "${GITHUB_WORKSPACE}/symbols.json"
-          echo "[+] symbols.json size:"
           wc -c "${GITHUB_WORKSPACE}/symbols.json"
 
       - name: Verify symbols.json
         run: |
           set -euo pipefail
-          ls -lh "${GITHUB_WORKSPACE}/symbols.json"
-          SZ="$(stat -c %s "${GITHUB_WORKSPACE}/symbols.json")"
-          if [[ "${SZ}" -lt 1000 ]]; then
-            echo "ERROR: symbols.json too small (${SZ} bytes) — invalid cache?"
+          ls -lh "${GITHUB_WORKSPACE}/symbols.json" || true
+          if [[ ! -f "${GITHUB_WORKSPACE}/symbols.json" ]]; then
+            echo "ERROR: symbols.json missing"
             exit 1
           fi
+          SZ="$(stat -c %s "${GITHUB_WORKSPACE}/symbols.json")"
+          if [[ "${SZ}" -lt 1000 ]]; then
+            echo "ERROR: symbols.json too small (${SZ} bytes)"
+            exit 1
+          fi
+          echo "[+] symbols.json OK (${SZ} bytes)"
 
       - name: Cache Ghidra project
         id: cache-project
         uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}/ghidra_project
-          key: ghidra-project-${{ env.DEVICE_SLUG }}-${{ env.IOS_BUILD }}-v2
+          key: ghidra-project-${{ env.DEVICE_SLUG }}-${{ env.IOS_BUILD }}-v1
 
       - name: Run Ghidra (warm)
         if: steps.cache-project.outputs.cache-hit == 'true'
@@ -165,12 +169,13 @@ jobs:
           _JAVA_OPTIONS: "-Xmx6g -Djava.awt.headless=true"
         run: |
           set -euo pipefail
-          echo "[+] Warm start — reusing cached analysis"
+          echo "[+] Warm start"
           "${GHIDRA_ROOT}/support/analyzeHeadless" \
             "${GITHUB_WORKSPACE}/ghidra_project" KernelProject \
             -process "kernelcache.release.iPhone14,5" \
             -noanalysis \
             -postScript decompile.py \
+            -postScript necp_extract.py \
             -scriptPath "${GITHUB_WORKSPACE}/scripts" \
             2>&1 | tee "${GITHUB_WORKSPACE}/ghidra.log"
 
@@ -180,12 +185,13 @@ jobs:
           _JAVA_OPTIONS: "-Xmx6g -Djava.awt.headless=true"
         run: |
           set -euo pipefail
-          echo "[+] Cold start — full analysis"
+          echo "[+] Cold start"
           mkdir -p "${GITHUB_WORKSPACE}/ghidra_project"
           "${GHIDRA_ROOT}/support/analyzeHeadless" \
             "${GITHUB_WORKSPACE}/ghidra_project" KernelProject \
             -import "${KERNEL}" \
             -postScript decompile.py \
+            -postScript necp_extract.py \
             -scriptPath "${GITHUB_WORKSPACE}/scripts" \
             -max-cpu 4 \
             -analysisTimeoutPerFile 9000 \
