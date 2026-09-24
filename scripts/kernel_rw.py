@@ -21,7 +21,6 @@ OUT_DISASM  = os.path.join(WORKSPACE, "disasm.txt")
 OUT_KFD     = os.path.join(WORKSPACE, "kfd_offsets.h")
 
 KERNEL_UNSLID_BASE = 0xFFFFFFF007004000
-KERNEL_DATA_HI     = 0xFFFFFFF100000000
 MASK48             = 0x0000FFFFFFFFFFFF
 KTEXT_LO           = 0xFFF007004000
 KTEXT_HI           = 0xFFF200000000
@@ -30,7 +29,7 @@ SYSENT_STRIDE      = 24
 
 def _write_placeholder():
     for path, content in [
-        (OUT_TXT,    "=== kernel_rw.py ===\n"),
+        (OUT_TXT,    "=== placeholder ===\n"),
         (OUT_H,      "#ifndef NK_OFFSETS_H\n#define NK_OFFSETS_H\n#endif\n"),
         (OUT_JSON,   "{}\n"),
         (OUT_DISASM, "=== no disasm ===\n"),
@@ -44,15 +43,6 @@ def _write_placeholder():
 
 
 _write_placeholder()
-
-
-_sym_cache        = None
-_string_map       = None
-_string_list      = None
-_syms_index       = None
-_IFC              = [None]
-_valid_addr_cache = {}
-_blocks_cache     = None
 
 
 CONFIRMED = {
@@ -71,7 +61,12 @@ CONFIRMED_GLOBALS = {
     "task_list":   "0xFFFFFFF0080D93F0",
     "kernel_map":  "0xFFFFFFF007BBE228",
     "allproc":     "0xFFFFFFF007BBF048",
-    "rootvnode":   "0xFFFFFFF007CA0CF8",
+}
+
+CONFIRMED_STRUCT = {
+    "proc_pid":    0x74,
+    "proc_ucred":  0xB8,
+    "task_thread": 0x50,
 }
 
 ACCESSOR_SPECS = {
@@ -118,7 +113,6 @@ ACCESSOR_SPECS = {
     "kauth_cred_rgid":             ["_kauth_cred_getrgid"],
     "kauth_cred_svuid":            ["_kauth_cred_getsvuid"],
     "kauth_cred_svgid":            ["_kauth_cred_getsvgid"],
-    "kauth_cred_label":            ["_kauth_cred_getlabel"],
     "label_l_perpolicy_amfi":      ["_mac_label_get_amfi", "mac_label_get_amfi"],
     "label_l_perpolicy_sandbox":   ["_mac_label_get_sandbox"],
     "ipc_space_is_table":          ["_ipc_space_get_table", "ipc_space_get_table"],
@@ -173,20 +167,11 @@ ACCESSOR_SPECS = {
 }
 
 GLOBAL_ANCHORS = {
-    "kernproc":          ["p != kernproc", "so != NULL || p == kernproc"],
     "allproc":           ["allproc"],
-    "initproc":          ["initproc"],
-    "kernel_map":        ["kernel_map"],
-    "init_task":         ["init_task"],
-    "task_list":         ["task_list"],
-    "zone_map":          ["zone_map"],
-    "zones_built":       ["zones_built"],
-    "ipc_space_kernel":  ["ipc_space_kernel"],
     "rootvnode":         ["rootvnode"],
-    "vm_map_kernel":     ["vm_map_enter"],
-    "pmap_kernel":       ["pmap_kernel"],
-    "task_init":         ["task_init @%s:%d"],
     "proc_find":         ["proc_find"],
+    "task_init":         ["task_init @%s:%d"],
+    "vm_map_kernel":     ["vm_map_enter"],
 }
 
 KALLOC_ZONES = [
@@ -215,21 +200,13 @@ KALLOC_ZONES = [
 
 PRIMITIVE_FUNCS = [
     "_copyin", "_copyout", "_copyinstr", "_copyoutstr",
-    "_copyio", "_copyinmsg", "_copyoutmsg",
-    "_kalloc_ext", "_kfree_ext", "_kalloc_canblock",
-    "_kernel_memory_allocate", "_kmem_alloc", "_kmem_free",
-    "_ipc_port_alloc", "_ipc_port_dealloc",
-    "_ipc_space_alloc", "_ipc_space_dealloc",
-    "_mach_port_allocate", "_mach_port_deallocate",
-    "_task_reference", "_task_deallocate",
-    "_proc_reference", "_proc_rele",
-    "_zone_alloc", "_zone_free",
-    "_vm_map_enter", "_vm_map_remove",
-    "_pmap_enter", "_pmap_remove",
+    "_kalloc_ext", "_kfree_ext",
 ]
 
-DISASM_TARGETS = list(set(list(ACCESSOR_SPECS.keys()) + PRIMITIVE_FUNCS + [
-    "_sysent", "unix_syscall", "_mach_trap_table", "mach_call_munger",
+DISASM_TARGETS = list(set([
+    "_copyin", "_copyout", "_kalloc_ext", "_kfree_ext",
+    "_proc_task", "_proc_ucred", "_proc_pid",
+    "_get_bsdtask_info", "task_get_itk_space", "ipc_space_get_table",
 ]))
 
 
@@ -877,22 +854,14 @@ def _find_mach_traps():
                 return a, "sym:" + nm
         except Exception:
             pass
-    try:
-        for a, n in syms_named("mach_trap"):
-            if 0xFFFFFFF000000000 <= a < 0xFFFFFFF200000000:
-                return a, "ghidra:" + n
-    except Exception:
-        pass
     return None, "NOT_FOUND"
 
 
 def _collect_globals_by_symbol():
     print("[*] globals via symbol...")
     out = {}
-    for label in ("kernproc", "allproc", "initproc", "kernel_task",
-                  "kernel_map", "zone_map", "zones_built",
-                  "ipc_space_kernel", "proc_list", "rootvnode",
-                  "task_list", "pmap_kernel"):
+    for label in ("allproc", "rootvnode", "proc_find", "task_init",
+                  "vm_map_kernel", "kernel_map"):
         try:
             a = sym_get("_" + label) or sym_get(label)
             if a is not None and _validate_addr(a, "any"):
@@ -900,63 +869,6 @@ def _collect_globals_by_symbol():
         except Exception:
             pass
     return out
-
-
-def _collect_globals_by_anchors():
-    print("[*] globals via adrp...")
-    result = {}
-    for label, anchors in GLOBAL_ANCHORS.items():
-        for s in anchors:
-            try:
-                sa = _str_addr(s)
-                if sa is None:
-                    continue
-                for xr in xrefs_to(sa):
-                    f = func_at(xr)
-                    if f is None:
-                        continue
-                    for tgt in resolve_adrp_pairs(f):
-                        if _validate_addr(tgt, "any"):
-                            result.setdefault(tgt, set()).add(label)
-            except Exception:
-                pass
-    final = {}
-    for addr, labels in result.items():
-        for lbl in labels:
-            if lbl not in final:
-                final[lbl] = addr
-                break
-    return final
-
-
-def _accessor_offset(field, names):
-    for name in names:
-        try:
-            hits = syms_named(name)
-            if not hits:
-                continue
-            a, n = hits[0]
-            f = ensure_func(a)
-            if f is None:
-                continue
-            code = decompile(f)
-            if not code:
-                continue
-            for pat in [
-                r"\*\([^)]*\*\)\s*\(\s*\w+\s*\+\s*(0x[0-9a-fA-F]+|\d+)\s*\)",
-                r"return\s+\*\([^)]*\)\s*\(\s*\w+\s*\+\s*(0x[0-9a-fA-F]+|\d+)\s*\)",
-                r"\(\s*\w+\s*\+\s*(0x[0-9a-fA-F]+|\d+)\s*\)",
-            ]:
-                for m in re.finditer(pat, code):
-                    try:
-                        off = int(m.group(1), 0)
-                        if 0 < off < 0x2000:
-                            return off, name
-                    except Exception:
-                        pass
-        except Exception:
-            pass
-    return None, None
 
 
 def _deref_var(var):
@@ -970,7 +882,7 @@ def _deref_var(var):
     return v
 
 
-def _find_pid_offset(proc_ptr, candidates=(0x68, 0x70, 0x74, 0x78, 0x80, 0x84, 0x88)):
+def _find_pid_offset(proc_ptr, candidates=(0x74, 0x68, 0x70, 0x78, 0x80, 0x84)):
     for off in candidates:
         pid = read_u32(proc_ptr + off)
         if pid is not None and 0 < pid < 0x100000:
@@ -978,43 +890,12 @@ def _find_pid_offset(proc_ptr, candidates=(0x68, 0x70, 0x74, 0x78, 0x80, 0x84, 0
     return None, None
 
 
-def _ptr_in_range(p, lo, hi):
-    return p is not None and lo <= p < hi
-
-
-def _scan_struct(ptr, name, start, end, step, validator):
-    out = []
-    a = start
-    while a < end:
-        try:
-            v = read_u64(ptr + a)
-            if validator(v, a):
-                out.append((a, v))
-        except Exception:
-            pass
-        a += step
-    return out
-
-
-def _walk_proc(kernproc_var, globals):
+def _walk_proc(proc_ptr, pid_off):
     print("[*] walk proc...")
     out = {}
 
-    proc_var = globals.get("kernproc") or _parse_addr(CONFIRMED_GLOBALS.get("kernproc"))
-    proc_ptr = _deref_var(proc_var)
-    if proc_ptr is None:
-        proc_var = globals.get("allproc") or _parse_addr(CONFIRMED_GLOBALS.get("allproc"))
-        proc_ptr = _deref_var(proc_var)
-    if proc_ptr is None:
-        print("[-] no proc ptr")
-        return out
-
-    print("[+] proc ptr = {}".format(fmt(proc_ptr)))
-
-    pid_off, pid_val = _find_pid_offset(proc_ptr)
     if pid_off is not None:
         out["proc_p_pid"] = pid_off
-        print("[+] proc_p_pid = 0x{:x} (pid={})".format(pid_off, pid_val))
 
     for off in range(0x08, 0x80, 8):
         v = read_u64(proc_ptr + off)
@@ -1038,12 +919,14 @@ def _walk_proc(kernproc_var, globals):
             print("[+] proc_p_list_le_prev = 0x{:x}".format(off))
             break
 
+    ro_off = None
     for off in range(0x08, 0x100, 8):
         v = read_u64(proc_ptr + off)
         if not _is_data_ptr(v):
             continue
         task_hint = read_u64(v + 0x18)
         if _is_data_ptr(task_hint):
+            ro_off = off
             out["proc_p_proc_ro"] = off
             print("[+] proc_p_proc_ro = 0x{:x}".format(off))
             break
@@ -1058,14 +941,6 @@ def _walk_proc(kernproc_var, globals):
             print("[+] proc_p_fd = 0x{:x}".format(off))
             break
 
-    for off in range(0x08, 0x80, 8):
-        v = read_u64(proc_ptr + off)
-        if not _is_data_ptr(v):
-            continue
-        t = read_u64(v + 0x1C)
-        if t is not None and (t & 0xFFFF) == 0:
-            out.setdefault("proc_p_flag", off)
-
     for off in range(0x08, 0x100, 8):
         v = read_u64(proc_ptr + off)
         if not _is_data_ptr(v):
@@ -1076,22 +951,6 @@ def _walk_proc(kernproc_var, globals):
             print("[+] proc_p_textvp = 0x{:x}".format(off))
             break
 
-    for off in range(0x08, 0x100, 8):
-        if read_u64(proc_ptr + off) is None:
-            continue
-        p1 = read_u64(proc_ptr + off + 8)
-        if not _is_data_ptr(p1):
-            continue
-        try:
-            buf = read_u64(proc_ptr + off)
-            if buf is None:
-                continue
-            if 0 < (buf & 0xFFFFFFFF) < 0x100000:
-                out.setdefault("proc_p_name", off)
-        except Exception:
-            pass
-
-    ro_off = out.get("proc_p_proc_ro")
     if ro_off is not None:
         ro_ptr = read_u64(proc_ptr + ro_off)
         if ro_ptr is not None and _is_data_ptr(ro_ptr):
@@ -1114,46 +973,16 @@ def _walk_proc(kernproc_var, globals):
                     out["proc_ro_p_ucred"] = off
                     print("[+] proc_ro_p_ucred = 0x{:x} (uid={})".format(off, uid))
                     break
-            ucred_off = out.get("proc_ro_p_ucred")
-            if ucred_off is not None:
-                uc = read_u64(ro_ptr + ucred_off)
-                if uc is not None and _is_data_ptr(uc):
-                    for off in range(0x40, 0x120, 8):
-                        v = read_u64(uc + off)
-                        if not _is_data_ptr(v):
-                            continue
-                        label_sz = read_u64(v + 0x20)
-                        if label_sz is not None and 0 < label_sz < 0x10000:
-                            out["ucred_cr_label"] = off
-                            print("[+] ucred_cr_label = 0x{:x}".format(off))
-                            break
-                    label_off = out.get("ucred_cr_label")
-                    if label_off is not None:
-                        lbl = read_u64(uc + label_off)
-                        if lbl is not None and _is_data_ptr(lbl):
-                            for off in range(0x40, 0x120, 8):
-                                v = read_u64(lbl + off)
-                                if not _is_data_ptr(v):
-                                    continue
-                                z1 = read_u64(v + 0x08)
-                                z2 = read_u64(v + 0x10)
-                                if z1 is not None and z2 is not None:
-                                    out.setdefault("label_l_perpolicy_amfi", off)
-                                    out.setdefault("label_l_perpolicy_sandbox", off)
-                                    break
 
     return out
 
 
-def _walk_task(globals):
+def _walk_task(task_ptr):
     print("[*] walk task...")
     out = {}
-
-    task_var = globals.get("kernel_task") or _parse_addr(CONFIRMED_GLOBALS.get("kernel_task"))
-    task_ptr = _deref_var(task_var)
     if task_ptr is None:
-        print("[-] no task ptr")
-        return out, None
+        return out
+
     print("[+] kernel_task ptr = {}".format(fmt(task_ptr)))
 
     for off in range(0x18, 0x60, 8):
@@ -1197,29 +1026,14 @@ def _walk_task(globals):
             print("[+] task_bsd_info = 0x{:x} (pid={})".format(off, pid))
             break
 
-    for off in range(0x380, 0x420, 8):
-        v = read_u32(task_ptr + off)
-        if v is not None and 0 <= v < 0x10000:
-            out.setdefault("task_task_exc_guard", off)
-            break
-
-    for off in range(0x100, 0x200, 8):
-        v = read_u64(task_ptr + off)
-        if not _is_data_ptr(v):
-            continue
-        th = read_u64(v)
-        if _is_data_ptr(th):
-            out.setdefault("task_t_flags", off)
-            break
-
-    return out, task_ptr
+    return out
 
 
 def _walk_thread(task_ptr):
     print("[*] walk thread...")
     out = {}
     if task_ptr is None:
-        return out, None
+        return out
 
     threads_off = None
     for off in range(0x40, 0x80, 8):
@@ -1230,14 +1044,14 @@ def _walk_thread(task_ptr):
                 threads_off = off
                 break
     if threads_off is None:
-        return out, None
+        return out
 
     threads_head = read_u64(task_ptr + threads_off)
     if threads_head is None or not _is_data_ptr(threads_head):
-        return out, None
+        return out
     thread_ptr = read_u64(threads_head)
     if thread_ptr is None or not _is_data_ptr(thread_ptr):
-        return out, None
+        return out
 
     print("[+] thread ptr = {}".format(fmt(thread_ptr)))
 
@@ -1249,30 +1063,6 @@ def _walk_thread(task_ptr):
                 out["thread_task_threads_next"] = off
                 print("[+] thread_task_threads_next = 0x{:x}".format(off))
                 break
-
-    for off in range(0x100, 0x400, 4):
-        v = read_u32(thread_ptr + off)
-        if v is not None and v < 0x1000:
-            out.setdefault("thread_ast", off)
-            break
-
-    for off in range(0x280, 0x400, 8):
-        v = read_u64(thread_ptr + off)
-        if not _is_data_ptr(v):
-            continue
-        c = read_u64(v + 0x08)
-        if _is_data_ptr(c):
-            out.setdefault("thread_machine_contextdata", off)
-            break
-
-    for off in range(0x2A0, 0x400, 8):
-        v = read_u64(thread_ptr + off)
-        if not _is_data_ptr(v):
-            continue
-        d = read_u64(v)
-        if _is_data_ptr(d):
-            out.setdefault("thread_mutex_lck_mtx_data", off)
-            break
 
     for off in range(0x300, 0x420, 8):
         v = read_u64(thread_ptr + off)
@@ -1303,45 +1093,7 @@ def _walk_thread(task_ptr):
                     break
             break
 
-    for off in range(0x350, 0x420, 8):
-        v = read_u64(thread_ptr + off)
-        if v is not None and 0 < (v & 0xFFFFFFFF) < 0x100000:
-            out.setdefault("thread_machine_kstackptr", off)
-            break
-
-    for off in range(0x3A0, 0x420, 8):
-        v = read_u64(thread_ptr + off)
-        if v is not None and 0 < v < 0x100000:
-            out.setdefault("thread_ctid", off)
-            break
-
-    for off in range(0x3B0, 0x420, 4):
-        v = read_u32(thread_ptr + off)
-        if v is not None and 0 < v < 0x10000:
-            out.setdefault("thread_options", off)
-            break
-
-    for off in range(0x50, 0x120, 4):
-        v = read_u32(thread_ptr + off)
-        if v is not None and 0 < v < 0x10:
-            out.setdefault("thread_mach_exc_info_exception_type", off)
-            break
-
-    for off in range(0x100, 0x180, 4):
-        v = read_u32(thread_ptr + off)
-        if v is not None and 0 <= v < 0x10000:
-            out.setdefault("thread_guard_exc_info_code", off)
-            break
-
-    for off in range(0x3C0, 0x420, 8):
-        v = read_u64(thread_ptr + off)
-        if _is_data_ptr(v):
-            r = read_u64(v + 0x08)
-            if _is_data_ptr(r):
-                out.setdefault("thread_mach_exc_info_os_reason", off)
-                break
-
-    return out, thread_ptr
+    return out
 
 
 def _walk_ipc(task_ptr):
@@ -1376,44 +1128,6 @@ def _walk_ipc(task_ptr):
                 print("[+] ipc_space_is_table = 0x{:x}".format(off))
                 break
 
-    for off in range(0x08, 0x40, 4):
-        v = read_u32(ispace + off)
-        if v is not None and 0 <= v < 0x1000:
-            out.setdefault("ipc_space_active", off)
-
-    table_off = out.get("ipc_space_is_table")
-    if table_off is None:
-        return out
-
-    table = read_u64(ispace + table_off)
-    if table is None or not _is_data_ptr(table):
-        return out
-
-    entries = []
-    for i in range(0, 4):
-        e = read_u64(table + i * 0x18)
-        if e is not None and (_is_data_ptr(e) or e == 0):
-            entries.append(e)
-    if len(entries) >= 2:
-        out["sizeof_ipc_entry"] = 0x18
-
-    for off in range(0x00, 0x20, 8):
-        v = read_u64(table + off)
-        if _is_data_ptr(v):
-            out.setdefault("ipc_entry_ie_object", off)
-            first_port = v
-            for po in range(0x40, 0xA0, 8):
-                r = read_u64(first_port + po)
-                if _is_data_ptr(r):
-                    out.setdefault("ipc_port_ip_receiver", po)
-                    break
-            for po in range(0x40, 0xA0, 8):
-                k = read_u64(first_port + po)
-                if _is_data_ptr(k):
-                    out.setdefault("ipc_port_ip_kobject", po)
-                    break
-            break
-
     return out
 
 
@@ -1446,7 +1160,6 @@ def _walk_vm(task_ptr):
         entries = read_u64(v + 0x18)
         if entries is not None and 0 < entries < 0x100000:
             out["vm_map_hdr"] = off
-            out["vm_map_header_links_next"] = off
             out["vm_map_header_nentries"] = off
             print("[+] vm_map_hdr = 0x{:x}".format(off))
             break
@@ -1467,289 +1180,13 @@ def _walk_vm(task_ptr):
         if _is_data_ptr(o):
             out["vm_map_entry_links_next"] = off
             first_entry = v
-            for eo in range(0x00, 0x30, 8):
-                e = read_u64(first_entry + eo)
-                if _is_data_ptr(e):
-                    out.setdefault("vm_map_entry_vme_alias", eo)
-                    break
             for eo in range(0x30, 0x60, 8):
                 e = read_u64(first_entry + eo)
                 if _is_data_ptr(e):
                     out.setdefault("vm_map_entry_vme_object_or_delta", eo)
-                    vm_obj = e
-                    for oo in range(0x10, 0x40, 8):
-                        r = read_u32(vm_obj + oo)
-                        if r is not None and 0 <= r < 0x100000:
-                            out.setdefault("vm_object_ref_count", oo)
-                            break
-                    for oo in range(0x18, 0x40, 8):
-                        s = read_u64(vm_obj + oo)
-                        if s is not None and 0 < s < 0x100000000:
-                            out.setdefault("vm_object_vo_un1_vou_size", oo)
-                            break
                     break
             break
 
-    return out
-
-
-def _walk_vnode(proc_ptr, ro_ptr):
-    print("[*] walk vnode...")
-    out = {}
-    vnode = None
-    for src in (proc_ptr, ro_ptr):
-        if src is None:
-            continue
-        for off in range(0x08, 0x100, 8):
-            v = read_u64(src + off)
-            if not _is_data_ptr(v):
-                continue
-            use = read_u32(v + 0xB8)
-            if use is not None and 0 < use < 0x10000:
-                vnode = v
-                out["proc_p_textvp"] = off
-                break
-        if vnode is not None:
-            break
-    if vnode is None:
-        return out
-
-    print("[+] vnode ptr = {}".format(fmt(vnode)))
-
-    for off in range(0x80, 0x120, 8):
-        v = read_u64(vnode + off)
-        if _is_data_ptr(v):
-            out["vnode_v_name"] = off
-            break
-
-    for off in range(0x80, 0x120, 8):
-        v = read_u64(vnode + off)
-        if not _is_data_ptr(v):
-            continue
-        m = read_u32(v + 0x70)
-        if m is not None:
-            out["vnode_v_mount"] = off
-            break
-
-    for off in range(0x40, 0x80, 4):
-        v = read_u8(vnode + off)
-        if v is not None and 0 < v < 0x20:
-            out["vnode_v_flag"] = off
-            break
-
-    for off in range(0xA0, 0xC0, 4):
-        v = read_u32(vnode + off)
-        if v is not None and 0 < v < 0x100000:
-            out["vnode_v_usecount"] = off
-            break
-
-    for off in range(0xA0, 0xC0, 4):
-        v = read_u32(vnode + off)
-        if v is not None and 0 < v < 0x100000:
-            out.setdefault("vnode_v_iocount", off)
-            break
-
-    for off in range(0xA0, 0xC0, 4):
-        v = read_u32(vnode + off)
-        if v is not None and 0 < v < 0x100000:
-            out.setdefault("vnode_v_writecount", off)
-            break
-
-    for off in range(0x08, 0x40, 8):
-        v = read_u64(vnode + off)
-        if _is_data_ptr(v):
-            out.setdefault("vnode_v_ncchildren_tqh_first", off)
-            break
-
-    for off in range(0x08, 0x40, 8):
-        v = read_u64(vnode + off)
-        if _is_data_ptr(v):
-            out.setdefault("vnode_v_nclinks_lh_first", off)
-            break
-
-    for off in range(0x08, 0x40, 8):
-        v = read_u64(vnode + off)
-        if not _is_data_ptr(v):
-            continue
-        use = read_u32(v + 0xB8)
-        if use is not None and 0 < use < 0x10000:
-            out.setdefault("vnode_v_parent", off)
-            break
-
-    for off in range(0x08, 0x40, 8):
-        v = read_u64(vnode + off)
-        if not _is_data_ptr(v):
-            continue
-        use = read_u32(v + 0xB8)
-        if use is not None and 0 < use < 0x10000:
-            out.setdefault("vnode_v_data", off)
-            break
-
-    if "vnode_v_mount" in out:
-        mnt = read_u64(vnode + out["vnode_v_mount"])
-        if mnt is not None and _is_data_ptr(mnt):
-            for off in range(0x40, 0xA0, 4):
-                v = read_u32(mnt + off)
-                if v is not None and 0 < v < 0x1000000:
-                    out["mount_mnt_flag"] = off
-                    break
-
-    return out
-
-
-def _walk_fd(proc_ptr):
-    print("[*] walk fd...")
-    out = {}
-    if proc_ptr is None:
-        return out
-
-    fd_off = None
-    for off in range(0x18, 0x80, 8):
-        v = read_u64(proc_ptr + off)
-        if not _is_data_ptr(v):
-            continue
-        first = read_u64(v)
-        if _is_data_ptr(first):
-            fd_off = off
-            break
-    if fd_off is None:
-        return out
-
-    fd_ptr = read_u64(proc_ptr + fd_off)
-    if fd_ptr is None or not _is_data_ptr(fd_ptr):
-        return out
-
-    for off in range(0x08, 0x60, 8):
-        v = read_u64(fd_ptr + off)
-        if not _is_data_ptr(v):
-            continue
-        f1 = read_u64(v)
-        if _is_data_ptr(f1):
-            out["filedesc_fd_ofiles"] = off
-            print("[+] filedesc_fd_ofiles = 0x{:x}".format(off))
-            ofiles = v
-            first_fp = read_u64(ofiles)
-            if _is_data_ptr(first_fp):
-                for fo in range(0x08, 0x40, 8):
-                    g = read_u64(first_fp + fo)
-                    if _is_data_ptr(g):
-                        out.setdefault("fileproc_fp_glob", fo)
-                        fg = g
-                        for go in range(0x08, 0x60, 8):
-                            d = read_u64(fg + go)
-                            if _is_data_ptr(d):
-                                out.setdefault("fileglob_fg_data", go)
-                                break
-                        for go in range(0x08, 0x60, 4):
-                            fl = read_u32(fg + go)
-                            if fl is not None and fl < 0x100000:
-                                out.setdefault("fileglob_fg_flag", go)
-                                break
-                        break
-            break
-
-    for off in range(0x18, 0x80, 8):
-        v = read_u64(fd_ptr + off)
-        if not _is_data_ptr(v):
-            continue
-        t = read_u64(v + 0xB8)
-        if t is not None and 0 < t < 0x100000:
-            out.setdefault("filedesc_fd_cdir", off)
-            break
-
-    for off in range(0x08, 0x40, 8):
-        v = read_u64(fd_ptr + off)
-        if _is_data_ptr(v):
-            out.setdefault("fileproc_fp_fg", off)
-            break
-
-    return out
-
-
-def _walk_socket(task_ptr):
-    print("[*] walk socket...")
-    out = {}
-    try:
-        for s in ("com.apple.net", "com.apple.network"):
-            sa = _str_addr(s)
-            if sa is None:
-                continue
-            for xr in xrefs_to(sa):
-                f = func_at(xr)
-                if f is None:
-                    continue
-                code = decompile(f)
-                if not code:
-                    continue
-                for m in re.finditer(r"\+\s*(0x[0-9a-fA-F]+)", code):
-                    try:
-                        off = int(m.group(1), 16)
-                        if 0x10 < off < 0x400:
-                            out.setdefault("socket_so_proto_hint", off)
-                            break
-                    except Exception:
-                        pass
-    except Exception:
-        pass
-
-    for a, n in syms_named("so_get_proto"):
-        f = ensure_func(a)
-        code = decompile(f)
-        if not code:
-            continue
-        for m in re.finditer(r"return\s+\*\([^)]*\)\s*\(\s*\w+\s*\+\s*(0x[0-9a-fA-F]+)", code):
-            try:
-                off = int(m.group(1), 16)
-                if 0 < off < 0x400:
-                    out["socket_so_proto"] = off
-                    break
-            except Exception:
-                pass
-        break
-
-    for a, n in syms_named("so_get_usecount"):
-        f = ensure_func(a)
-        code = decompile(f)
-        if not code:
-            continue
-        for m in re.finditer(r"return\s+\*\([^)]*\)\s*\(\s*\w+\s*\+\s*(0x[0-9a-fA-F]+)", code):
-            try:
-                off = int(m.group(1), 16)
-                if 0 < off < 0x400:
-                    out["socket_so_usecount"] = off
-                    break
-            except Exception:
-                pass
-        break
-
-    for a, n in syms_named("inp_get_socket"):
-        f = ensure_func(a)
-        code = decompile(f)
-        if not code:
-            continue
-        for m in re.finditer(r"return\s+\*\([^)]*\)\s*\(\s*\w+\s*\+\s*(0x[0-9a-fA-F]+)", code):
-            try:
-                off = int(m.group(1), 16)
-                if 0 < off < 0x400:
-                    out["inpcb_inp_socket"] = off
-                    break
-            except Exception:
-                pass
-        break
-
-    return out
-
-
-def _find_primitive_funcs():
-    print("[*] primitive funcs...")
-    out = {}
-    for name in PRIMITIVE_FUNCS:
-        try:
-            a = sym_get(name)
-            if a is not None and _validate_addr(a, "ktext"):
-                out[name] = a
-        except Exception:
-            pass
     return out
 
 
@@ -1760,23 +1197,6 @@ def _find_kalloc(kfree_ext):
                 return a
     except Exception:
         pass
-    if kfree_ext is not None:
-        best = None
-        best_delta = 0x10000
-        try:
-            for a, n in _syms_index:
-                if "kalloc" not in n.lower():
-                    continue
-                if not _validate_addr(a, "ktext"):
-                    continue
-                delta = abs(a - kfree_ext)
-                if delta < best_delta:
-                    best_delta = delta
-                    best = a
-        except Exception:
-            pass
-        if best is not None:
-            return best
     return None
 
 
@@ -1796,33 +1216,24 @@ def _find_kalloc_zones():
     return out
 
 
-def _disasm_all(found_offsets, primitives):
+def _find_primitive_funcs():
+    print("[*] primitive funcs...")
+    out = {}
+    for name in PRIMITIVE_FUNCS:
+        try:
+            a = sym_get(name)
+            if a is not None and _validate_addr(a, "ktext"):
+                out[name] = a
+        except Exception:
+            pass
+    return out
+
+
+def _disasm_all(all_offsets, primitives):
     print("[*] disassembling...")
     lines = []
     lines.append("=== DISASM ===")
     lines.append("")
-
-    for field, off in sorted(found_offsets.items()):
-        names = ACCESSOR_SPECS.get(field, [])
-        for name in names:
-            hits = syms_named(name)
-            if not hits:
-                continue
-            a, n = hits[0]
-            if not _validate_addr(a, "ktext"):
-                continue
-            lines.append("=== {} ({}) @ {} ===".format(field, n, fmt(a)))
-            lines.append("")
-            for l in disasm_func(a):
-                lines.append(l)
-            lines.append("")
-            f = func_at(a)
-            code = decompile(f)
-            if code:
-                lines.append("--- decompiled ---")
-                lines.append(code)
-                lines.append("")
-            break
 
     for name, a in sorted(primitives.items()):
         if not _validate_addr(a, "ktext"):
@@ -1851,7 +1262,6 @@ def main():
         pass
 
     report = []
-    hdr    = []
     jout   = {}
 
     _load_symbols()
@@ -1892,54 +1302,99 @@ def main():
         globals_map.update(_collect_globals_by_symbol())
     except Exception as e:
         print("[-] globals_sym: {}".format(e))
-    try:
-        globals_map.update(_collect_globals_by_anchors())
-    except Exception as e:
-        print("[-] globals_adrp: {}".format(e))
 
     for k, v in CONFIRMED_GLOBALS.items():
         p = _parse_addr(v)
         if p is not None:
-            globals_map.setdefault(k, p)
+            globals_map[k] = p
 
     report.append("")
     report.append("=== GLOBALS ===")
     for k in sorted(globals_map.keys()):
         report.append("  {:<20} {}".format(k, fmt(globals_map[k])))
+    jout["globals"] = {k: fmt(v) for k, v in globals_map.items()}
 
+    print("[*] accessors...")
     report.append("")
     report.append("=== ACCESSOR OFFSETS ===")
     accessor_result = {}
     for field, names in sorted(ACCESSOR_SPECS.items()):
-        off, fname = _accessor_offset(field, names)
-        if off is not None:
-            accessor_result[field] = off
-            report.append("  {:<40} 0x{:X}  ({})".format(field, off, fname))
+        for name in names:
+            hits = syms_named(name)
+            if not hits:
+                continue
+            a, n = hits[0]
+            f = ensure_func(a)
+            if f is None:
+                continue
+            code = decompile(f)
+            if not code:
+                continue
+            for pat in [
+                r"\*\([^)]*\*\)\s*\(\s*\w+\s*\+\s*(0x[0-9a-fA-F]+|\d+)\s*\)",
+                r"return\s+\*\([^)]*\)\s*\(\s*\w+\s*\+\s*(0x[0-9a-fA-F]+|\d+)\s*\)",
+            ]:
+                matched = False
+                for m in re.finditer(pat, code):
+                    try:
+                        off = int(m.group(1), 0)
+                        if 0 < off < 0x2000:
+                            accessor_result[field] = off
+                            report.append("  {:<40} 0x{:X}  ({})".format(field, off, n))
+                            matched = True
+                            break
+                    except Exception:
+                        pass
+                if matched:
+                    break
+            if field in accessor_result:
+                break
     jout["accessor"] = accessor_result
 
     print("[*] walk proc...")
-    proc_offsets = _walk_proc(globals_map.get("kernproc"), globals_map)
+    proc_offsets = {}
+    proc_ptr = None
+    pid_off = None
+
+    kernproc_var = globals_map.get("kernproc")
+    proc_ptr = _deref_var(kernproc_var)
+    if proc_ptr is None:
+        print("[-] kernproc deref failed (var={}, val={})".format(
+            fmt(kernproc_var), fmt(read_u64(kernproc_var) if kernproc_var else None)))
+
+    if proc_ptr is not None:
+        print("[+] proc ptr = {}".format(fmt(proc_ptr)))
+        pid_off, pid_val = _find_pid_offset(proc_ptr)
+        if pid_off is not None:
+            print("[+] proc_p_pid = 0x{:x} (pid={})".format(pid_off, pid_val))
+        proc_offsets = _walk_proc(proc_ptr, pid_off)
+
     print("[*] walk task...")
-    task_offsets, task_ptr = _walk_task(globals_map)
+    task_offsets = {}
+    task_ptr = _deref_var(globals_map.get("kernel_task"))
+    if task_ptr is None:
+        print("[-] kernel_task deref failed")
+    else:
+        task_offsets = _walk_task(task_ptr)
+
     print("[*] walk thread...")
-    thread_offsets, thread_ptr = _walk_thread(task_ptr)
+    thread_offsets = _walk_thread(task_ptr)
+
     print("[*] walk ipc...")
     ipc_offsets = _walk_ipc(task_ptr)
+
     print("[*] walk vm...")
     vm_offsets = _walk_vm(task_ptr)
-    print("[*] walk vnode...")
-    vnode_offsets = _walk_vnode(None, None)
-    print("[*] walk fd...")
-    fd_offsets = _walk_fd(None)
-    print("[*] walk socket...")
-    sock_offsets = _walk_socket(task_ptr)
 
     all_offsets = {}
     for src in (accessor_result, proc_offsets, task_offsets, thread_offsets,
-                ipc_offsets, vm_offsets, vnode_offsets, fd_offsets, sock_offsets):
+                ipc_offsets, vm_offsets):
         for k, v in src.items():
             if isinstance(v, int):
                 all_offsets[k] = v
+
+    for k, v in CONFIRMED_STRUCT.items():
+        all_offsets[k] = v
 
     report.append("")
     report.append("=== KFD OFFSETS ===")
@@ -1947,7 +1402,6 @@ def main():
         report.append("  {:<45} 0x{:X}".format("off_" + k, all_offsets[k]))
 
     jout["offsets"] = dict(all_offsets)
-    jout["globals"] = {k: fmt(v) for k, v in globals_map.items()}
 
     print("[*] primitives...")
     primitives = _find_primitive_funcs()
@@ -1955,14 +1409,10 @@ def main():
     kalloc_ext = _find_kalloc(kfree_ext) or _parse_addr(CONFIRMED.get("kalloc_ext"))
     ci = _parse_addr(CONFIRMED.get("copyin"))
     co = _parse_addr(CONFIRMED.get("copyout"))
-    if ci:
-        primitives["_copyin"] = ci
-    if co:
-        primitives["_copyout"] = co
-    if kfree_ext:
-        primitives["_kfree_ext"] = kfree_ext
-    if kalloc_ext:
-        primitives["_kalloc_ext"] = kalloc_ext
+    if ci: primitives["_copyin"] = ci
+    if co: primitives["_copyout"] = co
+    if kfree_ext: primitives["_kfree_ext"] = kfree_ext
+    if kalloc_ext: primitives["_kalloc_ext"] = kalloc_ext
 
     report.append("")
     report.append("=== PRIMITIVES ===")
@@ -1985,13 +1435,10 @@ def main():
         "sptm_base":                  "0xFFFFFFF027004000",
     }
 
-    jout["sysent_base"]  = fmt(sysent_base) if sysent_base else None
-    jout["mach_trap_table"] = fmt(mt_base) if mt_base else None
     jout["kfree_ext"] = fmt(kfree_ext) if kfree_ext else None
     jout["kalloc_ext"] = fmt(kalloc_ext) if kalloc_ext else None
     jout["copyin"] = fmt(ci) if ci else None
     jout["copyout"] = fmt(co) if co else None
-    jout["sysent_count"] = len(sysent_entries)
 
     try:
         write_lines(OUT_TXT, report)
