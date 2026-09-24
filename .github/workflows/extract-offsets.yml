@@ -73,7 +73,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}/ghidra_project
-          key: kernel-project-${{ hashFiles('kernel.zip') }}
+          key: ghidra-project-${{ hashFiles('kernel.zip') }}
 
       - name: Warm
         id: w
@@ -113,10 +113,10 @@ jobs:
       - name: Placeholder
         if: always()
         run: |
-          [ -f offsets.json ]    || echo '{}' > offsets.json
-          [ -f offsets.h ]       || printf '#ifndef NK_OFFSETS_H\n#define NK_OFFSETS_H\n#endif\n' > offsets.h
-          [ -f kfd_offsets.h ]   || printf '#ifndef KFD_OFFSETS_H\n#define KFD_OFFSETS_H\n#endif\n' > kfd_offsets.h
-          [ -f disasm.txt ]      || echo 'no disasm' > disasm.txt
+          [ -f offsets.json ]     || echo '{}' > offsets.json
+          [ -f offsets.h ]        || printf '#ifndef NK_OFFSETS_H\n#define NK_OFFSETS_H\n#endif\n' > offsets.h
+          [ -f kfd_offsets.h ]    || printf '#ifndef KFD_OFFSETS_H\n#define KFD_OFFSETS_H\n#endif\n' > kfd_offsets.h
+          [ -f disasm.txt ]       || echo 'no disasm' > disasm.txt
           [ -f nk_kernel_rw.txt ] || echo 'no output' > nk_kernel_rw.txt
           ls -la offsets.json offsets.h kfd_offsets.h disasm.txt nk_kernel_rw.txt
 
