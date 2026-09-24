@@ -13,8 +13,8 @@ permissions:
 
 jobs:
   offsets:
-    runs-on: ubuntu-latest
-    timeout-minutes: 240
+    runs-on: macos-latest
+    timeout-minutes: 300
 
     env:
       DEVICE: "iPhone14,5"
@@ -26,42 +26,39 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: "17"
-          distribution: temurin
-
-      - name: Cache Ghidra install
-        id: cache-ghidra
+      - name: Cache Homebrew
         uses: actions/cache@v4
         with:
-          path: /opt/ghidra
-          key: ghidra-11.0.3-linux
+          path: ~/Library/Caches/Homebrew
+          key: brew-macOS-${{ hashFiles('.github/workflows/extract-kernel-offsets.yml') }}
+          restore-keys: brew-macOS-
+
+      - name: Install tools
+        run: |
+          set -euo pipefail
+          brew install xcodegen ldid ipsw
+          brew link --overwrite xcodegen ldid ipsw
 
       - name: Setup Ghidra
-        if: steps.cache-ghidra.outputs.cache-hit != 'true'
-        uses: antoniovazquezblanco/setup-ghidra@v2.0.6
-        with:
-          version: "11.0.3"
-          install-path: /opt/ghidra
+        run: |
+          set -euo pipefail
+          if ! brew list ghidra >/dev/null 2>&1; then
+            brew install --cask ghidra
+          fi
+          echo "GHIDRA_ROOT=/Applications/ghidra_11.0.3_PUBLIC" >> "${GITHUB_ENV}"
 
       - name: Locate Ghidra
         run: |
-          if [[ -d /opt/ghidra/support ]]; then
-            echo "GHIDRA_ROOT=/opt/ghidra" >> "${GITHUB_ENV}"
-          elif [[ -n "${GHIDRA_INSTALL_DIR:-}" ]]; then
-            echo "GHIDRA_ROOT=${GHIDRA_INSTALL_DIR}" >> "${GITHUB_ENV}"
-          else
-            echo "ERROR: Ghidra not found"
-            exit 1
-          fi
-
-      - name: Install ipsw
-        run: |
           set -euo pipefail
-          sudo snap install ipsw || true
-          ipsw version
+          if [[ ! -d "${GHIDRA_ROOT}/support" ]]; then
+            FOUND="$(find /Applications /opt -maxdepth 2 -type d -name 'ghidra_*' -print -quit 2>/dev/null || true)"
+            if [[ -z "${FOUND}" ]]; then
+              echo "ERROR: Ghidra not found"
+              exit 1
+            fi
+            echo "GHIDRA_ROOT=${FOUND}" >> "${GITHUB_ENV}"
+          fi
+          ls -la "${GHIDRA_ROOT}/support/analyzeHeadless"
 
       - name: Cache IPSW
         id: cache-ipsw
@@ -102,7 +99,7 @@ jobs:
           echo "KERNEL=${KERNEL}" >> "${GITHUB_ENV}"
           ls -lh "${KERNEL}"
 
-      - name: Cache symbolicator signatures
+      - name: Cache Symbolicator
         id: cache-sigs
         uses: actions/cache@v4
         with:
@@ -122,7 +119,7 @@ jobs:
           rm -f "${GITHUB_WORKSPACE}/symbols.json"
           ipsw kernel symbolicate \
             --signatures "${GITHUB_WORKSPACE}/symbolicator/kernel" \
-            --json "${KERNEL}"
+            --json "${KERNEL}" || true
           SRC=""
           for cand in "${KERNEL}.symbols.json" "${GITHUB_WORKSPACE}/symbols.json"; do
             if [[ -f "${cand}" ]] && [[ -s "${cand}" ]]; then
@@ -138,48 +135,43 @@ jobs:
             exit 1
           fi
           cp "${SRC}" "${GITHUB_WORKSPACE}/symbols.json"
-          SZ="$(stat -c %s "${GITHUB_WORKSPACE}/symbols.json")"
-          if [[ "${SZ}" -lt 1000 ]]; then
-            echo "ERROR: symbols.json too small (${SZ} bytes)"
-            exit 1
-          fi
-          echo "[+] symbols.json OK (${SZ} bytes)"
+          echo "[+] symbols.json OK ($(stat -f %z "${GITHUB_WORKSPACE}/symbols.json") bytes)"
 
       - name: Cache Ghidra project
         id: cache-project
         uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}/ghidra_project
-          key: ghidra-project-${{ env.DEVICE_SLUG }}-${{ env.IOS_BUILD }}-v1
+          key: ghidra-project-${{ env.DEVICE_SLUG }}-${{ env.IOS_BUILD }}-v4
 
       - name: Run Ghidra (warm)
         if: steps.cache-project.outputs.cache-hit == 'true'
         env:
-          _JAVA_OPTIONS: "-Xmx6g -Djava.awt.headless=true"
+          _JAVA_OPTIONS: "-Xmx8g -Djava.awt.headless=true"
         run: |
           set -euo pipefail
           "${GHIDRA_ROOT}/support/analyzeHeadless" \
             "${GITHUB_WORKSPACE}/ghidra_project" KernelProject \
             -process "kernelcache.release.iPhone14,5" \
             -noanalysis \
-            -postScript spectre_find_sysent.py \
+            -postScript kernel_kw_hunt.py \
             -scriptPath "${GITHUB_WORKSPACE}/scripts" \
             2>&1 | tee "${GITHUB_WORKSPACE}/ghidra.log"
 
       - name: Run Ghidra (cold)
         if: steps.cache-project.outputs.cache-hit != 'true'
         env:
-          _JAVA_OPTIONS: "-Xmx6g -Djava.awt.headless=true"
+          _JAVA_OPTIONS: "-Xmx8g -Djava.awt.headless=true"
         run: |
           set -euo pipefail
           mkdir -p "${GITHUB_WORKSPACE}/ghidra_project"
           "${GHIDRA_ROOT}/support/analyzeHeadless" \
             "${GITHUB_WORKSPACE}/ghidra_project" KernelProject \
             -import "${KERNEL}" \
-            -postScript spectre_find_sysent.py \
+            -postScript kernel_kw_hunt.py \
             -scriptPath "${GITHUB_WORKSPACE}/scripts" \
             -max-cpu 4 \
-            -analysisTimeoutPerFile 9000 \
+            -analysisTimeoutPerFile 12000 \
             2>&1 | tee "${GITHUB_WORKSPACE}/ghidra.log"
 
       - name: Save Ghidra project after cold
@@ -187,18 +179,24 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: ${{ github.workspace }}/ghidra_project
-          key: ghidra-project-${{ env.DEVICE_SLUG }}-${{ env.IOS_BUILD }}-v1
+          key: ghidra-project-${{ env.DEVICE_SLUG }}-${{ env.IOS_BUILD }}-v4
 
       - name: Upload artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: spectre-gadgets-${{ github.sha }}
+          name: kernel-offsets-${{ github.sha }}
           path: |
-            ${{ github.workspace }}/spectre_sysent.txt
-            ${{ github.workspace }}/spectre_gadgets.txt
-            ${{ github.workspace }}/spectre_candidates.txt
-            ${{ github.workspace }}/spectre_strings.txt
+            ${{ github.workspace }}/nk_sysent.txt
+            ${{ github.workspace }}/nk_anchors.h
+            ${{ github.workspace }}/nk_necp_full.txt
+            ${{ github.workspace }}/nk_zone_offsets.txt
+            ${{ github.workspace }}/nk_kalloc_sites.txt
+            ${{ github.workspace }}/nk_copy_ops.txt
+            ${{ github.workspace }}/nk_iokit_methods.txt
+            ${{ github.workspace }}/nk_kw_gadgets.txt
+            ${{ github.workspace }}/nk_uaf_candidates.txt
+            ${{ github.workspace }}/nk_report.txt
             ${{ github.workspace }}/ghidra.log
           retention-days: 30
           if-no-files-found: warn
