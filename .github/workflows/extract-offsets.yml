@@ -150,7 +150,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}/ghidra_project
-          key: ghidra-project-${{ env.DEVICE_SLUG }}-${{ env.IOS_BUILD }}-v2
+          key: ghidra-project-${{ env.DEVICE_SLUG }}-${{ env.IOS_BUILD }}-v1
 
       - name: Run Ghidra (warm)
         if: steps.cache-project.outputs.cache-hit == 'true'
@@ -187,7 +187,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: ${{ github.workspace }}/ghidra_project
-          key: ghidra-project-${{ env.DEVICE_SLUG }}-${{ env.IOS_BUILD }}-v2
+          key: ghidra-project-${{ env.DEVICE_SLUG }}-${{ env.IOS_BUILD }}-v1
 
       - name: Upload artifacts
         if: always()
