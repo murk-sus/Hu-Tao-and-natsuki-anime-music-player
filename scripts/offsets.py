@@ -7,9 +7,6 @@ import json
 WORKSPACE = os.environ.get("GITHUB_WORKSPACE", "/tmp")
 OUT_PATH = os.path.join(WORKSPACE, "offsets.txt")
 SYMBOLS_JSON = os.path.join(WORKSPACE, "symbols.json")
-INSTR_LIMIT = 500
-FUNC_SIZE_LIMIT = 96
-FIELD_OFFSET_MAX = 0x2000
 
 TARGET_SYMBOLS = [
     "_allproc", "_kernproc", "_nprocs",
@@ -17,10 +14,9 @@ TARGET_SYMBOLS = [
     "_proc_ppid", "_proc_list_entry",
     "_kauth_cred_getuid", "_kauth_cred_getruid", "_kauth_cred_getsvuid",
     "_kauth_cred_getgid", "_kauth_cred_getrgid", "_kauth_cred_getsvgid",
-    "_kauth_cred_getgroups", "_kauth_cred_getngroups",
     "_cs_enforcement_disable", "_amfi_get_out_of_my_way",
     "_necp_client_action", "_necp_client_copy_result",
-    "_necp_client_add_flow", "_necp_client_remove_flow", "_necp_update_flow",
+    "_necp_client_add_flow", "_necp_client_remove_flow",
     "_necp_client_copy", "_necp_client_copy_internal",
     "_necp_client_update_cache", "_necp_client_update_flows",
     "_necp_client_acquire_agent_token", "_necp_arena_initialize",
@@ -32,9 +28,8 @@ TARGET_SYMBOLS = [
     "_socket_so_rcv", "_socket_so_snd",
     "_rootvnode", "_kernel_map", "_host_priv_self",
     "_bsd_syscall_table", "_mach_trap_table", "_mig_kern_subsystem",
-    "_vm_kernel_slide", "_kernproc_self", "_procs_tree",
-    "_kalloc_init", "_kalloc_large", "_kalloc_heap_init",
-    "_kalloc_type_validate_flags",
+    "_vm_kernel_slide", "_procs_tree",
+    "_kalloc_init", "_kalloc_large",
     "_dlil_ifaddr_bytes", "_route_output", "_rtinit_locked",
     "_pmap_enter_pte", "_pmap_expand",
     "_resolve_kernel_task", "_task_info",
@@ -45,7 +40,7 @@ TARGET_SYMBOLS = [
 ANCHOR_STRINGS = [
     "allproc", "kernproc",
     "necp_client", "necp_session", "necp_arena",
-    "cs_enforcement", "amfi_get_out_of_my_way",
+    "cs_enforcement",
     "task_for_pid", "proc_info",
     "kalloc_type",
     "dlil_ifaddr", "rtm_scrub",
@@ -74,7 +69,6 @@ def fmt_hex(v):
 
 def load_symbols_json():
     result = {}
-
     candidates = [
         SYMBOLS_JSON,
         "/tmp/symbols.json",
@@ -82,47 +76,45 @@ def load_symbols_json():
         "/home/runner/symbols.json",
     ]
 
-    found_path = None
+    found = None
     for p in candidates:
         try:
             if os.path.exists(p) and os.path.getsize(p) > 1000:
-                found_path = p
+                found = p
                 break
         except Exception:
             continue
 
-    if not found_path:
-        print("[-] symbols.json not found in candidates")
+    if not found:
+        print("[-] symbols.json not found")
         return result
 
-    print("[+] using {}".format(found_path))
-
+    print("[+] using {}".format(found))
     try:
-        with open(found_path) as f:
+        with open(found) as f:
             data = json.load(f)
     except Exception as e:
-        print("[-] json parse fail: {}".format(e))
+        print("[-] parse fail: {}".format(e))
         return result
 
     if not isinstance(data, dict):
-        print("[-] unexpected type: {}".format(type(data).__name__))
         return result
 
     for k, v in data.items():
         try:
             if not isinstance(k, str) or not isinstance(v, str):
                 continue
-            addr_int = int(k, 10)
-            if addr_int < 0xfffffff000000000 or addr_int > 0xffffffffffffffff:
+            addr = int(k, 10)
+            if addr < 0xfffffff000000000 or addr > 0xffffffffffffffff:
                 continue
             name = v.strip()
             if not name or len(name) > 200:
                 continue
             if name.startswith("vtable for ") or name.startswith("site.struct "):
                 continue
-            result[name] = addr_int & 0xFFFFFFFFFFFFFFFF
+            result[name] = addr & 0xFFFFFFFFFFFFFFFF
             if not name.startswith("_"):
-                result["_" + name] = addr_int & 0xFFFFFFFFFFFFFFFF
+                result["_" + name] = addr & 0xFFFFFFFFFFFFFFFF
         except Exception:
             continue
 
@@ -195,7 +187,7 @@ def find_xrefs_to(addr):
     return refs
 
 
-def dump_instructions_from(addr, limit=INSTR_LIMIT):
+def dump_instructions_from(addr, limit=100):
     lines = []
     try:
         gaddr = toAddr(to_java_long(addr))
@@ -217,44 +209,6 @@ def dump_instructions_from(addr, limit=INSTR_LIMIT):
         instr = instr.getNext()
         count += 1
     return lines
-
-
-def decompile_function(func):
-    from ghidra.app.decompiler import DecompInterface, DecompileOptions
-    from ghidra.util.task import ConsoleTaskMonitor
-    ifc = DecompInterface()
-    ifc.setOptions(DecompileOptions())
-    ifc.openProgram(currentProgram)
-    res = ifc.decompileFunction(func, 120, ConsoleTaskMonitor())
-    if not res.decompileCompleted():
-        return ""
-    return res.getDecompiledFunction().getC()
-
-
-def decompile_at(addr):
-    try:
-        gaddr = toAddr(to_java_long(addr))
-        func = getFunctionAt(gaddr)
-        if func is None:
-            disassemble(gaddr)
-            func = createFunction(gaddr, None)
-        if func is None:
-            return ""
-        return decompile_function(func)
-    except Exception:
-        return ""
-
-
-def extract_field_offsets(code):
-    hits = []
-    pattern = re.compile(
-        r"\((?P<type>[A-Za-z_][A-Za-z0-9_ ]*?)\s*\*\)\s*"
-        r"\((?P<var>a1|param_1|arg1|self)\s*\+\s*"
-        r"(?P<off>0x[0-9a-fA-F]+|\d+)\)"
-    )
-    for m in pattern.finditer(code):
-        hits.append((int(m.group("off"), 0), m.group("type").strip()))
-    return hits
 
 
 def parse_table(addr, count, stride=8):
@@ -280,8 +234,47 @@ def emit_symbol_table(out, symbols, target_list, section_name):
         else:
             line = "{:<45} NOT_FOUND".format(name)
         out.write(line + "\n")
-        out.flush()
     out.write("  --- total found: {}/{}\n".format(found, len(target_list)))
+
+
+def scan_accessor_patterns(out):
+    out.write("\n=== ACCESSOR PATTERNS (disasm scan) ===\n")
+    fm = currentProgram.getFunctionManager()
+    total = 0
+    hits = []
+    for f in fm.getFunctions(True):
+        total += 1
+        body = f.getBody()
+        if body.getNumAddresses() > 24:
+            continue
+        entry = to_unsigned(f.getEntryPoint().getOffset())
+        instr = getInstructionAt(toAddr(to_java_long(entry)))
+        if instr is None:
+            continue
+        mn = instr.getMnemonicString()
+        if mn not in ("ldr", "ldrb", "ldrh"):
+            continue
+        op = instr.toString()
+        if "[x0" not in op and "[w0" not in op:
+            continue
+        m = re.search(r"#0x([0-9a-fA-F]+)", op)
+        if not m:
+            continue
+        off = int(m.group(1), 16)
+        if not (0 < off < 0x2000):
+            continue
+        nxt = instr.getNext()
+        if nxt is None:
+            continue
+        if nxt.getMnemonicString() != "ret":
+            continue
+        hits.append((f.getName(), entry, off, mn))
+
+    out.write("scanned funcs: {}\n".format(total))
+    out.write("accessor hits: {}\n".format(len(hits)))
+    for name, addr, off, mn in hits[:3000]:
+        out.write("  {:<40} {}  +0x{:x}  {}\n".format(name, fmt_hex(addr), off, mn))
+    out.flush()
 
 
 def main():
@@ -298,6 +291,7 @@ def main():
         out.write("SymbolsLoaded: {}\n".format(len(symbols)))
 
         emit_symbol_table(out, symbols, TARGET_SYMBOLS, "SYMBOLS")
+        out.flush()
 
         out.write("\n=== STRING ANCHORS ===\n")
         strings = scan_strings()
@@ -358,10 +352,10 @@ def main():
             if maxsize is not None:
                 out.write("  maxsize = {}\n".format(maxsize))
             if count is not None:
-                out.write("  routine count = {}\n".format(count))
+                out.write("  routines count = {}\n".format(count))
                 routines_table = read_u64(taddr + 0x28)
                 if routines_table:
-                    out.write("  routines table @ {}\n".format(fmt_hex(routines_table)))
+                    out.write("  routines @ {}\n".format(fmt_hex(routines_table)))
                     for i in range(min(count, 32)):
                         r = read_u64(routines_table + i * 0x18)
                         if r:
@@ -369,57 +363,18 @@ def main():
             break
         out.flush()
 
-        out.write("\n=== ACCESSOR CANDIDATES ===\n")
-        fm = currentProgram.getFunctionManager()
-        total = 0
-        candidates = []
-        for f in fm.getFunctions(True):
-            total += 1
-            body = f.getBody()
-            if body.getNumAddresses() > FUNC_SIZE_LIMIT:
-                continue
-            code = decompile_function(f)
-            if not code:
-                continue
-            hits = extract_field_offsets(code)
-            if len(hits) == 1 and 0 < hits[0][0] < FIELD_OFFSET_MAX:
-                candidates.append((
-                    f.getName(),
-                    to_unsigned(f.getEntryPoint().getOffset()),
-                    hits[0][0],
-                    hits[0][1]))
-        out.write("scanned: {}\n".format(total))
-        out.write("candidates: {}\n\n".format(len(candidates)))
-        for name, addr, off, typ in candidates[:5000]:
-            out.write("  {:<45} {}  +0x{:x}  {}\n".format(
-                name, fmt_hex(addr), off, typ))
-        out.flush()
+        scan_accessor_patterns(out)
 
         out.write("\n=== ANCHOR XREF DISASM ===\n")
-        for key in ("necp_client", "necp_session", "necp_arena",
-                     "dlil_ifaddr", "allproc", "proc_info"):
+        for key in ("necp_client", "necp_session", "dlil_ifaddr",
+                    "allproc", "proc_info"):
             for s, a in strings.items():
                 if key in s:
-                    for x in find_xrefs_to(a)[:2]:
+                    for x in find_xrefs_to(a)[:1]:
                         out.write("\n--- xref of {} at {} ---\n".format(key, fmt_hex(x)))
-                        for ln in dump_instructions_from(x, limit=80):
+                        for ln in dump_instructions_from(x, limit=60):
                             out.write(ln + "\n")
                     break
-        out.flush()
-
-        out.write("\n=== MANUAL DISASM ===\n")
-        manual = os.environ.get("MANUAL_ADDRS", "").split(",")
-        for a in manual:
-            a = a.strip()
-            if not a:
-                continue
-            try:
-                addr = int(a, 0)
-            except ValueError:
-                continue
-            out.write("\n--- {} ---\n".format(fmt_hex(addr)))
-            for ln in dump_instructions_from(addr):
-                out.write(ln + "\n")
         out.flush()
 
         out.write("\n=== DONE ===\n")
