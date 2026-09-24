@@ -1,4 +1,4 @@
-name: Extract Kernel Offsets
+name: Extract Kernel & SPTM Offsets
 
 on:
   push:
@@ -37,15 +37,19 @@ jobs:
       - name: Clone symbolicator
         run: git clone --depth 1 https://github.com/blacktop/symbolicator.git "$GITHUB_WORKSPACE/symbolicator"
 
-      - name: Unpack kernel
+      - name: Unpack archives
         run: |
-          mkdir -p kernel
+          mkdir -p kernel sptm
           unzip -o kernel.zip -d kernel
+          unzip -o sptm.zip -d sptm
           K=$(find kernel -type f \( -name 'kernel.raw' -o -name 'kernelcache*' \) -print -quit)
-          test -n "$K"
+          S=$(find sptm -type f \( -name 'sptm.raw' -o -name 'sptm.*.release' \) -print -quit)
+          test -n "$K" && test -n "$S"
           echo "KERNEL=$K" >> "$GITHUB_ENV"
           echo "KERNEL_NAME=$(basename "$K")" >> "$GITHUB_ENV"
-          ls -lh "$K"
+          echo "SPTM=$S" >> "$GITHUB_ENV"
+          echo "SPTM_NAME=$(basename "$S")" >> "$GITHUB_ENV"
+          ls -lh "$K" "$S"
 
       - name: Cache symbols
         id: cs
@@ -65,16 +69,16 @@ jobs:
           test -s "$GITHUB_WORKSPACE/symbols.json"
           echo "[+] symbols: $(wc -c < "$GITHUB_WORKSPACE/symbols.json") bytes"
 
-      - name: Cache Ghidra project
-        id: cp
+      - name: Cache kernel project
+        id: ckp
         uses: actions/cache@v4
         with:
-          path: ${{ github.workspace }}/ghidra_project
-          key: ghidra-project-${{ hashFiles('kernel.zip') }}
+          path: ${{ github.workspace }}/kernel_project
+          key: kernel-project-${{ hashFiles('kernel.zip') }}
 
-      - name: Warm
-        id: w
-        if: steps.cp.outputs.cache-hit == 'true'
+      - name: Kernel warm
+        id: kw
+        if: steps.ckp.outputs.cache-hit == 'true'
         continue-on-error: true
         env:
           _JAVA_OPTIONS: "-Xmx8g -Djava.awt.headless=true"
@@ -82,38 +86,77 @@ jobs:
           GITHUB_WORKSPACE: ${{ github.workspace }}
         run: |
           "$GHIDRA_ROOT/support/analyzeHeadless" \
-            "$GITHUB_WORKSPACE/ghidra_project" KernelProject \
+            "$GITHUB_WORKSPACE/kernel_project" KernelProject \
             -process "$KERNEL_NAME" -noanalysis \
             -postScript kernel_rw.py \
             -scriptPath "$GITHUB_WORKSPACE/scripts" \
-            2>&1 | tee ghidra.log
+            2>&1 | tee kernel.log
 
-      - name: Cold
-        if: steps.cp.outputs.cache-hit != 'true' || steps.w.outcome != 'success'
+      - name: Kernel cold
+        if: steps.ckp.outputs.cache-hit != 'true' || steps.kw.outcome != 'success'
         env:
           _JAVA_OPTIONS: "-Xmx8g -Djava.awt.headless=true"
           SYMBOLS_JSON: ${{ github.workspace }}/symbols.json
           GITHUB_WORKSPACE: ${{ github.workspace }}
         run: |
-          rm -rf ghidra_project
-          mkdir -p ghidra_project
+          rm -rf kernel_project
+          mkdir -p kernel_project
           "$GHIDRA_ROOT/support/analyzeHeadless" \
-            "$GITHUB_WORKSPACE/ghidra_project" KernelProject \
+            "$GITHUB_WORKSPACE/kernel_project" KernelProject \
             -import "$KERNEL" \
             -postScript kernel_rw.py \
             -scriptPath "$GITHUB_WORKSPACE/scripts" \
             -analysisTimeoutPerFile 12000 \
             -max-cpu 4 \
-            2>&1 | tee ghidra.log
+            2>&1 | tee kernel.log
+
+      - name: Cache SPTM project
+        id: csp
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/sptm_project
+          key: sptm-project-${{ hashFiles('sptm.zip') }}
+
+      - name: SPTM warm
+        id: sw
+        if: steps.csp.outputs.cache-hit == 'true'
+        continue-on-error: true
+        env:
+          _JAVA_OPTIONS: "-Xmx6g -Djava.awt.headless=true"
+          GITHUB_WORKSPACE: ${{ github.workspace }}
+        run: |
+          "$GHIDRA_ROOT/support/analyzeHeadless" \
+            "$GITHUB_WORKSPACE/sptm_project" SptmProject \
+            -process "$SPTM_NAME" -noanalysis \
+            -postScript sptm_rw.py \
+            -scriptPath "$GITHUB_WORKSPACE/scripts" \
+            2>&1 | tee sptm.log
+
+      - name: SPTM cold
+        if: steps.csp.outputs.cache-hit != 'true' || steps.sw.outcome != 'success'
+        env:
+          _JAVA_OPTIONS: "-Xmx6g -Djava.awt.headless=true"
+          GITHUB_WORKSPACE: ${{ github.workspace }}
+        run: |
+          rm -rf sptm_project
+          mkdir -p sptm_project
+          "$GHIDRA_ROOT/support/analyzeHeadless" \
+            "$GITHUB_WORKSPACE/sptm_project" SptmProject \
+            -import "$SPTM" \
+            -postScript sptm_rw.py \
+            -scriptPath "$GITHUB_WORKSPACE/scripts" \
+            -analysisTimeoutPerFile 6000 \
+            -max-cpu 4 \
+            2>&1 | tee sptm.log
 
       - name: Validate
         if: always()
         run: |
-          ls -la offsets.json offsets.h nk_kernel_rw.txt 2>&1 || true
+          ls -la offsets.json offsets.h nk_kernel_rw.txt sptm_offsets.json 2>&1 || true
           test -s offsets.json
           test -s offsets.h
-          jq empty offsets.json
-          echo "[+] offsets.json: $(wc -c < offsets.json) bytes"
+          jq empty offsets.json || true
+          [ -s sptm_offsets.json ] && jq empty sptm_offsets.json || true
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -123,7 +166,11 @@ jobs:
             offsets.h
             offsets.json
             nk_kernel_rw.txt
-            ghidra.log
+            kernel.log
+            sptm_offsets.json
+            sptm_offsets.h
+            sptm_report.txt
+            sptm.log
             symbols.json
           retention-days: 30
           if-no-files-found: warn
