@@ -34,7 +34,7 @@ jobs:
           java-version: "17"
           distribution: temurin
 
-      - name: Cache Ghidra binary
+      - name: Cache Ghidra
         id: cache-ghidra
         uses: actions/cache@v4
         with:
@@ -51,18 +51,12 @@ jobs:
           sudo unzip -q /tmp/ghidra.zip -d /opt/
           FOUND="$(find /opt -maxdepth 1 -type d -name 'ghidra_*' -print -quit)"
           sudo mv "${FOUND}" /opt/ghidra
-
-      - name: Locate Ghidra
-        run: |
-          set -euo pipefail
-          ls -la /opt/ghidra/support/analyzeHeadless
           echo "GHIDRA_ROOT=/opt/ghidra" >> "${GITHUB_ENV}"
 
       - name: Install ipsw
         run: |
           set -euo pipefail
-          LATEST=$(curl -fsSL https://api.github.com/repos/blacktop/ipsw/releases/latest \
-                    | jq -r .tag_name | sed 's/^v//')
+          LATEST=$(curl -fsSL https://api.github.com/repos/blacktop/ipsw/releases/latest | jq -r .tag_name | sed 's/^v//')
           URL="https://github.com/blacktop/ipsw/releases/download/v${LATEST}/ipsw_${LATEST}_linux_x86_64.tar.gz"
           curl -fsSL "${URL}" -o /tmp/ipsw.tar.gz
           sudo tar -C /usr/local/bin -xzf /tmp/ipsw.tar.gz ipsw
@@ -80,11 +74,8 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "${GITHUB_WORKSPACE}/ipsw"
-          ipsw download ipsw \
-            --device "${DEVICE}" \
-            --build "${IOS_BUILD}" \
-            --output "${GITHUB_WORKSPACE}/ipsw" \
-            --confirm
+          ipsw download ipsw --device "${DEVICE}" --build "${IOS_BUILD}" \
+            --output "${GITHUB_WORKSPACE}/ipsw" --confirm
           find "${GITHUB_WORKSPACE}/ipsw" -type f -exec ls -lh {} \;
 
       - name: Extract Kernelcache
@@ -129,13 +120,11 @@ jobs:
           path: ${{ github.workspace }}/symbols.json
           key: symbols-${{ env.DEVICE_SLUG }}-${{ env.IOS_BUILD }}
 
-      - name: Symbolicate
+      - name: Symbolicate (blacktop)
         if: steps.cache-symbols.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
-          ipsw kernel sym \
-            "${KERNEL}" \
-            --json \
+          ipsw kernel sym "${KERNEL}" --json \
             --signatures "${GITHUB_WORKSPACE}/symbolicator/kernel"
           SRC="${KERNEL}.json"
           if [[ ! -f "${SRC}" ]]; then
@@ -149,12 +138,52 @@ jobs:
           cp "${SRC}" "${GITHUB_WORKSPACE}/symbols.json"
           echo "[+] symbols.json: $(wc -c < "${GITHUB_WORKSPACE}/symbols.json") bytes"
 
+      - name: Cache iometa
+        id: cache-iometa
+        uses: actions/cache@v4
+        with:
+          path: /tmp/iometa
+          key: iometa-${{ runner.os }}
+
+      - name: Build iometa
+        if: steps.cache-iometa.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y clang libc++-dev libc++abi-dev
+          git clone --recursive https://github.com/Siguza/iometa.git /tmp/iometa
+          cd /tmp/iometa
+          make
+
+      - name: Run iometa
+        run: |
+          set -euo pipefail
+          /tmp/iometa/iometa -A "${KERNEL}" > "${GITHUB_WORKSPACE}/iometa_output.txt" || true
+          if [[ ! -s "${GITHUB_WORKSPACE}/iometa_output.txt" ]]; then
+            /tmp/iometa/iometa "${KERNEL}" > "${GITHUB_WORKSPACE}/iometa_output.txt" || true
+          fi
+          wc -l "${GITHUB_WORKSPACE}/iometa_output.txt"
+
+      - name: Cache ghidra_kernelcache
+        id: cache-kc
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/ghidra_kernelcache
+          key: ghidra-kc-${{ runner.os }}
+
+      - name: Clone ghidra_kernelcache
+        if: steps.cache-kc.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          git clone --depth 1 https://github.com/ammaraskar/ghidra_kernelcache.git \
+            "${GITHUB_WORKSPACE}/ghidra_kernelcache"
+
       - name: Cache Ghidra project
         id: cache-project
         uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}/ghidra_project
-          key: ghidra-project-${{ env.DEVICE_SLUG }}-${{ env.IOS_BUILD }}-v1
+          key: ghidra-project-${{ env.DEVICE_SLUG }}-${{ env.IOS_BUILD }}-v2
 
       - name: Clean old outputs
         run: |
@@ -171,14 +200,16 @@ jobs:
           _JAVA_OPTIONS: "-Xmx8g -Djava.awt.headless=true"
           SYMBOLS_JSON: ${{ github.workspace }}/symbols.json
           GITHUB_WORKSPACE: ${{ github.workspace }}
+          GHIDRA_KC_PATH: ${{ github.workspace }}/ghidra_kernelcache
         run: |
           set -euo pipefail
           "${GHIDRA_ROOT}/support/analyzeHeadless" \
             "${GITHUB_WORKSPACE}/ghidra_project" KernelProject \
             -process "${KERNEL_NAME}" \
             -noanalysis \
-            -postScript kernel_rw.py \
-            -scriptPath "${GITHUB_WORKSPACE}/scripts" \
+            -postScript ghidra_kc_runner.py "${GITHUB_WORKSPACE}/iometa_output.txt" \
+            -postScript kernel_read_offsets.py \
+            -scriptPath "${GITHUB_WORKSPACE}/scripts:${GITHUB_WORKSPACE}/ghidra_kernelcache" \
             2>&1 | tee "${GITHUB_WORKSPACE}/ghidra.log"
 
       - name: Run Ghidra (cold)
@@ -187,14 +218,16 @@ jobs:
           _JAVA_OPTIONS: "-Xmx8g -Djava.awt.headless=true"
           SYMBOLS_JSON: ${{ github.workspace }}/symbols.json
           GITHUB_WORKSPACE: ${{ github.workspace }}
+          GHIDRA_KC_PATH: ${{ github.workspace }}/ghidra_kernelcache
         run: |
           set -euo pipefail
           mkdir -p "${GITHUB_WORKSPACE}/ghidra_project"
           "${GHIDRA_ROOT}/support/analyzeHeadless" \
             "${GITHUB_WORKSPACE}/ghidra_project" KernelProject \
             -import "${KERNEL}" \
-            -postScript kernel_rw.py \
-            -scriptPath "${GITHUB_WORKSPACE}/scripts" \
+            -postScript ghidra_kc_runner.py "${GITHUB_WORKSPACE}/iometa_output.txt" \
+            -postScript kernel_read_offsets.py \
+            -scriptPath "${GITHUB_WORKSPACE}/scripts:${GITHUB_WORKSPACE}/ghidra_kernelcache" \
             -max-cpu 4 \
             -analysisTimeoutPerFile 12000 \
             2>&1 | tee "${GITHUB_WORKSPACE}/ghidra.log"
@@ -209,6 +242,7 @@ jobs:
             ${{ github.workspace }}/offsets.h
             ${{ github.workspace }}/offsets.json
             ${{ github.workspace }}/symbols.json
+            ${{ github.workspace }}/iometa_output.txt
             ${{ github.workspace }}/ghidra.log
           retention-days: 30
           if-no-files-found: warn
