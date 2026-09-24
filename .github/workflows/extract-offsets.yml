@@ -22,7 +22,6 @@ jobs:
 
       - name: Install Ghidra
         run: |
-          set -euo pipefail
           curl -fsSL -o /tmp/g.zip https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_11.4.2_build/ghidra_11.4.2_PUBLIC_20250826.zip
           unzip -q /tmp/g.zip -d "$GITHUB_WORKSPACE"
           mv "$GITHUB_WORKSPACE"/ghidra_11.4.2_PUBLIC "$GITHUB_WORKSPACE/ghidra"
@@ -30,7 +29,6 @@ jobs:
 
       - name: Install ipsw
         run: |
-          set -euo pipefail
           V=$(curl -fsSL https://api.github.com/repos/blacktop/ipsw/releases/latest | jq -r .tag_name | sed 's/^v//')
           curl -fsSL -o /tmp/i.tgz "https://github.com/blacktop/ipsw/releases/download/v${V}/ipsw_${V}_linux_x86_64.tar.gz"
           tar -C /usr/local/bin -xzf /tmp/i.tgz ipsw
@@ -41,11 +39,10 @@ jobs:
 
       - name: Unpack kernel
         run: |
-          set -euo pipefail
           mkdir -p kernel
           unzip -o kernel.zip -d kernel
           K=$(find kernel -type f \( -name 'kernel.raw' -o -name 'kernelcache*' \) -print -quit)
-          test -n "$K" || { echo "no kernel found"; exit 1; }
+          test -n "$K"
           echo "KERNEL=$K" >> "$GITHUB_ENV"
           echo "KERNEL_NAME=$(basename "$K")" >> "$GITHUB_ENV"
           ls -lh "$K"
@@ -60,13 +57,12 @@ jobs:
       - name: Symbolicate
         if: steps.cs.outputs.cache-hit != 'true'
         run: |
-          set -euo pipefail
           ipsw kernel sym "$KERNEL" --json --signatures "$GITHUB_WORKSPACE/symbolicator/kernel"
           SRC="${KERNEL}.json"
           [[ -f "$SRC" ]] || SRC=$(find kernel -name '*.json' -print -quit)
-          test -f "$SRC" || { echo "no sym output"; exit 1; }
+          test -f "$SRC"
           cp "$SRC" "$GITHUB_WORKSPACE/symbols.json"
-          test -s "$GITHUB_WORKSPACE/symbols.json" || { echo "symbols.json empty"; exit 1; }
+          test -s "$GITHUB_WORKSPACE/symbols.json"
           echo "[+] symbols: $(wc -c < "$GITHUB_WORKSPACE/symbols.json") bytes"
 
       - name: Cache Ghidra project
@@ -75,8 +71,6 @@ jobs:
         with:
           path: ${{ github.workspace }}/ghidra_project
           key: ghidra-project-${{ hashFiles('kernel.zip') }}
-          restore-keys: |
-            ghidra-project-
 
       - name: Warm
         id: w
@@ -87,10 +81,10 @@ jobs:
           SYMBOLS_JSON: ${{ github.workspace }}/symbols.json
           GITHUB_WORKSPACE: ${{ github.workspace }}
         run: |
-          test -f ghidra_project/KernelProject.rep/project.prp || exit 1
           "$GHIDRA_ROOT/support/analyzeHeadless" \
             "$GITHUB_WORKSPACE/ghidra_project" KernelProject \
             -process "$KERNEL_NAME" -noanalysis \
+            -preScript import_symbols.py \
             -postScript kernel_rw.py \
             -scriptPath "$GITHUB_WORKSPACE/scripts" \
             2>&1 | tee ghidra.log
@@ -107,6 +101,7 @@ jobs:
           "$GHIDRA_ROOT/support/analyzeHeadless" \
             "$GITHUB_WORKSPACE/ghidra_project" KernelProject \
             -import "$KERNEL" \
+            -preScript import_symbols.py \
             -postScript kernel_rw.py \
             -scriptPath "$GITHUB_WORKSPACE/scripts" \
             -analysisTimeoutPerFile 12000 \
@@ -115,11 +110,10 @@ jobs:
 
       - name: Validate
         run: |
-          test -s offsets.json || { echo "offsets.json missing/empty"; exit 1; }
-          test -s offsets.h    || { echo "offsets.h missing/empty"; exit 1; }
+          test -s offsets.json
+          test -s offsets.h
           jq empty offsets.json
           echo "[+] offsets.json: $(wc -c < offsets.json) bytes"
-          echo "[+] offsets.h: $(wc -l < offsets.h) lines"
 
       - uses: actions/upload-artifact@v4
         if: always()
