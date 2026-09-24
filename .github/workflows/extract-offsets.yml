@@ -161,6 +161,8 @@ jobs:
           set -euo pipefail
           rm -f "${GITHUB_WORKSPACE}"/nk_*.txt \
                 "${GITHUB_WORKSPACE}"/nk_*.h \
+                "${GITHUB_WORKSPACE}"/offsets.h \
+                "${GITHUB_WORKSPACE}"/offsets.json \
                 "${GITHUB_WORKSPACE}"/ghidra.log
 
       - name: Run Ghidra (warm)
@@ -175,13 +177,7 @@ jobs:
             "${GITHUB_WORKSPACE}/ghidra_project" KernelProject \
             -process "${KERNEL_NAME}" \
             -noanalysis \
-            -postScript 00_load_symbols.py \
-            -postScript 01_find_base.py \
-            -postScript 02_find_sysent.py \
-            -postScript 03_find_kalloc.py \
-            -postScript 04_find_copyio.py \
-            -postScript 05_find_iokit.py \
-            -postScript 06_find_task_proc.py \
+            -postScript kernel_rw.py \
             -scriptPath "${GITHUB_WORKSPACE}/scripts" \
             2>&1 | tee "${GITHUB_WORKSPACE}/ghidra.log"
 
@@ -197,13 +193,7 @@ jobs:
           "${GHIDRA_ROOT}/support/analyzeHeadless" \
             "${GITHUB_WORKSPACE}/ghidra_project" KernelProject \
             -import "${KERNEL}" \
-            -postScript 00_load_symbols.py \
-            -postScript 01_find_base.py \
-            -postScript 02_find_sysent.py \
-            -postScript 03_find_kalloc.py \
-            -postScript 04_find_copyio.py \
-            -postScript 05_find_iokit.py \
-            -postScript 06_find_task_proc.py \
+            -postScript kernel_rw.py \
             -scriptPath "${GITHUB_WORKSPACE}/scripts" \
             -max-cpu 4 \
             -analysisTimeoutPerFile 12000 \
@@ -215,14 +205,9 @@ jobs:
         with:
           name: kernel-offsets-${{ github.sha }}
           path: |
-            ${{ github.workspace }}/nk_base.txt
-            ${{ github.workspace }}/nk_sysent.txt
-            ${{ github.workspace }}/nk_anchors.h
-            ${{ github.workspace }}/nk_kalloc.txt
-            ${{ github.workspace }}/nk_copyio.txt
-            ${{ github.workspace }}/nk_iokit.txt
-            ${{ github.workspace }}/nk_task_proc.txt
-            ${{ github.workspace }}/nk_report.txt
+            ${{ github.workspace }}/nk_kernel_rw.txt
+            ${{ github.workspace }}/offsets.h
+            ${{ github.workspace }}/offsets.json
             ${{ github.workspace }}/symbols.json
             ${{ github.workspace }}/ghidra.log
           retention-days: 30
