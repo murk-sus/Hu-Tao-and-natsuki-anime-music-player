@@ -35,15 +35,12 @@ _valid_addr_cache = {}
 def _write_placeholder():
     try:
         with open(OUT_TXT, "w") as fh:
-            fh.write("=== kernel_rw.py placeholder ===\n")
-            fh.write("script started, no results yet\n")
+            fh.write("=== kernel_rw.py ===\n")
     except Exception:
         pass
     try:
         with open(OUT_H, "w") as fh:
-            fh.write("#ifndef NK_OFFSETS_H\n")
-            fh.write("#define NK_OFFSETS_H\n")
-            fh.write("#endif\n")
+            fh.write("#ifndef NK_OFFSETS_H\n#define NK_OFFSETS_H\n#endif\n")
     except Exception:
         pass
     try:
@@ -57,14 +54,34 @@ _write_placeholder()
 
 
 CONFIRMED = {
+    "kernel_base":     "0xFFFFFFF007004000",
     "sysent_base":     "0xFFFFFFF007C192A0",
     "mach_trap_table": "0xFFFFFFF007BE8018",
     "kfree_ext":       "0xFFFFFFF00A201000",
     "kalloc_ext":      "0xFFFFFFF00A200DCC",
     "copyin":          "0xFFFFFFF00A7B9570",
     "copyout":         "0xFFFFFFF00A2C6C28",
-    "proc_pid":        0x74,
-    "task_thread":     0x50,
+}
+
+CONFIRMED_GLOBALS = {
+    "kernproc":    "0xFFFFFFF007BBF040",
+    "kernel_task": "0xFFFFFFF00700DC70",
+    "zone_map":    "0xFFFFFFF00AD6A800",
+    "task_list":   "0xFFFFFFF0080D93F0",
+    "kernel_map":  "0xFFFFFFF007BBE228",
+    "allproc":     "0xFFFFFFF007BBF048",
+}
+
+CONFIRMED_STRUCT = {
+    "proc_pid":    0x74,
+    "task_thread": 0x50,
+}
+
+CONFIRMED_SPTM = {
+    "ctrr_lock_boot":             "0xFFFFFFF027006E62",
+    "cpu_lock_system_registers":  "0xFFFFFFF0270B39B4",
+    "sptm_determine_kernel_ctrr": "0xFFFFFFF0270B2224",
+    "sptm_base":                  "0xFFFFFFF027004000",
 }
 
 STRUCT_RANGES = {
@@ -915,8 +932,8 @@ def _collect_struct_offsets_from_globals(globals_map):
     print("[*] struct offsets via known globals...")
     out = {}
 
-    kernproc_var = globals_map.get("kernproc")
-    kernel_task_var = globals_map.get("kernel_task")
+    kernproc_var = globals_map.get("kernproc") or CONFIRMED_GLOBALS.get("kernproc")
+    kernel_task_var = globals_map.get("kernel_task") or CONFIRMED_GLOBALS.get("kernel_task")
     allproc_var = globals_map.get("allproc")
     ipc_space_kernel_var = globals_map.get("ipc_space_kernel")
 
@@ -1183,6 +1200,9 @@ def main():
         globals_map.update(_collect_globals())
     except Exception as e:
         print("[-] globals_adrp error: {}".format(e))
+    for k, v in CONFIRMED_GLOBALS.items():
+        if k not in globals_map:
+            globals_map[k] = v
 
     report.append("")
     report.append("=== [4] GLOBALS ===")
@@ -1207,6 +1227,8 @@ def main():
                 struct_offsets[k] = v
     except Exception as e:
         print("[-] struct_globals error: {}".format(e))
+    for k, v in CONFIRMED_STRUCT.items():
+        struct_offsets[k] = v
 
     report.append("")
     report.append("=== [5] STRUCT OFFSETS ===")
@@ -1236,14 +1258,14 @@ def main():
 
     print("[*] kalloc/kfree...")
     try:
-        kfree_ext = sym_get("_kfree_ext")
+        kfree_ext = sym_get("_kfree_ext") or CONFIRMED.get("kfree_ext")
     except Exception:
-        kfree_ext = None
+        kfree_ext = CONFIRMED.get("kfree_ext")
     try:
-        kalloc_ext = _find_kalloc(kfree_ext)
+        kalloc_ext = _find_kalloc(kfree_ext) or CONFIRMED.get("kalloc_ext")
     except Exception as e:
         print("[-] kalloc error: {}".format(e))
-        kalloc_ext = None
+        kalloc_ext = CONFIRMED.get("kalloc_ext")
 
     kfree_callers = set()
     if kfree_ext is not None:
@@ -1282,11 +1304,15 @@ def main():
     report.append("")
     report.append("=== [7] KALLOC ZONES ===")
     hdr.append("// KALLOC ZONES")
+    seen_zones = set()
     for z, kv in sorted(zones.items()):
         for kva in kv:
+            key = norm(z).upper()[:40]
+            if key in seen_zones:
+                continue
+            seen_zones.add(key)
             report.append("  {:<45} {}".format(z, fmt(kva)))
-            hdr.append("#define NK_ZONE_{:<40} {}ULL".format(
-                norm(z).upper()[:40], fmt(kva)))
+            hdr.append("#define NK_ZONE_{:<40} {}ULL".format(key, fmt(kva)))
     hdr.append("")
     jout["zones"] = {k: [fmt(x) for x in v] for k, v in zones.items()}
 
@@ -1304,24 +1330,29 @@ def main():
                 copy[s] = hits[0][0]
         except Exception:
             pass
+    copy["_copyin"]  = CONFIRMED.get("copyin", copy.get("_copyin"))
+    copy["_copyout"] = CONFIRMED.get("copyout", copy.get("_copyout"))
 
     report.append("")
     report.append("=== [8] COPYIN/COPYOUT ===")
     hdr.append("// COPYIN/COPYOUT")
     for s, a in sorted(copy.items()):
+        if a is None:
+            continue
         report.append("  {:<20} {}".format(s, fmt(a)))
         hdr.append("#define NK_{:<30} {}ULL".format(norm(s).upper(), fmt(a)))
     hdr.append("")
-    jout["copyin_copyout"] = {k: fmt(v) for k, v in copy.items()}
+    jout["copyin_copyout"] = {k: fmt(v) for k, v in copy.items() if v}
+
+    jout.setdefault("sptm", {})
+    for k, v in CONFIRMED_SPTM.items():
+        jout["sptm"][k] = v
 
     for key, val in CONFIRMED.items():
-        if key in ("proc_pid", "task_thread"):
-            jout.setdefault("struct_offsets", {})
-            if key not in jout["struct_offsets"]:
-                jout["struct_offsets"][key] = val
-        else:
-            if not jout.get(key):
-                jout[key] = val
+        if key == "kernel_base":
+            continue
+        if not jout.get(key):
+            jout[key] = val
 
     try:
         write_lines(OUT_TXT, report)
