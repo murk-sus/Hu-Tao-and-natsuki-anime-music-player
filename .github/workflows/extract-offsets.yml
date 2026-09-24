@@ -1,3 +1,4 @@
+
 name: Extract Kernel Offsets
 
 on:
@@ -123,7 +124,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}/symbols.json
-          key: symbols-${{ env.DEVICE_SLUG }}-${{ env.IOS_BUILD }}-v3
+          key: symbols-${{ env.DEVICE_SLUG }}-${{ env.IOS_BUILD }}-v4
 
       - name: Symbolicate Kernelcache
         if: steps.cache-symbols.outputs.cache-hit != 'true'
@@ -156,6 +157,10 @@ jobs:
           fi
           echo "[+] symbols.json OK (${SZ} bytes)"
 
+      - name: List scripts
+        run: |
+          ls -la "${GITHUB_WORKSPACE}/scripts/"
+
       - name: Cache Ghidra project
         id: cache-project
         uses: actions/cache@v4
@@ -174,7 +179,8 @@ jobs:
             "${GITHUB_WORKSPACE}/ghidra_project" KernelProject \
             -process "kernelcache.release.iPhone14,5" \
             -noanalysis \
-            -postScript decompile.py \
+            -postScript offsets.py \
+            -postScript necp_extract.py \
             -scriptPath "${GITHUB_WORKSPACE}/scripts" \
             2>&1 | tee "${GITHUB_WORKSPACE}/ghidra.log"
 
@@ -189,7 +195,8 @@ jobs:
           "${GHIDRA_ROOT}/support/analyzeHeadless" \
             "${GITHUB_WORKSPACE}/ghidra_project" KernelProject \
             -import "${KERNEL}" \
-            -postScript decompile.py \
+            -postScript offsets.py \
+            -postScript necp_extract.py \
             -scriptPath "${GITHUB_WORKSPACE}/scripts" \
             -max-cpu 4 \
             -analysisTimeoutPerFile 9000 \
@@ -202,6 +209,7 @@ jobs:
           name: kernel-offsets-${{ github.sha }}
           path: |
             ${{ github.workspace }}/offsets.txt
+            ${{ github.workspace }}/necp_decom.txt
             ${{ github.workspace }}/symbols.json
             ${{ github.workspace }}/ghidra.log
           retention-days: 30
