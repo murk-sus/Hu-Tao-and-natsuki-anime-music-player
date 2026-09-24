@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   offsets:
-    runs-on: macos-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 300
 
     env:
@@ -21,44 +21,52 @@ jobs:
       DEVICE_SLUG: "iPhone14-5"
       IOS_BUILD: "24A437"
       IOS_VERSION: "27.0"
+      GHIDRA_VERSION: "11.0.3"
+      GHIDRA_DATE: "20240410"
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Cache Homebrew
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          java-version: "17"
+          distribution: temurin
+
+      - name: Cache Ghidra binary
+        id: cache-ghidra
         uses: actions/cache@v4
         with:
-          path: ~/Library/Caches/Homebrew
-          key: brew-macOS-${{ hashFiles('.github/workflows/extract-kernel-offsets.yml') }}
-          restore-keys: brew-macOS-
+          path: /opt/ghidra
+          key: ghidra-${{ env.GHIDRA_VERSION }}-${{ env.GHIDRA_DATE }}
 
-      - name: Install tools
+      - name: Install Ghidra
+        if: steps.cache-ghidra.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
-          brew install xcodegen ldid ipsw
-          brew link --overwrite xcodegen ldid ipsw
-
-      - name: Setup Ghidra
-        run: |
-          set -euo pipefail
-          if ! brew list ghidra >/dev/null 2>&1; then
-            brew install --cask ghidra
-          fi
-          echo "GHIDRA_ROOT=/Applications/ghidra_11.0.3_PUBLIC" >> "${GITHUB_ENV}"
+          ZIP="ghidra_${GHIDRA_VERSION}_PUBLIC_${GHIDRA_DATE}.zip"
+          URL="https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_${GHIDRA_VERSION}_build/${ZIP}"
+          curl -fsSL "${URL}" -o /tmp/ghidra.zip
+          sudo unzip -q /tmp/ghidra.zip -d /opt/
+          FOUND="$(find /opt -maxdepth 1 -type d -name 'ghidra_*' -print -quit)"
+          sudo mv "${FOUND}" /opt/ghidra
 
       - name: Locate Ghidra
         run: |
           set -euo pipefail
-          if [[ ! -d "${GHIDRA_ROOT}/support" ]]; then
-            FOUND="$(find /Applications /opt -maxdepth 2 -type d -name 'ghidra_*' -print -quit 2>/dev/null || true)"
-            if [[ -z "${FOUND}" ]]; then
-              echo "ERROR: Ghidra not found"
-              exit 1
-            fi
-            echo "GHIDRA_ROOT=${FOUND}" >> "${GITHUB_ENV}"
-          fi
-          ls -la "${GHIDRA_ROOT}/support/analyzeHeadless"
+          ls -la /opt/ghidra/support/analyzeHeadless
+          echo "GHIDRA_ROOT=/opt/ghidra" >> "${GITHUB_ENV}"
+
+      - name: Install ipsw
+        run: |
+          set -euo pipefail
+          LATEST=$(curl -fsSL https://api.github.com/repos/blacktop/ipsw/releases/latest \
+                    | jq -r .tag_name | sed 's/^v//')
+          URL="https://github.com/blacktop/ipsw/releases/download/v${LATEST}/ipsw_${LATEST}_linux_x86_64.tar.gz"
+          curl -fsSL "${URL}" -o /tmp/ipsw.tar.gz
+          sudo tar -C /usr/local/bin -xzf /tmp/ipsw.tar.gz ipsw
+          ipsw version
 
       - name: Cache IPSW
         id: cache-ipsw
@@ -77,84 +85,106 @@ jobs:
             --build "${IOS_BUILD}" \
             --output "${GITHUB_WORKSPACE}/ipsw" \
             --confirm
+          find "${GITHUB_WORKSPACE}/ipsw" -type f -exec ls -lh {} \;
 
       - name: Extract Kernelcache
         run: |
           set -euo pipefail
-          IPSW="$(find "${GITHUB_WORKSPACE}/ipsw" -type f -name '*.ipsw' -print -quit)"
-          if [[ -z "${IPSW}" ]]; then
-            echo "ERROR: no IPSW found"
-            exit 1
-          fi
+          IPSW_FILE="$(find "${GITHUB_WORKSPACE}/ipsw" -type f -name '*.ipsw' -print -quit)"
+          if [[ -z "${IPSW_FILE}" ]]; then echo "ERROR: no IPSW"; exit 1; fi
           mkdir -p "${GITHUB_WORKSPACE}/kernel"
-          KERNEL="$(find "${GITHUB_WORKSPACE}/kernel" -type f \( -name 'kernelcache*' -o -name '*.kernelcache' \) -print -quit)"
-          if [[ -z "${KERNEL}" ]]; then
-            ipsw extract --kernel "${IPSW}" --output "${GITHUB_WORKSPACE}/kernel"
-            KERNEL="$(find "${GITHUB_WORKSPACE}/kernel" -type f \( -name 'kernelcache*' -o -name '*.kernelcache' \) -print -quit)"
+          if [[ ! -f "${GITHUB_WORKSPACE}/kernel/.done" ]]; then
+            ipsw extract --kernel "${IPSW_FILE}" --output "${GITHUB_WORKSPACE}/kernel"
+            touch "${GITHUB_WORKSPACE}/kernel/.done"
           fi
+          KERNEL="$(find "${GITHUB_WORKSPACE}/kernel" -type f -name 'kernelcache*' \
+                    ! -name '*.plist' -print -quit)"
           if [[ -z "${KERNEL}" ]]; then
-            echo "ERROR: kernelcache not found"
+            ls -la "${GITHUB_WORKSPACE}/kernel/"
             exit 1
           fi
-          echo "KERNEL=${KERNEL}" >> "${GITHUB_ENV}"
+          KERNEL_NAME="$(basename "${KERNEL}")"
+          echo "KERNEL=${KERNEL}"           >> "${GITHUB_ENV}"
+          echo "KERNEL_NAME=${KERNEL_NAME}" >> "${GITHUB_ENV}"
           ls -lh "${KERNEL}"
 
-      - name: Cache Symbolicator
+      - name: Cache symbolicator
         id: cache-sigs
         uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}/symbolicator
-          key: symbolicator-main
+          key: symbolicator-${{ env.IOS_BUILD }}
 
-      - name: Clone Symbolicator
+      - name: Clone symbolicator
         if: steps.cache-sigs.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
           git clone --depth 1 https://github.com/blacktop/symbolicator.git \
             "${GITHUB_WORKSPACE}/symbolicator"
 
-      - name: Symbolicate Kernelcache
+      - name: Cache symbols.json
+        id: cache-symbols
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/symbols.json
+          key: symbols-${{ env.DEVICE_SLUG }}-${{ env.IOS_BUILD }}
+
+      - name: Symbolicate
+        if: steps.cache-symbols.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
-          rm -f "${GITHUB_WORKSPACE}/symbols.json"
-          ipsw kernel symbolicate \
-            --signatures "${GITHUB_WORKSPACE}/symbolicator/kernel" \
-            --json "${KERNEL}" || true
-          SRC=""
-          for cand in "${KERNEL}.symbols.json" "${GITHUB_WORKSPACE}/symbols.json"; do
-            if [[ -f "${cand}" ]] && [[ -s "${cand}" ]]; then
-              SRC="${cand}"
-              break
-            fi
-          done
-          if [[ -z "${SRC}" ]]; then
-            SRC="$(find "${GITHUB_WORKSPACE}" /tmp /home/runner -name '*.symbols.json' -size +1k -print -quit 2>/dev/null || true)"
+          ipsw kernel sym \
+            "${KERNEL}" \
+            --json \
+            --signatures "${GITHUB_WORKSPACE}/symbolicator/kernel"
+          SRC="${KERNEL}.json"
+          if [[ ! -f "${SRC}" ]]; then
+            SRC="$(find "${GITHUB_WORKSPACE}/kernel" -name '*.json' ! -name '.done' -print -quit)"
           fi
-          if [[ -z "${SRC}" ]]; then
-            echo "ERROR: symbolication output not found"
+          if [[ ! -f "${SRC}" ]]; then
+            echo "ERROR: sym output not found"
+            ls -la "${GITHUB_WORKSPACE}/kernel/"
             exit 1
           fi
           cp "${SRC}" "${GITHUB_WORKSPACE}/symbols.json"
-          echo "[+] symbols.json OK ($(stat -f %z "${GITHUB_WORKSPACE}/symbols.json") bytes)"
+          echo "[+] symbols.json: $(wc -c < "${GITHUB_WORKSPACE}/symbols.json") bytes"
 
       - name: Cache Ghidra project
         id: cache-project
         uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}/ghidra_project
-          key: ghidra-project-${{ env.DEVICE_SLUG }}-${{ env.IOS_BUILD }}-v4
+          key: ghidra-project-${{ env.DEVICE_SLUG }}-${{ env.IOS_BUILD }}-v1
+
+      - name: Clean old outputs
+        run: |
+          set -euo pipefail
+          rm -f "${GITHUB_WORKSPACE}"/nk_*.txt \
+                "${GITHUB_WORKSPACE}"/nk_*.h \
+                "${GITHUB_WORKSPACE}"/offsets.h \
+                "${GITHUB_WORKSPACE}"/offsets.json \
+                "${GITHUB_WORKSPACE}"/ghidra.log
 
       - name: Run Ghidra (warm)
         if: steps.cache-project.outputs.cache-hit == 'true'
         env:
           _JAVA_OPTIONS: "-Xmx8g -Djava.awt.headless=true"
+          SYMBOLS_JSON: ${{ github.workspace }}/symbols.json
         run: |
           set -euo pipefail
           "${GHIDRA_ROOT}/support/analyzeHeadless" \
             "${GITHUB_WORKSPACE}/ghidra_project" KernelProject \
-            -process "kernelcache.release.iPhone14,5" \
+            -process "${KERNEL_NAME}" \
             -noanalysis \
-            -postScript kernel_kw_hunt.py \
+            -postScript 00_load_symbols.py \
+            -postScript 01_find_base.py \
+            -postScript 02_find_sysent.py \
+            -postScript 03_find_kalloc.py \
+            -postScript 04_find_copyio.py \
+            -postScript 05_find_iokit.py \
+            -postScript 06_find_task_proc.py \
+            -postScript 07_find_gadgets.py \
+            -postScript 08_collect_offsets.py \
             -scriptPath "${GITHUB_WORKSPACE}/scripts" \
             2>&1 | tee "${GITHUB_WORKSPACE}/ghidra.log"
 
@@ -162,24 +192,37 @@ jobs:
         if: steps.cache-project.outputs.cache-hit != 'true'
         env:
           _JAVA_OPTIONS: "-Xmx8g -Djava.awt.headless=true"
+          SYMBOLS_JSON: ${{ github.workspace }}/symbols.json
         run: |
           set -euo pipefail
           mkdir -p "${GITHUB_WORKSPACE}/ghidra_project"
           "${GHIDRA_ROOT}/support/analyzeHeadless" \
             "${GITHUB_WORKSPACE}/ghidra_project" KernelProject \
             -import "${KERNEL}" \
-            -postScript kernel_kw_hunt.py \
+            -postScript 00_load_symbols.py \
+            -postScript 01_find_base.py \
+            -postScript 02_find_sysent.py \
+            -postScript 03_find_kalloc.py \
+            -postScript 04_find_copyio.py \
+            -postScript 05_find_iokit.py \
+            -postScript 06_find_task_proc.py \
+            -postScript 07_find_gadgets.py \
+            -postScript 08_collect_offsets.py \
             -scriptPath "${GITHUB_WORKSPACE}/scripts" \
             -max-cpu 4 \
             -analysisTimeoutPerFile 12000 \
             2>&1 | tee "${GITHUB_WORKSPACE}/ghidra.log"
 
-      - name: Save Ghidra project after cold
-        if: steps.cache-project.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: ${{ github.workspace }}/ghidra_project
-          key: ghidra-project-${{ env.DEVICE_SLUG }}-${{ env.IOS_BUILD }}-v4
+      - name: Build offsets header
+        if: always()
+        run: |
+          set -euo pipefail
+          if [[ -f "${GITHUB_WORKSPACE}/scripts/build_offsets.py" ]]; then
+            python3 "${GITHUB_WORKSPACE}/scripts/build_offsets.py" \
+              --workspace "${GITHUB_WORKSPACE}"
+          else
+            echo "[!] build_offsets.py not found, skipping"
+          fi
 
       - name: Upload artifacts
         if: always()
@@ -187,16 +230,18 @@ jobs:
         with:
           name: kernel-offsets-${{ github.sha }}
           path: |
+            ${{ github.workspace }}/nk_base.txt
             ${{ github.workspace }}/nk_sysent.txt
             ${{ github.workspace }}/nk_anchors.h
-            ${{ github.workspace }}/nk_necp_full.txt
-            ${{ github.workspace }}/nk_zone_offsets.txt
-            ${{ github.workspace }}/nk_kalloc_sites.txt
-            ${{ github.workspace }}/nk_copy_ops.txt
-            ${{ github.workspace }}/nk_iokit_methods.txt
-            ${{ github.workspace }}/nk_kw_gadgets.txt
-            ${{ github.workspace }}/nk_uaf_candidates.txt
+            ${{ github.workspace }}/nk_kalloc.txt
+            ${{ github.workspace }}/nk_copyio.txt
+            ${{ github.workspace }}/nk_iokit.txt
+            ${{ github.workspace }}/nk_task_proc.txt
+            ${{ github.workspace }}/nk_gadgets.txt
             ${{ github.workspace }}/nk_report.txt
+            ${{ github.workspace }}/offsets.h
+            ${{ github.workspace }}/offsets.json
+            ${{ github.workspace }}/symbols.json
             ${{ github.workspace }}/ghidra.log
           retention-days: 30
           if-no-files-found: warn
