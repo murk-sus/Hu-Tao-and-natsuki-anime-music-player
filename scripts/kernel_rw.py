@@ -30,39 +30,6 @@ _syms_index       = None
 _IFC              = [None]
 _valid_addr_cache = {}
 
-FIELD_EXPECTED_RANGE = {
-    "proc_pid":      (0x40, 0x120),
-    "proc_ppid":     (0x40, 0x120),
-    "proc_task":     (0x10, 0x80),
-    "proc_ucred":    (0x80, 0x180),
-    "proc_fd":       (0x18, 0x80),
-    "proc_pptr":     (0x10, 0x80),
-    "proc_pgrp":     (0x10, 0x80),
-    "task_thread":   (0x40, 0x80),
-    "task_bsd_info": (0x300, 0x400),
-    "task_vm_map":   (0x18, 0x60),
-    "task_itk_self": (0x300, 0x400),
-    "task_itk_space": (0x300, 0x400),
-    "kauth_cred_uid": (0x10, 0x40),
-    "kauth_cred_gid": (0x10, 0x40),
-    "kauth_cred_label": (0x80, 0x100),
-    "ipc_port_kobject": (0x40, 0xA0),
-    "ipc_port_receiver": (0x40, 0xA0),
-    "ipc_port_mscount": (0x40, 0xA0),
-    "ipc_space_is_table": (0x10, 0x40),
-    "vme_start": (0x00, 0x30),
-    "vme_end": (0x00, 0x30),
-    "vme_object": (0x40, 0xA0),
-    "vme_offset": (0x40, 0xA0),
-    "fd_ofiles": (0x10, 0x80),
-    "fileproc_fg": (0x10, 0x80),
-    "fileproc_fglob": (0x10, 0x80),
-    "vnode_data": (0x10, 0x80),
-    "socket_so_proto": (0x10, 0x80),
-    "inpcb_inp_socket": (0x10, 0x80),
-    "inpcb_inp_list": (0x10, 0x80),
-}
-
 XNU_KNOWN_OFFSETS = {
     "proc_p_pid":     0x68,
     "proc_p_ppid":    0x70,
@@ -72,6 +39,63 @@ XNU_KNOWN_OFFSETS = {
     "ipc_port_kobject": 0x68,
     "kauth_cred_uid": 0x18,
     "kauth_cred_gid": 0x1C,
+    "ipc_space_is_table": 0x20,
+    "task_itk_space": 0x300,
+}
+
+STRUCT_SCAN_RANGES = {
+    "proc_task":     (0x08, 0x80),
+    "proc_ucred":    (0x80, 0x180),
+    "proc_fd":       (0x18, 0x80),
+    "proc_pid":      (0x40, 0x120),
+    "proc_ppid":     (0x40, 0x120),
+    "task_bsd_info": (0x300, 0x420),
+    "task_vm_map":   (0x18, 0x60),
+    "task_itk_space": (0x280, 0x380),
+    "ipc_port_kobject": (0x40, 0xA0),
+    "ipc_space_is_table": (0x10, 0x40),
+    "kauth_cred_uid": (0x10, 0x40),
+    "kauth_cred_gid": (0x10, 0x40),
+}
+
+ACCESSOR_SPECS = {
+    "proc_pid":        ["_proc_pid", "proc_pid", "_proc_getpid", "proc_getpid"],
+    "proc_ppid":       ["_proc_ppid", "proc_ppid"],
+    "proc_task":       ["_proc_task", "proc_task", "_proc_gettask", "proc_gettask"],
+    "proc_ucred":      ["_proc_ucred", "proc_ucred", "_proc_getucred", "proc_getucred"],
+    "proc_fd":         ["_proc_fd", "proc_fd"],
+    "proc_flag":       ["_proc_flag", "proc_flag"],
+    "proc_pptr":       ["_proc_pptr", "proc_pptr"],
+    "proc_pgrp":       ["_proc_pgrp", "proc_pgrp"],
+    "proc_ro":         ["_proc_ro", "proc_ro"],
+    "task_bsd_info":   ["_get_bsdtask_info", "task_bsd_info", "get_bsdtask_info",
+                        "_task_get_bsd_info", "task_get_bsd_info"],
+    "task_vm_map":     ["_task_vm_map", "task_vm_map", "get_task_map",
+                        "_get_task_map", "_task_get_map", "task_get_map"],
+    "task_itk_self":   ["_task_get_itk_self", "task_get_itk_self"],
+    "task_itk_space":  ["_task_get_itk_space", "task_get_itk_space",
+                        "_task_itk_space", "task_itk_space"],
+    "task_thread":     ["_task_thread", "task_thread", "get_task_thread"],
+    "task_proc":       ["_get_task_proc", "task_get_proc"],
+    "task_t_flags":    ["_task_get_t_flags", "task_get_t_flags"],
+    "kauth_cred_uid":  ["_kauth_cred_getuid", "kauth_cred_getuid"],
+    "kauth_cred_gid":  ["_kauth_cred_getgid", "kauth_cred_getgid"],
+    "kauth_cred_label": ["_kauth_cred_getlabel", "kauth_cred_getlabel"],
+    "ipc_port_kobject": ["_ipc_port_get_kobject", "ipc_port_get_kobject"],
+    "ipc_port_receiver": ["_ipc_port_get_receiver", "ipc_port_get_receiver"],
+    "ipc_port_mscount": ["_ipc_port_get_mscount", "ipc_port_get_mscount"],
+    "ipc_space_is_table": ["_ipc_space_get_table", "ipc_space_get_table"],
+    "vme_start":       ["_vm_map_entry_get_start", "vm_map_entry_get_start"],
+    "vme_end":         ["_vm_map_entry_get_end", "vm_map_entry_get_end"],
+    "vme_object":      ["_vm_map_entry_get_object", "vm_map_entry_get_object"],
+    "vme_offset":      ["_vm_map_entry_get_offset", "vm_map_entry_get_offset"],
+    "fd_ofiles":       ["_fdp_get_ofiles", "fdp_get_ofiles"],
+    "fileproc_fg":     ["_fp_get_fg", "fp_get_fg"],
+    "fileproc_fglob":  ["_fp_get_fglob", "fp_get_fglob"],
+    "vnode_data":      ["_vnode_get_data", "vnode_get_data"],
+    "socket_so_proto": ["_so_get_proto", "so_get_proto"],
+    "inpcb_inp_socket": ["_inp_get_socket", "inp_get_socket"],
+    "inpcb_inp_list":  ["_inp_get_list", "inp_get_list"],
 }
 
 
@@ -488,6 +512,18 @@ def _is_exec(p):
         return False
 
 
+def _is_data_ptr(p):
+    if p is None or p == 0:
+        return False
+    ga = safe_addr(p)
+    if ga is None:
+        return False
+    blk = currentProgram.getMemory().getBlock(ga)
+    if blk is None or not blk.isInitialized():
+        return False
+    return not blk.isExecute()
+
+
 def _decode_sysent_ptr(raw):
     if raw is None:
         return None
@@ -634,44 +670,6 @@ def _find_mach_traps():
     return None, "NOT_FOUND"
 
 
-ACCESSOR_SPECS = {
-    "proc_pid":        ["_proc_pid", "proc_pid"],
-    "proc_ppid":       ["_proc_ppid", "proc_ppid"],
-    "proc_task":       ["_proc_task", "proc_task"],
-    "proc_ucred":      ["_proc_ucred", "proc_ucred"],
-    "proc_fd":         ["_proc_fd", "proc_fd"],
-    "proc_flag":       ["_proc_flag", "proc_flag"],
-    "proc_pptr":       ["_proc_pptr", "proc_pptr"],
-    "proc_pgrp":       ["_proc_pgrp", "proc_pgrp"],
-    "proc_ro":         ["_proc_ro", "proc_ro"],
-    "task_bsd_info":   ["_get_bsdtask_info", "task_bsd_info", "get_bsdtask_info"],
-    "task_vm_map":     ["_task_vm_map", "task_vm_map", "get_task_map", "_get_task_map"],
-    "task_itk_self":   ["_task_get_itk_self", "task_get_itk_self"],
-    "task_itk_space":  ["_task_get_itk_space", "task_get_itk_space"],
-    "task_thread":     ["_task_thread", "task_thread", "get_task_thread"],
-    "task_proc":       ["_get_task_proc", "task_get_proc"],
-    "task_t_flags":    ["_task_get_t_flags", "task_get_t_flags"],
-    "kauth_cred_uid":  ["_kauth_cred_getuid", "kauth_cred_getuid"],
-    "kauth_cred_gid":  ["_kauth_cred_getgid", "kauth_cred_getgid"],
-    "kauth_cred_label": ["_kauth_cred_getlabel", "kauth_cred_getlabel"],
-    "ipc_port_kobject": ["_ipc_port_get_kobject", "ipc_port_get_kobject"],
-    "ipc_port_receiver": ["_ipc_port_get_receiver", "ipc_port_get_receiver"],
-    "ipc_port_mscount": ["_ipc_port_get_mscount", "ipc_port_get_mscount"],
-    "ipc_space_is_table": ["_ipc_space_get_table", "ipc_space_get_table"],
-    "vme_start":       ["_vm_map_entry_get_start", "vm_map_entry_get_start"],
-    "vme_end":         ["_vm_map_entry_get_end", "vm_map_entry_get_end"],
-    "vme_object":      ["_vm_map_entry_get_object", "vm_map_entry_get_object"],
-    "vme_offset":      ["_vm_map_entry_get_offset", "vm_map_entry_get_offset"],
-    "fd_ofiles":       ["_fdp_get_ofiles", "fdp_get_ofiles"],
-    "fileproc_fg":     ["_fp_get_fg", "fp_get_fg"],
-    "fileproc_fglob":  ["_fp_get_fglob", "fp_get_fglob"],
-    "vnode_data":      ["_vnode_get_data", "vnode_get_data"],
-    "socket_so_proto": ["_so_get_proto", "so_get_proto"],
-    "inpcb_inp_socket": ["_inp_get_socket", "inp_get_socket"],
-    "inpcb_inp_list":  ["_inp_get_list", "inp_get_list"],
-}
-
-
 def _extract_field_offset(code, field_var=None):
     pats = []
     if field_var:
@@ -688,7 +686,7 @@ def _extract_field_offset(code, field_var=None):
     return None
 
 
-def _collect_struct_offsets():
+def _collect_struct_offsets_by_accessors():
     struct_offsets = {}
     rejected = []
     for field, names in ACCESSOR_SPECS.items():
@@ -714,7 +712,7 @@ def _collect_struct_offsets():
                     if 0 < off < 0x2000:
                         candidates.append(off)
             chosen = None
-            expected = FIELD_EXPECTED_RANGE.get(field)
+            expected = STRUCT_SCAN_RANGES.get(field)
             for off in candidates:
                 if expected and not (expected[0] <= off <= expected[1]):
                     rejected.append((field, n, off, "range"))
@@ -728,6 +726,66 @@ def _collect_struct_offsets():
         print("[!] rejected {} ({}) offset=0x{:x} reason={}".format(
             field, n, off, reason))
     return struct_offsets
+
+
+def _collect_struct_offsets_by_known_globals():
+    offsets = {}
+    kernproc = sym_get("_kernproc") or sym_get("kernproc")
+    kernel_task = sym_get("_kernel_task") or sym_get("kernel_task")
+    allproc = sym_get("_allproc") or sym_get("allproc")
+
+    if kernproc and _validate_addr(kernproc, "data"):
+        for off in range(0x08, 0x80, 8):
+            v = read_u64(kernproc + off)
+            if v and _is_data_ptr(v):
+                offsets.setdefault("proc_task", off)
+                print("[+] proc_task via kernproc: 0x{:x}".format(off))
+                break
+
+    if kernel_task and _validate_addr(kernel_task, "data"):
+        for off in range(0x300, 0x420, 8):
+            v = read_u64(kernel_task + off)
+            if v and _is_data_ptr(v):
+                pid = read_u32(v + 0x68)
+                if pid is not None and 0 < pid < 0x100000:
+                    offsets.setdefault("task_bsd_info", off)
+                    print("[+] task_bsd_info via kernel_task: 0x{:x}".format(off))
+                    break
+
+    if allproc and _validate_addr(allproc, "data"):
+        first = read_u64(allproc)
+        if first and _is_data_ptr(first):
+            for off in range(0x08, 0x80, 8):
+                v = read_u64(first + off)
+                if v and _is_data_ptr(v):
+                    pid = read_u32(v + 0x68)
+                    if pid is not None and 0 < pid < 0x100000:
+                        offsets.setdefault("proc_task", off)
+                        print("[+] proc_task via allproc: 0x{:x}".format(off))
+                        break
+
+    for name, field, base_global in [
+        ("task_itk_space", "task_itk_space", kernel_task),
+        ("ipc_space_is_table", "ipc_space_is_table", None),
+    ]:
+        if base_global and _validate_addr(base_global, "data"):
+            for off in range(0x280, 0x380, 8):
+                v = read_u64(base_global + off)
+                if v and _is_data_ptr(v):
+                    offsets.setdefault(field, off)
+                    print("[+] {} via kernel_task: 0x{:x}".format(field, off))
+                    break
+
+    ipc_space_kernel = sym_get("_ipc_space_kernel") or sym_get("ipc_space_kernel")
+    if ipc_space_kernel and _validate_addr(ipc_space_kernel, "data"):
+        for off in range(0x10, 0x40, 8):
+            v = read_u64(ipc_space_kernel + off)
+            if v and _is_data_ptr(v):
+                offsets.setdefault("ipc_space_is_table", off)
+                print("[+] ipc_space_is_table via ipc_space_kernel: 0x{:x}".format(off))
+                break
+
+    return offsets
 
 
 def _collect_syscall_offsets(sysent_entries):
@@ -857,7 +915,7 @@ def _find_iokit():
 
 
 def main():
-    print("=== kernel_rw.py (2026 edition) ===")
+    print("=== kernel_rw.py (kread edition) ===")
     print("[*] program: " + currentProgram.getName())
 
     _load_symbols()
@@ -1010,8 +1068,15 @@ def main():
     hdr.append("")
     jout["globals"] = {fmt(k): sorted(list(v)) for k, v in globals_map.items()}
 
-    print("[*] struct offsets via accessors...")
-    struct_offsets = _collect_struct_offsets()
+    print("[*] struct offsets: accessors...")
+    struct_offsets = _collect_struct_offsets_by_accessors()
+
+    print("[*] struct offsets: known globals fallback...")
+    struct_offsets_globals = _collect_struct_offsets_by_known_globals()
+    for field, off in struct_offsets_globals.items():
+        if field not in struct_offsets:
+            struct_offsets[field] = off
+
     for field, off in struct_offsets.items():
         _validate_with_xnu(field, off)
     report.append("")
