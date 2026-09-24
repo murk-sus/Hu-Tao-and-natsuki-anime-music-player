@@ -31,16 +31,17 @@ _IFC              = [None]
 _valid_addr_cache = {}
 
 XNU_KNOWN_OFFSETS = {
-    "proc_p_pid":     0x68,
-    "proc_p_ppid":    0x70,
-    "proc_p_ucred":   0x100,
-    "task_bsd_info":  0x3A0,
-    "task_vm_map":    0x28,
+    "proc_pid":     0x74,
+    "proc_ppid":    0x70,
+    "proc_task":    0x18,
+    "proc_ucred":   0x100,
+    "task_bsd_info": 0x3A0,
+    "task_vm_map":  0x28,
     "ipc_port_kobject": 0x68,
+    "ipc_space_is_table": 0x20,
+    "task_itk_space": 0x320,
     "kauth_cred_uid": 0x18,
     "kauth_cred_gid": 0x1C,
-    "ipc_space_is_table": 0x20,
-    "task_itk_space": 0x300,
 }
 
 STRUCT_SCAN_RANGES = {
@@ -670,22 +671,6 @@ def _find_mach_traps():
     return None, "NOT_FOUND"
 
 
-def _extract_field_offset(code, field_var=None):
-    pats = []
-    if field_var:
-        pats.append(r"\*\([^)]*\*\)\s*\(\s*" + re.escape(field_var) +
-                    r"\s*\+\s*(0x[0-9a-fA-F]+|\d+)\s*\)")
-    pats.append(r"\*\([^)]*\*\)\s*\(\s*\w+\s*\+\s*(0x[0-9a-fA-F]+|\d+)\s*\)")
-    pats.append(r"return\s+\*\([^)]*\)\s*\(\s*\w+\s*\+\s*(0x[0-9a-fA-F]+|\d+)\s*\)")
-    pats.append(r"\(\s*\w+\s*\+\s*(0x[0-9a-fA-F]+|\d+)\s*\)")
-    for p in pats:
-        for m in re.finditer(p, code):
-            off = int(m.group(1), 0)
-            if 0 < off < 0x2000:
-                return off
-    return None
-
-
 def _collect_struct_offsets_by_accessors():
     struct_offsets = {}
     rejected = []
@@ -730,60 +715,84 @@ def _collect_struct_offsets_by_accessors():
 
 def _collect_struct_offsets_by_known_globals():
     offsets = {}
-    kernproc = sym_get("_kernproc") or sym_get("kernproc")
-    kernel_task = sym_get("_kernel_task") or sym_get("kernel_task")
-    allproc = sym_get("_allproc") or sym_get("allproc")
+    kernproc_var = sym_get("_kernproc") or sym_get("kernproc")
+    kernel_task_var = sym_get("_kernel_task") or sym_get("kernel_task")
+    allproc_var = sym_get("_allproc") or sym_get("allproc")
+    ipc_space_kernel_var = sym_get("_ipc_space_kernel") or sym_get("ipc_space_kernel")
 
-    if kernproc and _validate_addr(kernproc, "data"):
+    proc_pid_off = 0x74
+
+    first_proc = None
+    if kernproc_var and _validate_addr(kernproc_var, "data"):
+        v = read_u64(kernproc_var)
+        if v and _is_data_ptr(v):
+            first_proc = v
+            print("[+] kernproc deref -> 0x{:016X}".format(v))
+
+    if allproc_var and _validate_addr(allproc_var, "data"):
+        v = read_u64(allproc_var)
+        if v and _is_data_ptr(v):
+            first_proc = first_proc or v
+            print("[+] allproc deref -> 0x{:016X}".format(v))
+
+    if first_proc:
         for off in range(0x08, 0x80, 8):
-            v = read_u64(kernproc + off)
+            v = read_u64(first_proc + off)
             if v and _is_data_ptr(v):
-                offsets.setdefault("proc_task", off)
-                print("[+] proc_task via kernproc: 0x{:x}".format(off))
-                break
+                pid_at = read_u32(v + proc_pid_off)
+                if pid_at is not None and 0 < pid_at < 0x100000:
+                    offsets["proc_task"] = off
+                    print("[+] proc_task = 0x{:x} (pid={})".format(off, pid_at))
+                    break
 
-    if kernel_task and _validate_addr(kernel_task, "data"):
+    if first_proc:
+        for off in range(0x80, 0x180, 8):
+            v = read_u64(first_proc + off)
+            if v and _is_data_ptr(v):
+                uid = read_u32(v + 0x18)
+                if uid is not None and uid < 0x10000:
+                    offsets["proc_ucred"] = off
+                    print("[+] proc_ucred = 0x{:x} (uid={})".format(off, uid))
+                    break
+
+    kernel_task_ptr = None
+    if kernel_task_var and _validate_addr(kernel_task_var, "data"):
+        v = read_u64(kernel_task_var)
+        if v and _is_data_ptr(v):
+            kernel_task_ptr = v
+            print("[+] kernel_task deref -> 0x{:016X}".format(v))
+
+    if kernel_task_ptr:
         for off in range(0x300, 0x420, 8):
-            v = read_u64(kernel_task + off)
-            if v and _is_data_ptr(v):
-                pid = read_u32(v + 0x68)
-                if pid is not None and 0 < pid < 0x100000:
-                    offsets.setdefault("task_bsd_info", off)
-                    print("[+] task_bsd_info via kernel_task: 0x{:x}".format(off))
-                    break
-
-    if allproc and _validate_addr(allproc, "data"):
-        first = read_u64(allproc)
-        if first and _is_data_ptr(first):
-            for off in range(0x08, 0x80, 8):
-                v = read_u64(first + off)
-                if v and _is_data_ptr(v):
-                    pid = read_u32(v + 0x68)
-                    if pid is not None and 0 < pid < 0x100000:
-                        offsets.setdefault("proc_task", off)
-                        print("[+] proc_task via allproc: 0x{:x}".format(off))
-                        break
-
-    for name, field, base_global in [
-        ("task_itk_space", "task_itk_space", kernel_task),
-        ("ipc_space_is_table", "ipc_space_is_table", None),
-    ]:
-        if base_global and _validate_addr(base_global, "data"):
-            for off in range(0x280, 0x380, 8):
-                v = read_u64(base_global + off)
-                if v and _is_data_ptr(v):
-                    offsets.setdefault(field, off)
-                    print("[+] {} via kernel_task: 0x{:x}".format(field, off))
-                    break
-
-    ipc_space_kernel = sym_get("_ipc_space_kernel") or sym_get("ipc_space_kernel")
-    if ipc_space_kernel and _validate_addr(ipc_space_kernel, "data"):
-        for off in range(0x10, 0x40, 8):
-            v = read_u64(ipc_space_kernel + off)
-            if v and _is_data_ptr(v):
-                offsets.setdefault("ipc_space_is_table", off)
-                print("[+] ipc_space_is_table via ipc_space_kernel: 0x{:x}".format(off))
+            v = read_u64(kernel_task_ptr + off)
+            if not v or not _is_data_ptr(v):
+                continue
+            pid = read_u32(v + proc_pid_off)
+            if pid is not None and 0 < pid < 0x100000:
+                offsets["task_bsd_info"] = off
+                print("[+] task_bsd_info = 0x{:x} (pid={})".format(off, pid))
                 break
+
+    if kernel_task_ptr:
+        for off in range(0x280, 0x380, 8):
+            v = read_u64(kernel_task_ptr + off)
+            if not v or not _is_data_ptr(v):
+                continue
+            first_field = read_u64(v)
+            if first_field and _is_data_ptr(first_field):
+                offsets["task_itk_space"] = off
+                print("[+] task_itk_space = 0x{:x}".format(off))
+                break
+
+    if ipc_space_kernel_var and _validate_addr(ipc_space_kernel_var, "data"):
+        isp = read_u64(ipc_space_kernel_var)
+        if isp and _is_data_ptr(isp):
+            for off in range(0x10, 0x40, 8):
+                v = read_u64(isp + off)
+                if v and _is_data_ptr(v):
+                    offsets["ipc_space_is_table"] = off
+                    print("[+] ipc_space_is_table = 0x{:x}".format(off))
+                    break
 
     return offsets
 
