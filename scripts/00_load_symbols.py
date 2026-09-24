@@ -2,16 +2,51 @@
 import os
 import json
 
-WORKSPACE   = os.environ.get("GITHUB_WORKSPACE", "/tmp")
+try:
+    string_types = (str, unicode)
+except NameError:
+    string_types = (str,)
+
+WORKSPACE = os.environ.get("GITHUB_WORKSPACE", "/tmp")
 SYMBOLS_JSON = os.environ.get("SYMBOLS_JSON",
                 os.path.join(WORKSPACE, "symbols.json"))
 
-_sym_cache = {}
+# -------- caches (per script invocation) --------
+_sym_cache = None
+_string_map = None
+_string_list = None
+_syms_index = None
+IFC = [None]
 
-def _load():
+
+def _to_unsigned(v):
+    return int(v) & 0xFFFFFFFFFFFFFFFF
+
+
+def _parse_addr(v):
+    if v is None:
+        return None
+    try:
+        if isinstance(v, (int, long)):
+            return _to_unsigned(v)
+        if not isinstance(v, string_types):
+            return None
+        s = v.strip()
+        if not s:
+            return None
+        if s.startswith(("0x", "0X")):
+            return _to_unsigned(int(s, 16))
+        return _to_unsigned(int(s, 10))
+    except Exception:
+        return None
+
+
+def _load_symbols():
     global _sym_cache
-    if _sym_cache:
+    if _sym_cache is not None:
         return
+    _sym_cache = {}
+
     if not os.path.exists(SYMBOLS_JSON):
         print("[-] symbols.json not found: " + SYMBOLS_JSON)
         return
@@ -19,6 +54,7 @@ def _load():
         with open(SYMBOLS_JSON) as f:
             raw = f.read().strip()
         if not raw:
+            print("[-] symbols.json is empty")
             return
         data = json.loads(raw)
     except Exception as e:
@@ -26,31 +62,41 @@ def _load():
         return
 
     def _add(name, addr):
-        if not name or addr is None:
+        if name is None or addr is None:
             return
-        try:
-            if isinstance(addr, str):
-                v = int(addr, 16) if addr.startswith(("0x","0X")) else int(addr, 0)
-            else:
-                v = int(addr)
-            u = v & 0xFFFFFFFFFFFFFFFF
-            _sym_cache[name] = u
-            if not name.startswith("_"):
-                _sym_cache["_" + name] = u
-        except Exception:
-            pass
+        if not isinstance(name, string_types):
+            name = str(name)
+        name = name.strip()
+        if not name:
+            return
+        v = _parse_addr(addr)
+        if v is None:
+            return
+        # keep only kernel-VA-looking values
+        if v < 0xFFFF000000000000:
+            return
+        _sym_cache[name] = v
+        if not name.startswith("_"):
+            _sym_cache["_" + name] = v
 
     def _walk(node):
         if isinstance(node, dict):
-            name = node.get("name") or node.get("symbol")
-            addr = node.get("address") or node.get("addr") or node.get("value")
-            if name and addr is not None:
-                _add(name, addr)
+            # Format A: {"name": ..., "address"/"addr"/"value": ...}
+            nm = node.get("name") or node.get("symbol")
+            ad = node.get("address") or node.get("addr") or node.get("value")
+            if nm and ad is not None:
+                _add(nm, ad)
                 return
+            # Format B: {"14073...": "symbol_name"}   <- blacktop ipsw
+            # Format C: {"symbol_name": "0xfffffff0..."}
             for k, v in node.items():
-                if isinstance(v, str) and v.startswith(("0x","0X")):
-                    _add(k, v)
-                else:
+                k_addr = _parse_addr(k)
+                v_addr = _parse_addr(v)
+                if k_addr is not None and isinstance(v, string_types) and v_addr is None:
+                    _add(v, k_addr)
+                elif v_addr is not None and isinstance(k, string_types) and k_addr is None:
+                    _add(k, v_addr)
+                elif isinstance(v, (dict, list)):
                     _walk(v)
         elif isinstance(node, list):
             for item in node:
@@ -59,40 +105,45 @@ def _load():
     _walk(data)
     print("[+] symbols loaded: " + str(len(_sym_cache)))
 
-_load()
 
 def sym_get(name):
-    _load()
+    _load_symbols()
     if name in _sym_cache:
         return _sym_cache[name]
     bare = name.lstrip("_")
-    for cand in (bare, "_" + name):
-        if cand in _sym_cache:
-            return _sym_cache[cand]
+    if bare in _sym_cache:
+        return _sym_cache[bare]
+    if "_" + name in _sym_cache:
+        return _sym_cache["_" + name]
     lower = name.lower()
     for k, v in _sym_cache.items():
         if k.lower() == lower:
             return v
     return None
 
+
 def sym_all():
-    _load()
+    _load_symbols()
     return dict(_sym_cache)
+
 
 def fmt(v):
     return "0x{:016X}".format(v & 0xFFFFFFFFFFFFFFFF)
+
 
 def to_long(v):
     v = int(v) & 0xFFFFFFFFFFFFFFFF
     if v >= 0x8000000000000000:
         v -= 0x10000000000000000
-    return int(v)
+    return v
+
 
 def safe_addr(a):
     try:
         return toAddr(to_long(a))
     except Exception:
         return None
+
 
 def read_u64(a):
     ga = safe_addr(a)
@@ -103,6 +154,7 @@ def read_u64(a):
     except Exception:
         return None
 
+
 def read_u32(a):
     ga = safe_addr(a)
     if ga is None:
@@ -112,50 +164,81 @@ def read_u32(a):
     except Exception:
         return None
 
+
 def is_kva(v):
     return v is not None and 0xFFFFFFF000000000 <= v < 0xFFFFFFF200000000
 
-def syms_named(pat):
+
+# -------- string map (lazy, once per script) --------
+
+def _build_string_map():
+    global _string_map, _string_list
+    if _string_map is not None:
+        return
+    _string_map = {}
+    _string_list = []
+    listing = currentProgram.getListing()
+    it = listing.getDefinedData(True)
+    while it.hasNext():
+        d = it.next()
+        try:
+            if not d.hasStringValue():
+                continue
+            v = d.getValue()
+            if v is None:
+                continue
+            s = str(v)
+            a = _to_unsigned(d.getAddress().getOffset())
+            _string_list.append((a, s))
+            if s not in _string_map:
+                _string_map[s] = a
+        except Exception:
+            pass
+    print("[+] strings indexed: " + str(len(_string_list)))
+
+
+def find_str_exact(s):
+    _build_string_map()
+    return _string_map.get(s)
+
+
+def find_str_contains(sub):
+    _build_string_map()
     out = []
+    for a, s in _string_list:
+        if sub in s:
+            out.append((a, s))
+    return out
+
+
+# -------- symbol table index (lazy) --------
+
+def _build_sym_index():
+    global _syms_index
+    if _syms_index is not None:
+        return
+    _syms_index = []
     st = currentProgram.getSymbolTable()
     try:
         for sym in st.getAllSymbols(True):
-            n = sym.getName()
-            if pat in n:
-                try:
-                    out.append((int(sym.getAddress().getOffset()) & 0xFFFFFFFFFFFFFFFF, n))
-                except Exception:
-                    pass
+            try:
+                _syms_index.append(
+                    (_to_unsigned(sym.getAddress().getOffset()), sym.getName()))
+            except Exception:
+                pass
     except Exception:
         pass
+    print("[+] symtable indexed: " + str(len(_syms_index)))
+
+
+def syms_named(pat):
+    _build_sym_index()
+    out = []
+    for a, n in _syms_index:
+        if pat in n:
+            out.append((a, n))
     return out
 
-def find_str_exact(s):
-    listing = currentProgram.getListing()
-    it = listing.getDefinedData(True)
-    while it.hasNext():
-        d = it.next()
-        try:
-            if d.hasStringValue() and str(d.getValue()) == s:
-                return int(d.getAddress().getOffset()) & 0xFFFFFFFFFFFFFFFF
-        except Exception:
-            pass
-    return None
-
-def find_str_contains(sub):
-    results = []
-    listing = currentProgram.getListing()
-    it = listing.getDefinedData(True)
-    while it.hasNext():
-        d = it.next()
-        try:
-            if d.hasStringValue():
-                val = str(d.getValue())
-                if sub in val:
-                    results.append((int(d.getAddress().getOffset()) & 0xFFFFFFFFFFFFFFFF, val))
-        except Exception:
-            pass
-    return results
 
 def xrefs_to(addr):
     refs = []
@@ -169,6 +252,7 @@ def xrefs_to(addr):
     except Exception:
         pass
     return refs
+
 
 def func_at(addr):
     ga = safe_addr(addr)
@@ -184,6 +268,7 @@ def func_at(addr):
         return getFunctionContaining(ga)
     except Exception:
         return None
+
 
 def ensure_func(addr):
     f = func_at(addr)
@@ -201,7 +286,6 @@ def ensure_func(addr):
     except Exception:
         return None
 
-IFC = [None]
 
 def decompile(f):
     from ghidra.app.decompiler import DecompInterface, DecompileOptions
@@ -221,9 +305,14 @@ def decompile(f):
         pass
     return ""
 
+
 def write_lines(path, lines):
+    d = os.path.dirname(path)
+    if d and not os.path.isdir(d):
+        try:
+            os.makedirs(d)
+        except Exception:
+            pass
     with open(path, "w") as fh:
         for line in lines:
             fh.write(line + "\n")
-
-print("[+] 00_load_symbols.py done")
