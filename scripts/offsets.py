@@ -74,53 +74,59 @@ def fmt_hex(v):
 
 def load_symbols_json():
     result = {}
-    if not os.path.exists(SYMBOLS_JSON):
-        print("[-] no symbols.json at {}".format(SYMBOLS_JSON))
-        return result
-    try:
-        with open(SYMBOLS_JSON) as f:
-            raw = f.read().strip()
-        if not raw:
-            return result
-        data = json.loads(raw)
-    except Exception as e:
-        print("[-] parse fail: {}".format(e))
-        return result
 
-    def add(name, addr):
-        if not name or addr is None:
-            return
+    candidates = [
+        SYMBOLS_JSON,
+        "/tmp/symbols.json",
+        os.path.expanduser("~/symbols.json"),
+        "/home/runner/symbols.json",
+    ]
+
+    found_path = None
+    for p in candidates:
         try:
-            if isinstance(addr, str):
-                addr_int = int(addr, 16) if addr.startswith(("0x", "0X")) else int(addr, 0)
-            else:
-                addr_int = int(addr)
-            result[name] = to_unsigned(addr_int)
-            if not name.startswith("_"):
-                result["_" + name] = to_unsigned(addr_int)
+            if os.path.exists(p) and os.path.getsize(p) > 1000:
+                found_path = p
+                break
         except Exception:
-            pass
+            continue
 
-    def walk(node):
-        if isinstance(node, dict):
-            name = node.get("name") or node.get("symbol")
-            addr = node.get("address") or node.get("addr") or node.get("value")
-            if name and addr is not None:
-                add(name, addr)
-                return
-            for k, v in node.items():
-                if isinstance(v, str) and (v.startswith("0x") or v.startswith("0X")):
-                    try:
-                        add(k, v)
-                        continue
-                    except Exception:
-                        pass
-                walk(v)
-        elif isinstance(node, list):
-            for item in node:
-                walk(item)
+    if not found_path:
+        print("[-] symbols.json not found in candidates")
+        return result
 
-    walk(data)
+    print("[+] using {}".format(found_path))
+
+    try:
+        with open(found_path) as f:
+            data = json.load(f)
+    except Exception as e:
+        print("[-] json parse fail: {}".format(e))
+        return result
+
+    if not isinstance(data, dict):
+        print("[-] unexpected type: {}".format(type(data).__name__))
+        return result
+
+    for k, v in data.items():
+        try:
+            if not isinstance(k, str) or not isinstance(v, str):
+                continue
+            addr_int = int(k, 10)
+            if addr_int < 0xfffffff000000000 or addr_int > 0xffffffffffffffff:
+                continue
+            name = v.strip()
+            if not name or len(name) > 200:
+                continue
+            if name.startswith("vtable for ") or name.startswith("site.struct "):
+                continue
+            result[name] = addr_int & 0xFFFFFFFFFFFFFFFF
+            if not name.startswith("_"):
+                result["_" + name] = addr_int & 0xFFFFFFFFFFFFFFFF
+        except Exception:
+            continue
+
+    print("[+] parsed {} symbols".format(len(result)))
     return result
 
 
