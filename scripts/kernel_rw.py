@@ -10,7 +10,7 @@ try:
 except NameError:
     string_types = (str,)
 
-WORKSPACE   = os.environ.get("GITHUB_WORKSPACE", "/tmp")
+WORKSPACE    = os.environ.get("GITHUB_WORKSPACE", "/tmp")
 SYMBOLS_JSON = os.environ.get("SYMBOLS_JSON", os.path.join(WORKSPACE, "symbols.json"))
 
 OUT_TXT  = os.path.join(WORKSPACE, "nk_kernel_rw.txt")
@@ -23,11 +23,12 @@ KTEXT_LO           = 0xFFF007004000
 KTEXT_HI           = 0xFFF200000000
 SYSENT_STRIDE      = 24
 
-_sym_cache   = None
-_string_map  = None
-_string_list = None
-_syms_index  = None
-_IFC         = [None]
+_sym_cache        = None
+_string_map       = None
+_string_list      = None
+_syms_index       = None
+_IFC              = [None]
+_valid_addr_cache = {}
 
 
 def _to_u(v):
@@ -96,6 +97,24 @@ def read_u16(a):
         return int(currentProgram.getMemory().getShort(ga)) & 0xFFFF
     except Exception:
         return None
+
+
+def _validate_addr(addr, expected_type="any"):
+    if addr in _valid_addr_cache:
+        return _valid_addr_cache[addr]
+    result = False
+    ga = safe_addr(addr)
+    if ga is not None:
+        blk = currentProgram.getMemory().getBlock(ga)
+        if blk is not None and blk.isInitialized():
+            if expected_type == "ktext":
+                result = blk.isExecute()
+            elif expected_type == "data":
+                result = not blk.isExecute()
+            else:
+                result = True
+    _valid_addr_cache[addr] = result
+    return result
 
 
 def _load_symbols():
@@ -314,9 +333,9 @@ def decompile(f):
     from ghidra.util.task import ConsoleTaskMonitor
     if f is None:
         return ""
-    if _IFC[0] is None:
-        ifc = DecompInterface()
-        ifc.setOptions(DecompileOptions())
+.contains    if _(IFC[0] is None:
+        ifc =ins DecompInterface()
+       n ifc.setOptions(DecompileOptions.get())
         ifc.openProgram(currentProgram)
         _IFC[0] = ifc
     try:
@@ -338,7 +357,7 @@ def resolve_adrp_pairs(func, lo=0xFFFFFFF000000000, hi=0xFFFFFFF200000000):
     insn = listing.getInstructionAt(body.getMinAddress())
     out = []
     prev = None
-    while insn is not None and body.contains(insn.getAddress()):
+    while insn is not None and bodyAddress()):
         mn = insn.getMnemonicString().lower()
         txt = insn.toString()
         if mn == "adrp":
@@ -434,8 +453,8 @@ def _sysent_entry(base, i):
         return None
     if not _is_ktext(call) or not _is_exec(call):
         return None
-    ret_type = read_u32(a + 16)
-    narg     = read_u16(a + 20)
+    ret_type  = read_u32(a + 16)
+    narg      = read_u16(a + 20)
     arg_bytes = read_u16(a + 22)
     if ret_type is None or ret_type > 9:
         return None
@@ -446,53 +465,33 @@ def _sysent_entry(base, i):
     return (call, narg, ret_type, arg_bytes)
 
 
-def _looks_like_sysent(base):
-    if base is None:
-        return False
-    if not (0xFFFFFFF000000000 <= base < 0xFFFFFFF200000000):
-        return False
-    if _sysent_entry(base, 0) is None:
-        return False
+def _score_sysent(base, sample=80):
     hits = 0
-    for i in range(60):
-        if _sysent_entry(base, i) is not None:
-            hits += 1
-    return hits >= 40
-
-
-def _walk_sysent(base, limit=1500):
-    out = []
-    bad = 0
-    for i in range(limit):
+    for i in range(sample):
         e = _sysent_entry(base, i)
-        if e is None:
-            bad += 1
-            if bad > 30:
-                break
-            continue
-        bad = 0
-        call, narg, ret_type, arg_bytes = e
-        f = func_at(call)
-        name = f.getName() if f else "?"
-        out.append((i, call, narg, ret_type, arg_bytes, name))
-    return out
+        if e is not None:
+            call, narg, rt, ab = e
+            if narg > 0 or rt > 0 or ab > 0:
+                hits += 2
+            else:
+                hits += 1
+    return hits
 
 
 def _find_sysent():
     for nm in ("_sysent", "sysent", "_unix_sysent", "unix_sysent"):
         a = sym_get(nm)
-        if a and _looks_like_sysent(a):
+        if a and _score_sysent(a) > 40:
             return a, "sym:" + nm
-    for a, n in syms_named("sysent"):
-        if _looks_like_sysent(a):
-            return a, "ghidra:" + n
+
     for a, n in funcs_named("unix_syscall"):
         f = ensure_func(a)
         if f is None:
             continue
         for _, tgt, _ in resolve_adrp_pairs(f):
-            if _looks_like_sysent(tgt):
+            if _score_sysent(tgt) > 60:
                 return tgt, n + "_adrp"
+
     mem = currentProgram.getMemory()
     blocks = []
     for b in mem.getBlocks():
@@ -511,18 +510,28 @@ def _find_sysent():
         else:
             continue
         blocks.append((prio, b))
+
+    best    = None
+    best_sc = 0
+    best_src = ""
     blocks.sort(key=lambda x: x[0])
     for _, b in blocks:
         s = _to_u(b.getStart().getOffset())
         e = _to_u(b.getEnd().getOffset())
-        if e - s < SYSENT_STRIDE * 100:
+        if e - s < SYSENT_STRIDE * 200:
             continue
         a = s + ((-s) % 8)
-        max_a = e - SYSENT_STRIDE * 100
+        max_a = e - SYSENT_STRIDE * 200
         while a < max_a:
-            if _looks_like_sysent(a):
-                return a, "scan:" + b.getName()
+            sc = _score_sysent(a)
+            if sc > best_sc:
+                best_sc  = sc
+                best     = a
+                best_src = "scan:" + b.getName()
             a += 8
+
+    if best is not None and best_sc > 60:
+        return best, best_src
     return None, "NOT_FOUND"
 
 
@@ -544,6 +553,201 @@ def _find_mach_traps():
     return None, "NOT_FOUND"
 
 
+ACCESSOR_SPECS = {
+    "task_bsd_info":   ["_get_bsdtask_info", "task_bsd_info", "get_bsdtask_info"],
+    "task_vm_map":     ["_task_vm_map", "task_vm_map", "get_task_map", "_get_task_map"],
+    "task_itk_self":   ["_task_get_itk_self", "task_get_itk_self"],
+    "task_itk_space":  ["_task_get_itk_space", "task_get_itk_space"],
+    "task_thread":     ["_task_thread", "task_thread", "get_task_thread"],
+    "task_proc":       ["_get_task_proc", "task_get_proc"],
+    "task_t_flags":    ["_task_get_t_flags", "task_get_t_flags"],
+    "proc_task":       ["_proc_task", "proc_task"],
+    "proc_pid":        ["_proc_pid", "proc_pid"],
+    "proc_ucred":      ["_proc_ucred", "proc_ucred"],
+    "proc_ppid":       ["_proc_ppid", "proc_ppid"],
+    "proc_textvp":     ["_proc_textvp", "proc_textvp"],
+    "proc_fd":         ["_proc_fd", "proc_fd"],
+    "proc_flag":       ["_proc_flag", "proc_flag"],
+    "proc_pptr":       ["_proc_pptr", "proc_pptr"],
+    "proc_pgrp":       ["_proc_pgrp", "proc_pgrp"],
+    "proc_ro":         ["_proc_ro", "proc_ro"],
+    "kauth_cred_uid":    ["_kauth_cred_getuid", "kauth_cred_getuid"],
+    "kauth_cred_ruid":   ["_kauth_cred_getruid", "kauth_cred_getruid"],
+    "kauth_cred_svuid":  ["_kauth_cred_getsvuid", "kauth_cred_getsvuid"],
+    "kauth_cred_gid":    ["_kauth_cred_getgid", "kauth_cred_getgid"],
+    "kauth_cred_rgid":   ["_kauth_cred_getrgid", "kauth_cred_getrgid"],
+    "kauth_cred_svgid":  ["_kauth_cred_getsvgid", "kauth_cred_getsvgid"],
+    "kauth_cred_label":  ["_kauth_cred_getlabel", "kauth_cred_getlabel",
+                          "_kauth_cred_get_label"],
+    "ipc_port_kobject":   ["_ipc_port_get_kobject", "ipc_port_get_kobject"],
+    "ipc_port_receiver":  ["_ipc_port_get_receiver", "ipc_port_get_receiver"],
+    "ipc_port_mscount":   ["_ipc_port_get_mscount", "ipc_port_get_mscount"],
+    "ipc_space_is_table": ["_ipc_space_get_table", "ipc_space_get_table"],
+    "vme_start":     ["_vm_map_entry_get_start", "vm_map_entry_get_start"],
+    "vme_end":       ["_vm_map_entry_get_end", "vm_map_entry_get_end"],
+    "vme_object":    ["_vm_map_entry_get_object", "vm_map_entry_get_object"],
+    "vme_offset":    ["_vm_map_entry_get_offset", "vm_map_entry_get_offset"],
+    "fd_ofiles":     ["_fdp_get_ofiles", "fdp_get_ofiles"],
+    "fileproc_fg":   ["_fp_get_fg", "fp_get_fg"],
+    "fileproc_fglob": ["_fp_get_fglob", "fp_get_fglob"],
+    "vnode_data":    ["_vnode_get_data", "vnode_get_data"],
+    "socket_so_proto":   ["_so_get_proto", "so_get_proto"],
+    "inpcb_inp_socket":  ["_inp_get_socket", "inp_get_socket"],
+    "inpcb_inp_list":    ["_inp_get_list", "inp_get_list"],
+}
+
+
+def _extract_field_offset(code, field_var=None):
+    pats = []
+    if field_var:
+        pats.append(r"\*\([^)]*\*\)\s*\(\s*" + re.escape(field_var) +
+                    r"\s*\+\s*(0x[0-9a-fA-F]+|\d+)\s*\)")
+    pats.append(r"\*\([^)]*\*\)\s*\(\s*\w+\s*\+\s*(0x[0-9a-fA-F]+|\d+)\s*\)")
+    pats.append(r"return\s+\*\([^)]*\)\s*\(\s*\w+\s*\+\s*(0x[0-9a-fA-F]+|\d+)\s*\)")
+    pats.append(r"\(\s*\w+\s*\+\s*(0x[0-9a-fA-F]+|\d+)\s*\)")
+    for p in pats:
+        for m in re.finditer(p, code):
+            off = int(m.group(1), 0)
+            if 0 < off < 0x2000:
+                return off
+    return None
+
+
+def _collect_struct_offsets():
+    struct_offsets = {}
+    for field, names in ACCESSOR_SPECS.items():
+        for name in names:
+            hits = syms_named(name)
+            if not hits:
+                continue
+            a, n = hits[0]
+            f = ensure_func(a)
+            if f is None:
+                continue
+            code = decompile(f)
+            if not code:
+                continue
+            off = _extract_field_offset(code)
+            if off is not None:
+                struct_offsets[field] = off
+                break
+    return struct_offsets
+
+
+def _collect_syscall_offsets(sysent_entries):
+    offsets = {}
+    fields = [
+        ("proc_p_pid",   r"p_pid",       0x68),
+        ("proc_p_ppid",  r"p_ppid",      0x70),
+        ("proc_p_ucred", r"p_ucred",     0x100),
+        ("proc_p_fd",    r"p_fd",        0x20),
+        ("task_bsd_info", r"bsd_info",   0x3a0),
+    ]
+    for i, h, narg, rt, ab, name in sysent_entries[:200]:
+        if h is None or name.startswith("FUN_") or name == "?":
+            continue
+        f = ensure_func(h)
+        if f is None:
+            continue
+        code = decompile(f)
+        if not code:
+            continue
+        for fname, marker, guess in fields:
+            if fname in offsets:
+                continue
+            m = re.search(r"\*\([^)]*\*\)\s*\(\s*" + marker + r"\s*\+\s*(0x[0-9a-fA-F]+|\d+)\s*\)", code)
+            if m:
+                off = int(m.group(1), 0)
+                if 0 < off < 0x2000:
+                    offsets[fname] = off
+    return offsets
+
+
+XNU_KNOWN_OFFSETS = {
+    "proc_p_pid":    0x68,
+    "proc_p_ppid":   0x70,
+    "proc_p_ucred":  0x100,
+    "task_bsd_info": 0x3A0,
+    "task_vm_map":   0x28,
+    "ipc_port_kobject": 0x48,
+    "kauth_cred_uid":   0x18,
+    "kauth_cred_gid":   0x1C,
+}
+
+
+def _validate_with_xnu(field, offset):
+    if field in XNU_KNOWN_OFFSETS:
+        known = XNU_KNOWN_OFFSETS[field]
+        if offset != known:
+            print("[!] {} mismatch: got 0x{:x}, xnu says 0x{:x}".format(
+                field, offset, known))
+            return False
+    return True
+
+
+def _find_ctrr_patches():
+    patches = []
+    anchors = {
+        "ctrr_lock_boot":              ["ctrr_lock_boot", "CTRR lockdown"],
+        "cpu_lock_system_registers":   ["cpu_lock_system_registers"],
+        "sptm_determine_kernel_ctrr":  ["sptm_determine_kernel_ctrr",
+                                        "determine_kernel_ctrr"],
+    }
+    for label, strs in anchors.items():
+        for s in strs:
+            sa = _str_addr(s)
+            if sa is None:
+                continue
+            for xr in xrefs_to(sa):
+                f = func_at(xr)
+                if f is None:
+                    continue
+                ep = _to_u(f.getEntryPoint().getOffset())
+                if _validate_addr(ep, "ktext"):
+                    patches.append((label, ep))
+                    break
+    return patches
+
+
+def _find_iokit():
+    table = {
+        "IOUserClient_externalMethod":      ["externalMethod"],
+        "IOUserClient2022_extMethod":       ["wrong externalMethod for IOUserClient2022"],
+        "IOUserClientKernelCompletion":     ["OSAction_IOUserClient_KernelCompletion"],
+        "IOConnectCallMethod":              ["IOConnectCallMethod"],
+        "IOServiceOpen":                    ["IOServiceOpen"],
+        "AppleKeyStore":                    ["AppleKeyStore"],
+        "IOSurfaceRoot":                    ["IOSurfaceRoot"],
+        "I =OMobileFramebuffer":              ["IOMobileFramebuffer"],
+        "AppleMobileFileIntegrity":         ["AppleMobileFileIntegrity"],
+        "AppleSEPManager":                  ["AppleSEPManager"],
+        "AppleAPFSContainer":               ["AppleAPFSContainer"],
+        "IOHIDEventService":                ["IOHIDEventService"],
+        "IOHIDSystem":                      ["IOHIDSystem"],
+        "IOGraphicsAccelerator2":           ["IOGraphicsAccelerator2"],
+        "IOAESAccelerator":                 ["IOAESAccelerator"],
+        "AGXCommandQueue":                  ["AGXCommandQueue"],
+        "AppleCLCD2":                       ["AppleCLCD2"],
+        "AppleS8000AESAccelerator":         ["AppleS8000AESAccelerator"],
+        "IOSurfaceMemory":                  ["IOSurfaceMemory"],
+        "AppleSMC":                         ["AppleSMC"],
+        "AppleEffaceableStorage":           ["AppleEffaceableStorage"],
+        "AppleActuatorDevice":              ["AppleActuatorDevice"],
+    }
+    out = {}
+    for label, needles in table.items():
+        for needle in needles:
+            sa = _str_addr(needle)
+            if sa is None:
+                continue
+            for xr in xrefs_to(sa):
+                f = func_at(xr)
+                if f:
+                    out.setdefault int(label, set()).add(
+                        _to_u(f(current.getEntryPoint().getOffset()))
+    return out
+
+
 def main():
     print("=== kernel_rw.py ===")
     print("[*] program: " + currentProgram.getName())
@@ -552,14 +756,14 @@ def main():
     _build_strings()
 
     report = []
-    hdr = []
-    jout = {}
+    hdr    = []
+    jout   = {}
 
-    img_base = int(currentProgram.getImageBase().getOffset()) & 0xFFFFFFFFFFFFFFFF
+    img_baseProgram.getImageBase().getOffset()) & 0xFFFFFFFFFFFFFFFF
 
     report.append("=== [1] KERNEL BASE ===")
-    report.append("image_base   = " + fmt(img_base))
-    report.append("unslid_base  = " + fmt(KERNEL_UNSLID_BASE))
+    report.append("image_base  = " + fmt(img_base))
+    report.append("unslid_base = " + fmt(KERNEL_UNSLID_BASE))
     _vks = sym_get("_vm_kernel_slide")
     report.append("_vm_kernel_slide = " + (fmt(_vks) if _vks else "runtime-only"))
     hdr.append("#define NK_KERNEL_UNSLID_BASE   " + fmt(KERNEL_UNSLID_BASE) + "ULL")
@@ -607,9 +811,21 @@ def main():
     hdr.append("")
     jout["mach_trap_table"] = fmt(mt_base) if mt_base else None
 
+    print("[*] CTRR/SPTM patches...")
+    ctrr_patches = _find_ctrr_patches()
+    report.append("")
+    report.append("=== [2c] CTRR/SPTM PATCHES ===")
+    for label, ep in ctrr_patches:
+        report.append("  {:<30} {}".format(label, fmt(ep)))
+    hdr.append("// CTRR/SPTM PATCHES")
+    for label, ep in ctrr_patches:
+        hdr.append("#define NK_CTRR_{:<33} {}ULL".format(norm(label).upper(), fmt(ep)))
+    hdr.append("")
+    jout["ctrr_patches"] = {k: fmt(v) for k, v in ctrr_patches}
+
     print("[*] globals via adrp...")
     ANCHORS = {
-        "kernproc":     ["p != kernproc", "so != NULL || p == kernproc"],
+        "kernproc":     ["p != kernproc", "soro != NULL || p ==-> kernproc"],
         "allproc":      ["allproc"],
         "initproc":     ["initproc"],
         "kernel_task":  ["kernel_task"],
@@ -619,9 +835,8 @@ def main():
         "procs_tree":   ["procs_tree"],
         "vm_kernel_slide": ["vm_kernel_slide"],
         "pmap_kernel":  ["pmap_kernel"],
-        "pti":          ["kern_return_t task_terminate_internal"],
         "task_init":     ["task_init @%s:%d"],
-        "proc_ro":       ["proc_ro->task backref mismatch"],
+        "proc_ro":       ["proc_task backref mismatch"],
         "task_map":      ["task->map->pmap"],
         "set_bsdtask":   ["set_bsdtask_info trying to set random bsd_info"],
         "swap_task_map": ["swap_task_map @%s:%d"],
@@ -655,7 +870,6 @@ def main():
         "fdesc":         ["fdesc_zone"],
         "proc_list":     ["proc_list_mlock"],
         "proc_find":     ["proc_find"],
-        "selinux":       ["selinux"],
         "iokit":         ["IOCreateReceivePort"],
         "driverkit":     ["DriverKit"],
         "exclave":       ["ExclaveCore"],
@@ -674,7 +888,8 @@ def main():
                     continue
                 for _, tgt, kind in resolve_adrp_pairs(f):
                     if kind in ("ldr", "ldp"):
-                        globals_map.setdefault(tgt, set()).add(label)
+                        if _validate_addr(tgt, "any"):
+                            globals_map.setdefault(tgt, set()).add(label)
     report.append("")
     report.append("=== [3] GLOBALS ===")
     for k in sorted(globals_map.keys()):
@@ -687,67 +902,10 @@ def main():
     hdr.append("")
     jout["globals"] = {fmt(k): sorted(list(v)) for k, v in globals_map.items()}
 
-    print("[*] struct offsets...")
-    STRUCT_FUNCS = {
-        "task_bsd_info":   ["_get_bsdtask_info", "task_bsd_info", "get_bsdtask_info"],
-        "task_vm_map":     ["_task_vm_map", "task_vm_map", "get_task_map", "_get_task_map"],
-        "task_itk_self":   ["_task_get_itk_self", "task_get_itk_self"],
-        "task_itk_space":  ["_task_get_itk_space", "task_get_itk_space"],
-        "task_thread":     ["_task_thread", "task_thread", "get_task_thread"],
-        "task_proc":       ["_get_task_proc", "task_get_proc"],
-        "task_t_flags":    ["_task_get_t_flags", "task_get_t_flags"],
-        "proc_task":       ["_proc_task", "proc_task"],
-        "proc_pid":        ["_proc_pid", "proc_pid"],
-        "proc_ucred":      ["_proc_ucred", "proc_ucred"],
-        "proc_ppid":       ["_proc_ppid", "proc_ppid"],
-        "proc_textvp":     ["_proc_textvp", "proc_textvp"],
-        "proc_fd":         ["_proc_fd", "proc_fd"],
-        "proc_flag":       ["_proc_flag", "proc_flag"],
-        "proc_pptr":       ["_proc_pptr", "proc_pptr"],
-        "proc_pgrp":       ["_proc_pgrp", "proc_pgrp"],
-        "proc_ro":         ["_proc_ro", "proc_ro"],
-        "kauth_cred_uid":    ["_kauth_cred_getuid", "kauth_cred_getuid"],
-        "kauth_cred_ruid":   ["_kauth_cred_getruid", "kauth_cred_getruid"],
-        "kauth_cred_svuid":  ["_kauth_cred_getsvuid", "kauth_cred_getsvuid"],
-        "kauth_cred_gid":    ["_kauth_cred_getgid", "kauth_cred_getgid"],
-        "kauth_cred_rgid":   ["_kauth_cred_getrgid", "kauth_cred_getrgid"],
-        "kauth_cred_svgid":  ["_kauth_cred_getsvgid", "kauth_cred_getsvgid"],
-        "kauth_cred_label":  ["_kauth_cred_getlabel", "kauth_cred_getlabel",
-                              "_kauth_cred_get_label"],
-        "ipc_port_kobject":   ["_ipc_port_get_kobject", "ipc_port_get_kobject"],
-        "ipc_port_receiver":  ["_ipc_port_get_receiver", "ipc_port_get_receiver"],
-        "ipc_port_mscount":   ["_ipc_port_get_mscount", "ipc_port_get_mscount"],
-        "ipc_space_is_table": ["_ipc_space_get_table", "ipc_space_get_table"],
-        "vme_start":     ["_vm_map_entry_get_start", "vm_map_entry_get_start"],
-        "vme_end":       ["_vm_map_entry_get_end", "vm_map_entry_get_end"],
-        "vme_object":    ["_vm_map_entry_get_object", "vm_map_entry_get_object"],
-        "vme_offset":    ["_vm_map_entry_get_offset", "vm_map_entry_get_offset"],
-        "fd_ofiles":     ["_fdp_get_ofiles", "fdp_get_ofiles"],
-        "fileproc_fg":   ["_fp_get_fg", "fp_get_fg"],
-    }
-    struct_offsets = {}
-    for field, names in STRUCT_FUNCS.items():
-        for name in names:
-            hits = syms_named(name)
-            if not hits:
-                continue
-            a, n = hits[0]
-            f = ensure_func(a)
-            if f is None:
-                continue
-            code = decompile(f)
-            if not code:
-                continue
-            m = re.search(r"\*\([^)]*\*\)\s*\(\s*\w+\s*\+\s*(0x[0-9a-fA-F]+|\d+)\s*\)", code)
-            if not m:
-                m = re.search(r"return\s+\*\([^)]*\)\s*\(\s*\w+\s*\+\s*(0x[0-9a-fA-F]+|\d+)\s*\)", code)
-            if not m:
-                m = re.search(r"\(\s*\w+\s*\+\s*(0x[0-9a-fA-F]+|\d+)\s*\)", code)
-            if m:
-                off = int(m.group(1), 0)
-                if 0 < off < 0x2000:
-                    struct_offsets[field] = off
-                    break
+    print("[*] struct offsets via accessors...")
+    struct_offsets = _collect_struct_offsets()
+    for field, off in struct_offsets.items():
+        _validate_with_xnu(field, off)
     report.append("")
     report.append("=== [4] STRUCT OFFSETS ===")
     for k, v in sorted(struct_offsets.items()):
@@ -758,9 +916,27 @@ def main():
     hdr.append("")
     jout["struct_offsets"] = struct_offsets
 
+    print("[*] syscall-derived offsets fallback...")
+    syscall_offsets = _collect_syscall_offsets(sysent_entries)
+    merged = dict(syscall_offsets)
+    merged.update(struct_offsets)
+    struct_offsets = merged
+    report.append("")
+    report.append("=== [4b] SYSCALL-DERIVED OFFSETS ===")
+    for k, v in sorted(syscall_offsets.items()):
+        report.append("  {:<25} 0x{:x}".format(k, v))
+    hdr.append("// SYSCALL-DERIVED OFFSETS")
+    for k, v in sorted(syscall_offsets.items()):
+        if k not in jout.get("struct_offsets", {}):
+            hdr.append("#define NK_{:<30} 0x{:x}".format(norm(k).upper(), v))
+    hdr.append("")
+    jout["syscall_offsets"] = syscall_offsets
+    jout["struct_offsets"]  = struct_offsets
+
     print("[*] kalloc/kfree...")
-    kfree_ext = sym_get("_kfree_ext")
-    kalloc_ext = sym_get("_kalloc_ext")
+    kfree_ext   = sym_get("_kfree_ext")
+    kalloc_ext  = sym_get("_kalloc_ext")
+    kalloc_hint = sym_get("_kalloc_canblock")
     kfree_callers = set()
     if kfree_ext:
         for xr in xrefs_to(kfree_ext):
@@ -769,19 +945,23 @@ def main():
                 kfree_callers.add(_to_u(f.getEntryPoint().getOffset()))
     report.append("")
     report.append("=== [5] KALLOC/KFREE ===")
-    report.append("_kfree_ext  = " + (fmt(kfree_ext) if kfree_ext else "NOT_FOUND"))
-    report.append("_kalloc_ext = " + (fmt(kalloc_ext) if kalloc_ext else "NOT_FOUND"))
+    report.append("_kfree_ext      = " + (fmt(kfree_ext) if kfree_ext else "NOT_FOUND"))
+    report.append("_kalloc_ext     = " + (fmt(kalloc_ext) if kalloc_ext else "NOT_FOUND"))
+    report.append("_kalloc_canblock= " + (fmt(kalloc_hint) if kalloc_hint else "NOT_FOUND"))
     hdr.append("// KALLOC/KFREE")
     if kfree_ext:
         hdr.append("#define NK_KFREE_EXT            " + fmt(kfree_ext) + "ULL")
     if kalloc_ext:
         hdr.append("#define NK_KALLOC_EXT           " + fmt(kalloc_ext) + "ULL")
+    if kalloc_hint:
+        hdr.append("#define NK_KALLOC_CANBLOCK      " + fmt(kalloc_hint) + "ULL")
     for i, ep in enumerate(sorted(kfree_callers)[:64]):
         hdr.append("#define NK_KFREE_CALLER_{:<27} {}ULL".format(
             norm("{:04X}".format(i)), fmt(ep)))
     hdr.append("")
     jout["kfree_ext"]  = fmt(kfree_ext) if kfree_ext else None
     jout["kalloc_ext"] = fmt(kalloc_ext) if kalloc_ext else None
+    jout["kalloc_canblock"] = fmt(kalloc_hint) if kalloc_hint else None
 
     print("[*] zones...")
     ZSTR = [
@@ -807,7 +987,8 @@ def main():
         sa = _str_addr(z)
         if sa is None:
             continue
-        kv = [xr for xr in xrefs_to(sa) if 0xFFFFFFF000000000 <= xr < 0xFFFFFFF200000000]
+        kv = [xr for xr in xrefs_to(sa)
+              if 0xFFFFFFF000000000 <= xr < 0xFFFFFFF200000000]
         if kv:
             zones[z] = kv
     report.append("")
@@ -859,41 +1040,7 @@ def main():
     jout["copyin_copyout"] = {k: fmt(v) for k, v in copy.items()}
 
     print("[*] iokit...")
-    IOKIT = {
-        "IOUserClient_externalMethod":      ["externalMethod"],
-        "IOUserClient2022_extMethod":       ["wrong externalMethod for IOUserClient2022"],
-        "IOUserClientKernelCompletion":     ["OSAction_IOUserClient_KernelCompletion"],
-        "IOConnectCallMethod":              ["IOConnectCallMethod"],
-        "IOServiceOpen":                    ["IOServiceOpen"],
-        "AppleKeyStore":                    ["AppleKeyStore"],
-        "IOSurfaceRoot":                    ["IOSurfaceRoot"],
-        "IOMobileFramebuffer":              ["IOMobileFramebuffer"],
-        "AppleMobileFileIntegrity":         ["AppleMobileFileIntegrity"],
-        "AppleSEPManager":                  ["AppleSEPManager"],
-        "AppleAPFSContainer":               ["AppleAPFSContainer"],
-        "IOHIDEventService":                ["IOHIDEventService"],
-        "IOHIDSystem":                      ["IOHIDSystem"],
-        "IOGraphicsAccelerator2":           ["IOGraphicsAccelerator2"],
-        "IOAESAccelerator":                 ["IOAESAccelerator"],
-        "AGXCommandQueue":                  ["AGXCommandQueue"],
-        "AppleCLCD2":                       ["AppleCLCD2"],
-        "AppleS8000AESAccelerator":         ["AppleS8000AESAccelerator"],
-        "IOSurfaceMemory":                  ["IOSurfaceMemory"],
-        "AppleSMC":                         ["AppleSMC"],
-        "AppleEffaceableStorage":           ["AppleEffaceableStorage"],
-        "AppleActuatorDevice":              ["AppleActuatorDevice"],
-    }
-    iokit = {}
-    for label, needles in IOKIT.items():
-        for needle in needles:
-            sa = _str_addr(needle)
-            if sa is None:
-                continue
-            for xr in xrefs_to(sa):
-                f = func_at(xr)
-                if f:
-                    iokit.setdefault(label, set()).add(
-                        _to_u(f.getEntryPoint().getOffset()))
+    iokit = _find_iokit()
     report.append("")
     report.append("=== [8] IOKIT ===")
     for label, eps in sorted(iokit.items()):
@@ -1021,7 +1168,8 @@ def main():
             for xr in xrefs_to(sa):
                 f = func_at(xr)
                 if f:
-                    dk.setdefault(label, set()).add(_to_u(f.getEntryPoint().getOffset()))
+                    dk.setdefault(label, set()).add(
+                        _to_u(f.getEntryPoint().getOffset()))
     report.append("")
     report.append("=== [12] DRIVERKIT ===")
     for label, eps in sorted(dk.items()):
@@ -1061,6 +1209,7 @@ def main():
     print("  sysent_base      : " + (fmt(sysent_base) if sysent_base else "n/a"))
     print("  sysent_entries   : " + str(len(sysent_entries)))
     print("  mach_trap_table  : " + (fmt(mt_base) if mt_base else "n/a"))
+    print("  ctrr_patches     : " + str(len(ctrr_patches)))
     print("  globals          : " + str(len(globals_map)))
     print("  struct_offsets   : " + str(len(struct_offsets)))
     print("  kfree callers    : " + str(len(kfree_callers)))
