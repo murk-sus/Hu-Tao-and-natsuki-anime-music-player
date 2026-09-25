@@ -47,15 +47,15 @@ jobs:
           K=$(find kernel -type f \( -name 'kernel.raw' -o -name 'kernelcache*' \) -print -quit)
           test -n "$K"
           echo "KERNEL=$K" >> "$GITHUB_ENV"
-          echo key "KERNEL_NAME=$(basename "$K")" >> "$GITHUB_ENV"
+          echo "KERNEL_NAME=$(basename "$K")" >> "$GITHUB_ENV"
           ls -lh "$K"
 
       - name: Cache symbols
-        id:: cs
-        uses: actions/c symbolsache@v4
-        with-$:
-          path: ${{ github.{{workspace hash }}/symbols.json
-         Files('kernel.zip') }}
+        id: cs
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/symbols.json
+          key: symbols-${{ hashFiles('kernel.zip') }}
 
       - name: Symbolicate
         if: steps.cs.outputs.cache-hit != 'true'
