@@ -20,13 +20,13 @@ jobs:
           java-version: "25"
           distribution: temurin
 
-      # --- Ghidra 12.1.2: кэш ---
+      # --- Ghidra 12.1.2 + Jython extension ---
       - name: Cache Ghidra
         id: cache-ghidra
         uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}/ghidra
-          key: ghidra-12.1.2
+          key: ghidra-12.1.2-jython
 
       - name: Install Ghidra 12.1.2
         if: steps.cache-ghidra.outputs.cache-hit != 'true'
@@ -36,12 +36,30 @@ jobs:
             https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_12.1.2_build/ghidra_12.1.2_PUBLIC_20260605.zip
           unzip -q /tmp/g.zip -d "$GITHUB_WORKSPACE"
           mv "$GITHUB_WORKSPACE"/ghidra_12.1.2_PUBLIC "$GITHUB_WORKSPACE/ghidra"
+
+          echo "=== Extensions/Ghidra contents ==="
+          ls -la "$GITHUB_WORKSPACE/ghidra/Extensions/Ghidra/" || true
+
+          JYTHON_ZIP=$(find "$GITHUB_WORKSPACE/ghidra/Extensions/Ghidra" -maxdepth 1 -name '*Jython*.zip' | head -n1)
+          if [ -z "$JYTHON_ZIP" ]; then
+            echo "FATAL: Jython extension zip not found in Extensions/Ghidra/"
+            ls -la "$GITHUB_WORKSPACE/ghidra/Extensions/Ghidra/" || true
+            exit 1
+          fi
+          echo "Found: $JYTHON_ZIP"
+
+          mkdir -p "$GITHUB_WORKSPACE/ghidra/Ghidra/Extensions"
+          unzip -q "$JYTHON_ZIP" -d "$GITHUB_WORKSPACE/ghidra/Ghidra/Extensions"
+
+          echo "=== Ghidra/Extensions contents ==="
+          ls -la "$GITHUB_WORKSPACE/ghidra/Ghidra/Extensions/" || true
+
           echo "GHIDRA_ROOT=$GITHUB_WORKSPACE/ghidra" >> "$GITHUB_ENV"
 
       - name: Set Ghidra env
         run: echo "GHIDRA_ROOT=$GITHUB_WORKSPACE/ghidra" >> "$GITHUB_ENV"
 
-      # --- ipsw 3.1.716: кэш + прямая загрузка ---
+      # --- ipsw 3.1.716 ---
       - name: Cache ipsw
         id: cache-ipsw
         uses: actions/cache@v4
@@ -58,7 +76,7 @@ jobs:
           tar -C /usr/local/bin -xzf /tmp/ipsw.tar.gz ipsw
           ipsw version
 
-      # --- symbolicator 26.8.0: кэш ---
+      # --- symbolicator ---
       - name: Cache symbolicator
         id: cache-symbolicator
         uses: actions/cache@v4
@@ -72,7 +90,7 @@ jobs:
           git clone --depth 1 --branch 26.8.0 \
             https://github.com/getsentry/symbolicator.git "$GITHUB_WORKSPACE/symbolicator"
 
-      # --- verified_all_92.json: кэш ---
+      # --- verified_all_92.json ---
       - name: Cache verified offsets
         id: cache-verified
         uses: actions/cache@v4
@@ -100,7 +118,7 @@ jobs:
           echo "KERNEL_NAME=$(basename "$K")" >> "$GITHUB_ENV"
           ls -lh "$K"
 
-      # --- symbols.json: кэш по хэшу kernel.zip ---
+      # --- symbols.json ---
       - name: Cache symbols
         id: cs
         uses: actions/cache@v4
@@ -119,7 +137,7 @@ jobs:
           cp "$SRC" "$GITHUB_WORKSPACE/symbols.json"
           test -s "$GITHUB_WORKSPACE/symbols.json"
 
-      # --- Ghidra project: кэш по хэшу kernel.zip ---
+      # --- Ghidra project ---
       - name: Cache project
         id: cp
         uses: actions/cache@v4
