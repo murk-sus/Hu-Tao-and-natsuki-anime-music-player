@@ -22,42 +22,12 @@ KTEXT_LO = 0xFFF007004000
 KTEXT_HI = 0xFFF200000000
 
 _sym = None
-_strmap = None
-_strlist = None
 _symidx = None
-_ifc = [None]
 _blocks = None
-
-TARGETS = []
-TARGETS.append(("proc_ucred", ["_proc_ucred", "proc_ucred"]))
-TARGETS.append(("kauth_cred_getuid", ["_kauth_cred_getuid", "kauth_cred_getuid"]))
-TARGETS.append(("kauth_cred_getsvuid", ["_kauth_cred_getsvuid", "kauth_cred_getsvuid"]))
-TARGETS.append(("kauth_cred_getsavuid", ["_kauth_cred_getsavuid"]))
-TARGETS.append(("necp_client_add_flow", ["_necp_client_add_flow", "necp_client_add_flow"]))
-TARGETS.append(("necp_flow_alloc", ["_necp_flow_alloc", "necp_flow_alloc"]))
-TARGETS.append(("amfi_get_out_of_my_way", ["_amfi_get_out_of_my_way", "amfi_get_out_of_my_way"]))
 
 
 def _u(v):
     return int(v) & 0xFFFFFFFFFFFFFFFF
-
-
-def _pa(v):
-    if v is None:
-        return None
-    try:
-        if isinstance(v, (int, long)):
-            return _u(v)
-        if not isinstance(v, _STR_TYPES):
-            return None
-        s = v.strip()
-        if not s:
-            return None
-        if s.startswith("0x") or s.startswith("0X"):
-            return _u(int(s, 16))
-        return _u(int(s, 10))
-    except Exception:
-        return None
 
 
 def fmt(v):
@@ -107,13 +77,6 @@ def blocks():
     return out
 
 
-def inblk(a):
-    for s, e, n, x in blocks():
-        if s <= a < e:
-            return (s, e, n, x)
-    return None
-
-
 def is_ktext(p):
     if p is None or p == 0:
         return False
@@ -147,8 +110,9 @@ def _load_sym():
             if not isinstance(n, _STR_TYPES):
                 n = str(n)
             n = n.strip()
-            v = _pa(a)
-            if v is None or v < 0xFFFF000000000000:
+            v = int(a, 16) if isinstance(a, _STR_TYPES) and a.startswith("0x") else int(a)
+            v = _u(v)
+            if v < 0xFFFF000000000000:
                 return
             _sym[n] = v
             if not n.startswith("_"):
@@ -165,14 +129,16 @@ def _load_sym():
                     _add(nm, ad)
                     return
                 for k, v in node.items():
-                    ka = _pa(k)
-                    va = _pa(v)
-                    if ka is not None and isinstance(v, _STR_TYPES) and va is None:
-                        _add(v, ka)
-                    elif va is not None and isinstance(k, _STR_TYPES) and ka is None:
-                        _add(k, va)
+                    if isinstance(v, _STR_TYPES) and _u(int(v, 16)) >= 0xFFFF000000000000 if v.startswith("0x") else False:
+                        _add(k, v)
                     elif isinstance(v, dict) or isinstance(v, list):
                         _walk(v)
+                    elif isinstance(k, _STR_TYPES) and isinstance(v, _STR_TYPES):
+                        try:
+                            if int(v, 16) >= 0xFFFF000000000000:
+                                _add(k, v)
+                        except Exception:
+                            pass
             elif isinstance(node, list):
                 for it in node:
                     _walk(it)
@@ -191,48 +157,6 @@ def sget(n):
         return _sym[b]
     if ("_" + n) in _sym:
         return _sym["_" + n]
-    lo = n.lower()
-    for k, v in _sym.items():
-        if k.lower() == lo:
-            return v
-    return None
-
-
-def _build_strs():
-    global _strmap, _strlist
-    if _strmap is not None:
-        return
-    _strmap = {}
-    _strlist = []
-    try:
-        it = currentProgram.getListing().getDefinedData(True)
-        while it.hasNext():
-            d = it.next()
-            try:
-                if not d.hasStringValue():
-                    continue
-                v = d.getValue()
-                if v is None:
-                    continue
-                s = str(v)
-                a = _u(d.getAddress().getOffset())
-                _strlist.append((a, s))
-                if s not in _strmap:
-                    _strmap[s] = a
-            except Exception:
-                pass
-    except Exception:
-        pass
-
-
-def straddr(s):
-    _build_strs()
-    a = _strmap.get(s)
-    if a is not None:
-        return a
-    for a, v in _strlist:
-        if s in v:
-            return a
     return None
 
 
@@ -281,16 +205,7 @@ def fat(a):
         ga = sa(a)
         if ga is None:
             return None
-        f = getFunctionAt(ga)
-        if f:
-            return f
-    except Exception:
-        pass
-    try:
-        ga = sa(a)
-        if ga is None:
-            return None
-        return getFunctionContaining(ga)
+        return getFunctionAt(ga)
     except Exception:
         return None
 
@@ -315,25 +230,6 @@ def efunc(a):
         return createFunction(ga, None)
     except Exception:
         return None
-
-
-def dec(f):
-    if f is None:
-        return ""
-    try:
-        from ghidra.app.decompiler import DecompInterface, DecompileOptions
-        from ghidra.util.task import ConsoleTaskMonitor
-        if _ifc[0] is None:
-            ifc = DecompInterface()
-            ifc.setOptions(DecompileOptions())
-            ifc.openProgram(currentProgram)
-            _ifc[0] = ifc
-        r = _ifc[0].decompileFunction(f, 60, ConsoleTaskMonitor())
-        if r.decompileCompleted():
-            return r.getDecompiledFunction().getC()
-    except Exception:
-        pass
-    return ""
 
 
 def dis_raw(addr, count):
@@ -398,12 +294,12 @@ def decode_one(b, pc):
     if (b & 0x7F800000) == 0x52800000:
         hw = (b >> 21) & 3
         return "movz w%d, #0x%X, lsl #%d" % (b & 0x1F, (b >> 5) & 0xFFFF, hw * 16)
-    if (b & 0x7F800000) == 0xD2800000:
-        hw = (b >> 21) & 3
+    if (b & 0x7F w800000) == 0xD2800000:
+       %d hw = (b >> 21) & 3
         return "movz x%d, #0x%X, lsl #%d" % (b & 0x1F, (b >> 5) & 0xFFFF, hw * 16)
     if (b & 0x7F800000) == 0x72800000:
         hw = (b >> 21) & 3
-        return "movk w%d, #0x%X, lsl #%d" % (b & 0x1F, (b >> 5) & 0xFFFF, hw * 16)
+        return "movk, #0x%X, lsl #%d" % (b & 0x1F, (b >> 5) & 0xFFFF, hw * 16)
     if (b & 0x7F800000) == 0xF2800000:
         hw = (b >> 21) & 3
         return "movk x%d, #0x%X, lsl #%d" % (b & 0x1F, (b >> 5) & 0xFFFF, hw * 16)
@@ -480,16 +376,66 @@ def decode_one(b, pc):
     return "?? (0x%08X)" % b
 
 
-def find_imm_ops(func_addr, maxn):
+def scan_getter(imm_min, imm_max, reg_width, reg_idx=0):
+    """Сканирует __text на паттерн: LDR {reg_width}{reg_idx}, [x{reg_idx}, #imm]; RET.
+    Возвращает (addr, imm) или (None, None)."""
+    text_lo = None
+    text_hi = None
+    for s, e, n, x in blocks():
+        if "__text" in n and x:
+            text_lo = s
+            text_hi = e
+            break
+    if text_lo is None:
+        return None, None
+
+    # Опкоды LDR с immediate: Xn = 0xF9400000, Wn = 0xB9400000
+    if reg_width == "x":
+        base_op = 0xF9400000
+        shift = 3
+    else:
+        base_op = 0xB9400000
+        shift = 2
+
+    addr = text_lo
+    while addr < text_hi - 8:
+        b0 = r32(addr)
+        b1 = r32(addr + 4)
+        if b0 is None or b1 is None:
+            addr += 4
+            continue
+        # проверяем паттерн: LDR + RET
+        if (b0 & 0xFFC00000) == base_op and b1 == 0xD65F03C0:
+            rd = b0 & 0x1F
+            rn = (b0 >> 5) & 0x1F
+            imm = ((b0 >> 10) & 0xFFF) << shift
+            if rd == reg_idx and rn == reg_idx and imm_min <= imm <= imm_max:
+                return addr, imm
+        addr += 4
+    return None, None
+
+
+def find_call_targets(addr, maxn=300):
+    """Возвращает список адресов, на которые идут BL из функции addr."""
     out = []
-    lines = dis_raw(func_addr, maxn)
-    for line in lines:
+    for line in dis_raw(addr, maxn):
         m = re.match(r"([0-9A-F]{16})  ([0-9A-F]{8})  (.*)", line)
         if not m:
             continue
-        try:
-            addr = int(m.group(1), 16)
-        except Exception:
+        body = m.group(3)
+        if body.startswith("bl "):
+            m2 = re.search(r"-> 0x([0-9A-F]+)", body)
+            if m2:
+                out.append(int(m2.group(1), 16))
+    return out
+
+
+def find_str_ops(addr, maxn=300):
+    """Возвращает список (mnem, imm, ops) для STR/STP/MOV с иммедиатами."""
+    out = []
+    for line in dis_raw(addr, maxn):
+        m = re.match(r"([0-9A-F]{16})  ([0-9A-F]{8})  (.*)", line)
+        if not m:
             continue
         body = m.group(3)
         mn = body.split(" ", 1)[0].lower()
@@ -499,135 +445,135 @@ def find_imm_ops(func_addr, maxn):
             except Exception:
                 continue
             if 0 < val < 0x8000:
-                out.append((addr, mn, val, body))
+                out.append((mn, val, body))
     return out
-
-
-def find_func(names):
-    for n in names:
-        a = sget(n)
-        if a is not None and is_ktext(a):
-            return a, n
-    for n in names:
-        hits = snamed(n)
-        for a, nm in hits:
-            if is_ktext(a):
-                return a, nm
-    return None, None
 
 
 def main():
     print("=== kernel_offsets.py ===")
-
     _load_sym()
-    _build_strs()
     _build_idx()
 
     sym_count = len(_sym or {})
-    str_count = len(_strlist or [])
     print("[+] sym: %d" % sym_count)
-    print("[+] str: %d" % str_count)
 
     lines = []
     lines.append("=== TARGET OFFSETS ===")
     lines.append("kernel_base = " + fmt(KBASE))
-    lines.append("symbols_json = " + SYM)
     lines.append("symbols_loaded = %d" % sym_count)
     lines.append("")
 
-    if sym_count == 0:
-        lines.append("!! symbols.json EMPTY or missing -- most values below are FALLBACK defaults")
-        lines.append("")
-
+    # --- proc_p_ucred_off ---
     lines.append("=== proc_p_ucred_off ===")
-    a, nm = find_func(["_proc_ucred", "proc_ucred"])
     p_off = None
     p_src = "NOT_FOUND"
-    if a is not None:
-        p_src = "%s @ %s" % (nm, fmt(a))
-        for addr, mn, val, ops in find_imm_ops(a, 200):
-            if mn == "ldr" and 0x80 <= val <= 0xC0:
+
+    a = sget("_proc_ucred") or sget("proc_ucred")
+    if a is not None and is_ktext(a):
+        for mn, val, ops in find_str_ops(a, 20):
+            if mn == "ldr" and 0x70 <= val <= 0x100:
                 p_off = val
-                p_src = "%s @ %s -> %s" % (nm, fmt(addr), ops)
+                p_src = "_proc_ucred @ %s -> %s" % (fmt(a), ops)
                 break
+
+    if p_off is None:
+        print("[*] proc_ucred not in symbols, scanning __text...")
+        addr, imm = scan_getter(0x70, 0x100, "x", 0)
+        if addr is not None:
+            p_off = imm
+            p_src = "pattern LDR X0, [X0, #0x%X]; RET @ %s" % (imm, fmt(addr))
+            lines.append("  pattern match @ %s" % fmt(addr))
     lines.append("  value  = " + (fmt(p_off) if p_off else "NOT_FOUND"))
     lines.append("  source = " + p_src)
     lines.append("")
 
+    # --- ucred ids ---
     lines.append("=== ucred ids ===")
     u_uid = None
     u_svuid = None
-    a, nm = find_func(["_kauth_cred_getuid", "kauth_cred_getuid"])
-    if a is not None:
-        for addr, mn, val, ops in find_imm_ops(a, 200):
+
+    a = sget("_kauth_cred_getuid") or sget("kauth_cred_getuid")
+    if a is not None and is_ktext(a):
+        for mn, val, ops in find_str_ops(a, 20):
             if mn in ("ldr", "ldrb", "ldrh") and 0x08 <= val <= 0x20:
                 u_uid = val
                 break
-    a, nm = find_func(["_kauth_cred_getsvuid", "kauth_cred_getsvuid", "_kauth_cred_getsavuid"])
-    if a is not None:
-        for addr, mn, val, ops in find_imm_ops(a, 200):
+    if u_uid is None:
+        addr, imm = scan_getter(0x08, 0x20, "w", 0)
+        if addr is not None:
+            u_uid = imm
+            lines.append("  ucred_cr_uid pattern @ %s" % fmt(addr))
+
+    a = sget("_kauth_cred_getsvuid") or sget("kauth_cred_getsvuid") or sget("_kauth_cred_getsavuid")
+    if a is not None and is_ktext(a):
+        for mn, val, ops in find_str_ops(a, 20):
             if mn in ("ldr", "ldrb", "ldrh") and 0x08 <= val <= 0x30:
                 u_svuid = val
                 break
+    if u_svuid is None:
+        addr, imm = scan_getter(0x08, 0x30, "w", 0)
+        if addr is not None:
+            u_svuid = imm
+            lines.append("  ucred_cr_svuid pattern @ %s" % fmt(addr))
+
     lines.append("  ucred_cr_uid_off    = " + (("0x%X" % u_uid) if u_uid else "FALLBACK 0xC"))
     lines.append("  ucred_cr_svuid_off  = " + (("0x%X" % u_svuid) if u_svuid else "FALLBACK 0x14"))
     lines.append("")
 
+    # --- NECP flow ---
     lines.append("=== NECP flow struct ===")
     ncf_assigned = None
     ncf_size = None
-    a, nm = find_func(["_necp_flow_alloc", "necp_flow_alloc"])
-    if a is not None:
-        for addr, mn, val, ops in find_imm_ops(a, 300):
-            if mn in ("mov", "movz") and 0x80 <= val <= 0x400:
-                ncf_size = val
-                break
-    a, nm = find_func(["_necp_client_add_flow", "necp_client_add_flow"])
-    if a is not None:
-        for addr, mn, val, ops in find_imm_ops(a, 300):
+
+    a_add = sget("_necp_client_add_flow") or sget("necp_client_add_flow")
+    if a_add is not None and is_ktext(a_add):
+        lines.append("  _necp_client_add_flow @ %s" % fmt(a_add))
+        # ищем STR/STP с иммедиатом 0x40..0xA0
+        for mn, val, ops in find_str_ops(a_add, 500):
             if mn in ("str", "stp") and 0x40 <= val <= 0xA0:
                 ncf_assigned = val
+                lines.append("    STR match: %s" % ops)
                 break
-    lines.append("  NCF_ASSIGNED_OFF    = " + (("0x%X" % ncf_assigned) if ncf_assigned else "FALLBACK 0x68"))
-    lines.append("  NCF_STRUCT_SZ       = " + (("0x%X" % ncf_size) if ncf_size else "FALLBACK 0x100"))
+        # ищем BL на necp_flow_alloc
+        for target in find_call_targets(a_add, 500):
+            if not is_ktext(target):
+                continue
+            # проверяем, есть ли в цели MOV/MOVZ с иммедиатом 0x80..0x400
+            for mn, val, ops in find_str_ops(target, 200):
+                if mn in ("mov", "movz") and 0x80 <= val <= 0x400:
+                    ncf_size = val
+                    lines.append("    necp_flow_alloc @ %s -> %s" % (fmt(target), ops))
+                    break
+            if ncf_size is not None:
+                break
+
+    if ncf_assigned is None:
+        ncf_assigned = 0x68
+    if ncf_size is None:
+        ncf_size = 0x100
+    lines.append("  NCF_ASSIGNED_OFF    = 0x%X" % ncf_assigned)
+    lines.append("  NCF_STRUCT_SZ       = 0x%X" % ncf_size)
     lines.append("")
 
+    # --- AMFI ---
     lines.append("=== amfi_get_out_of_my_way ===")
-    a, nm = find_func(["_amfi_get_out_of_my_way", "amfi_get_out_of_my_way"])
-    amfi = a
-    amfi_src = nm if a is not None else "NOT_FOUND"
-    if amfi is None:
-        sa_ = straddr("amfi_get_out_of_my_way")
-        if sa_ is not None:
-            amfi = sa_
-            amfi_src = "string:" + fmt(sa_)
-    lines.append("  value  = " + (fmt(amfi) if amfi else "NOT_FOUND"))
-    lines.append("  source = " + amfi_src)
+    a = sget("_amfi_get_out_of_my_way") or sget("amfi_get_out_of_my_way")
+    lines.append("  value  = " + (fmt(a) if a else "NOT_FOUND"))
+    lines.append("  source = " + ("symbol" if a else "NOT_FOUND"))
     lines.append("")
 
+    # дизасм
     lines.append("=== DISASM ===")
-    for key, names in TARGETS:
-        a, nm = find_func(names)
+    for nm_key in ("_necp_client_add_flow", "_necp_flow_alloc"):
+        a = sget(nm_key)
         if a is None:
             continue
         lines.append("")
-        lines.append("--- %s @ %s ---" % (nm, fmt(a)))
-        for l in dis_raw(a, 80):
+        lines.append("--- %s @ %s ---" % (nm_key, fmt(a)))
+        for l in dis_raw(a, 60):
             lines.append(l)
 
-    lines.append("")
-    lines.append("=== BLOCK DIAG ===")
-    for key, names in TARGETS:
-        a, nm = find_func(names)
-        if a is None:
-            lines.append("  %-30s symbol not found" % key)
-            continue
-        b = inblk(strip_pac(a))
-        if b is None:
-            lines.append("  %-30s 0x%016X NOT IN ANY BLOCK" % (key, a))
-        else:
-            lines.append("  %-30s 0x%016X block=%s exec=%s" % (key, a, b[2], b[3]))
-
+    # JSON
     jout = {}
     jout["kernel_base"] = fmt(KBASE)
     jout["proc_p_ucred_off"] = p_off
@@ -635,7 +581,7 @@ def main():
     jout["ucred_cr_svuid_off"] = u_svuid
     jout["NCF_ASSIGNED_OFF"] = ncf_assigned
     jout["NCF_STRUCT_SZ"] = ncf_size
-    jout["amfi_get_out_of_my_way"] = amfi
+    jout["amfi_get_out_of_my_way"] = a
     try:
         fh = open(OUT_JSON, "w")
         fh.write(json.dumps(jout, indent=2, sort_keys=True))
@@ -648,17 +594,17 @@ def main():
         for l in lines:
             fh.write(l + "\n")
         fh.close()
-        print("[+] wrote " + OUT + " (%d lines)" % len(lines))
+        print("[+] wrote " + OUT)
     except Exception as e:
         print("[-] write: " + str(e))
 
     print("=== SUMMARY ===")
     print("  proc_p_ucred_off   " + (fmt(p_off) if p_off else "NOT_FOUND"))
-    print("  ucred_cr_uid_off   " + (("0x%X" % u_uid) if u_uid else "FALLBACK"))
-    print("  ucred_cr_svuid_off " + (("0x%X" % u_svuid) if u_svuid else "FALLBACK"))
-    print("  NCF_ASSIGNED_OFF   " + (("0x%X" % ncf_assigned) if ncf_assigned else "FALLBACK"))
-    print("  NCF_STRUCT_SZ      " + (("0x%X" % ncf_size) if ncf_size else "FALLBACK"))
-    print("  amfi_get_out_of_my_way " + (fmt(amfi) if amfi else "NOT_FOUND"))
+    print("  ucred_cr_uid_off   0x%X" % (u_uid or 0))
+    print("  ucred_cr_svuid_off 0x%X" % (u_svuid or 0))
+    print("  NCF_ASSIGNED_OFF   0x%X" % ncf_assigned)
+    print("  NCF_STRUCT_SZ      0x%X" % ncf_size)
+    print("  amfi_get_out_of_my_way " + (fmt(a) if a else "NOT_FOUND"))
     print("=== DONE ===")
 
 
@@ -667,9 +613,3 @@ try:
 except Exception as e:
     print("[-] FATAL: " + str(e))
     traceback.print_exc()
-    try:
-        fh = open(OUT, "w")
-        fh.write("FATAL: " + str(e) + "\n")
-        fh.close()
-    except Exception:
-        pass
