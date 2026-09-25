@@ -37,16 +37,12 @@ jobs:
           unzip -q /tmp/g.zip -d "$GITHUB_WORKSPACE"
           mv "$GITHUB_WORKSPACE"/ghidra_12.1.2_PUBLIC "$GITHUB_WORKSPACE/ghidra"
 
-          echo "=== Extensions/Ghidra contents ==="
-          ls -la "$GITHUB_WORKSPACE/ghidra/Extensions/Ghidra/" || true
-
           JYTHON_ZIP=$(find "$GITHUB_WORKSPACE/ghidra/Extensions/Ghidra" -maxdepth 1 -name '*Jython*.zip' | head -n1)
           if [ -z "$JYTHON_ZIP" ]; then
             echo "FATAL: Jython extension zip not found"
             ls -la "$GITHUB_WORKSPACE/ghidra/Extensions/Ghidra/" || true
             exit 1
           fi
-          echo "Found: $JYTHON_ZIP"
 
           mkdir -p "$GITHUB_WORKSPACE/ghidra/Ghidra/Extensions"
           unzip -q "$JYTHON_ZIP" -d "$GITHUB_WORKSPACE/ghidra/Ghidra/Extensions"
@@ -115,14 +111,16 @@ jobs:
           echo "KERNEL_NAME=$(basename "$K")" >> "$GITHUB_ENV"
           ls -lh "$K"
 
-      # --- Извлечение KEXT ---
+      # --- Извлечение KEXT (безопасно, без падения от SIGPIPE) ---
       - name: Extract all KEXTs
         run: |
-          set -euo pipefail
+          set -uo pipefail
           mkdir -p "$GITHUB_WORKSPACE/kexts"
           ipsw kernel extract "$KERNEL" --all --output "$GITHUB_WORKSPACE/kexts" || true
-          echo "=== kexts ==="
-          ls -la "$GITHUB_WORKSPACE/kexts" | head -50
+          echo "=== kexts count ==="
+          find "$GITHUB_WORKSPACE/kexts" -type f | wc -l
+          echo "=== kexts sample ==="
+          find "$GITHUB_WORKSPACE/kexts" -type f -printf "%f\n" | sort | head -30 || true
           echo "KEXTS_DIR=$GITHUB_WORKSPACE/kexts" >> "$GITHUB_ENV"
 
       # --- symbols.json ---
