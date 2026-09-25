@@ -34,7 +34,6 @@ FALLBACK_24A437["ucred_cr_uid_off"] = 0xC
 FALLBACK_24A437["ucred_cr_svuid_off"] = 0x14
 FALLBACK_24A437["NCF_ASSIGNED_OFF"] = 0x68
 FALLBACK_24A437["NCF_STRUCT_SZ"] = 0x100
-FALLBACK_24A437["amfi_get_out_of_my_way"] = None
 
 TARGETS = []
 TARGETS.append(("proc_ucred", ["_proc_ucred", "proc_ucred"]))
@@ -44,6 +43,8 @@ TARGETS.append(("kauth_cred_getsavuid", ["_kauth_cred_getsavuid"]))
 TARGETS.append(("necp_client_add_flow", ["_necp_client_add_flow", "necp_client_add_flow"]))
 TARGETS.append(("necp_flow_alloc", ["_necp_flow_alloc", "necp_flow_alloc"]))
 TARGETS.append(("amfi_get_out_of_my_way", ["_amfi_get_out_of_my_way", "amfi_get_out_of_my_way"]))
+
+BAD_PREFIX = ("s_", "str_", "a_", "unk_", "DAT_", "LAB_", "PTR_", "off_", "d_")
 
 
 def _u(v):
@@ -119,22 +120,11 @@ def text_range():
     return lo, hi
 
 
-def inblk(a):
-    for s, e, n, x in blocks():
-        if s <= a < e:
-            return (s, e, n, x)
-    return None
-
-
 def is_ktext(p):
     if p is None or p == 0:
         return False
     lo = p & MASK48
     return KTEXT_LO <= lo < KTEXT_HI
-
-
-def strip_pac(p):
-    return 0xFFFFFFF000000000 | (p & MASK48)
 
 
 def _load_verified():
@@ -156,112 +146,112 @@ def _load_verified():
     return _verified
 
 
+def _add_sym(name, addr):
+    if not name or addr is None:
+        return
+    try:
+        if not isinstance(name, _STR_TYPES):
+            name = str(name)
+        name = name.strip()
+        if not name:
+            return
+        addr = _u(int(addr))
+        if addr < 0xFFFF000000000000:
+            return
+        _sym[name] = addr
+        if not name.startswith("_"):
+            _sym["_" + name] = addr
+        else:
+            _sym[name[1:]] = addr
+    except Exception:
+        pass
+
+
 def _load_sym():
     global _sym
     if _sym is not None:
         return
     _sym = {}
     _sym["__diag__"] = "init"
+
     if not os.path.exists(SYM):
-        _sym["__diag__"] = "symbols.json NOT FOUND at " + SYM
+        _sym["__diag__"] = "NOT FOUND " + SYM
         return
+
     try:
         fh = open(SYM)
         raw = fh.read()
         fh.close()
     except Exception as e:
-        _sym["__diag__"] = "read error: " + str(e)
+        _sym["__diag__"] = "read err: " + str(e)
         return
 
     size = len(raw)
-    head = raw[:400].replace("\n", " ").replace("\r", " ")
-    _sym["__diag__"] = "size=%d head=%s" % (size, head)
-
     if size == 0:
-        _sym["__diag__"] = "empty file (size=0)"
+        _sym["__diag__"] = "empty file"
         return
 
     try:
         data = json.loads(raw.strip() or "{}")
     except Exception as e:
-        _sym["__diag__"] = "json parse error: " + str(e) + " | size=" + str(size)
+        _sym["__diag__"] = "json err: " + str(e) + " size=" + str(size)
         return
 
-    def _add(n, a):
-        if not n or a is None:
-            return
-        try:
-            if not isinstance(n, _STR_TYPES):
-                n = str(n)
-            n = n.strip()
-            if isinstance(a, _STR_TYPES):
-                a = a.strip()
-                if a.startswith("0x") or a.startswith("0X"):
-                    v = int(a, 16)
-                else:
-                    v = int(a)
-            else:
-                v = int(a)
-            v = _u(v)
-            if v < 0xFFFF000000000000:
-                return
-            _sym[n] = v
-            if not n.startswith("_"):
-                _sym["_" + n] = v
-            else:
-                _sym[n[1:]] = v
-        except Exception:
-            pass
+    added = 0
 
-    def _walk(node, parent_key=None, depth=0):
-        if depth > 6:
-            return
-        try:
-            if isinstance(node, dict):
-                nm = node.get("name") or node.get("symbol") or node.get("n")
-                ad = node.get("address") or node.get("addr") or node.get("value") or node.get("a")
-                if nm and ad is not None:
-                    _add(nm, ad)
-                    return
-                if parent_key and ("address" in node or "addr" in node or "value" in node):
-                    ad = node.get("address") or node.get("addr") or node.get("value")
-                    if ad is not None:
-                        _add(parent_key, ad)
-                for k, v in node.items():
-                    if isinstance(v, dict) or isinstance(v, list):
-                        _walk(v, k, depth + 1)
-                    elif isinstance(v, _STR_TYPES):
-                        try:
-                            vs = v.strip()
-                            if vs.startswith("0x") or vs.startswith("0X"):
-                                iv = int(vs, 16)
-                                if iv >= 0xFFFF000000000000:
-                                    _add(k, vs)
-                        except Exception:
-                            pass
-                    elif isinstance(v, (int, long)):
-                        try:
-                            if _u(v) >= 0xFFFF000000000000:
-                                _add(k, v)
-                        except Exception:
-                            pass
-            elif isinstance(node, list):
-                for it in node:
-                    _walk(it, parent_key, depth + 1)
-        except Exception:
-            pass
-
-    _walk(data, None, 0)
-
-    if len(_sym) <= 1 and isinstance(data, dict):
+    # Формат 1: плоский dict {"dec_addr": "symbol_name"}
+    if isinstance(data, dict):
         for k, v in data.items():
-            if isinstance(v, _STR_TYPES) and (v.startswith("0x") or v.startswith("0X")):
-                _add(k, v)
-            elif isinstance(v, (int, long)):
-                _add(k, v)
+            if not isinstance(v, _STR_TYPES):
+                continue
+            try:
+                addr = int(k)
+            except Exception:
+                continue
+            if addr < 0xFFFF000000000000:
+                continue
+            _add_sym(v.strip(), addr)
+            added += 1
+
+    # Формат 2: dict со вложенными объектами {"name": "...", "address": ...}
+    if added == 0 and isinstance(data, dict):
+        def _walk2(node, depth=0):
+            global added
+            if depth > 6:
+                return
+            try:
+                if isinstance(node, dict):
+                    nm = node.get("name") or node.get("symbol")
+                    ad = node.get("address") or node.get("addr") or node.get("value")
+                    if nm and ad is not None:
+                        _add_sym(nm, ad)
+                        added += 1
+                        return
+                    for k, v in node.items():
+                        if isinstance(v, dict) or isinstance(v, list):
+                            _walk2(v, depth + 1)
+                elif isinstance(node, list):
+                    for it in node:
+                        _walk2(it, depth + 1)
+            except Exception:
+                pass
+        _walk2(data)
+
+    # Формат 3: список [{"name":..., "address":...}, ...]
+    if added == 0 and isinstance(data, list):
+        for it in data:
+            try:
+                if isinstance(it, dict):
+                    nm = it.get("name") or it.get("symbol")
+                    ad = it.get("address") or it.get("addr") or it.get("value")
+                    if nm and ad is not None:
+                        _add_sym(nm, ad)
+                        added += 1
+            except Exception:
+                pass
 
     real_count = len([k for k in _sym.keys() if not k.startswith("__")])
-    _sym["__diag__"] = (_sym["__diag__"] + " | parsed=%d" % real_count)
+    _sym["__diag__"] = "size=%d parsed=%d" % (size, real_count)
 
 
 def sget(n):
@@ -342,6 +332,13 @@ def snamed_exact(p):
         if n == p or n == "_" + p or n == "s_" + p:
             out.append((a, n))
     return out
+
+
+def _is_func_sym(nm):
+    for p in BAD_PREFIX:
+        if nm.startswith(p):
+            return False
+    return True
 
 
 def fat(a):
@@ -653,16 +650,16 @@ def find_func(names):
         if a is not None and is_ktext(a):
             return a, n
     for n in names:
-        hits = snamed_exact(n)
-        for a, nm in hits:
-            if is_ktext(a):
+        for a, nm in snamed_exact(n):
+            if is_ktext(a) and _is_func_sym(nm):
                 return a, nm
     for n in names:
         b = n.lstrip("_")
-        hits = snamed(b)
         best = None
-        for a, nm in hits:
+        for a, nm in snamed(b):
             if not is_ktext(a):
+                continue
+            if not _is_func_sym(nm):
                 continue
             if best is None or len(nm) < len(best[1]):
                 best = (a, nm)
@@ -735,7 +732,6 @@ def main():
     diag = (_sym or {}).get("__diag__", "(no diag)")
     print("[+] sym: %d" % sym_count)
     print("[+] diag: %s" % diag)
-    print("[+] verified entries: %d" % len(_verified or {}))
 
     fb = FALLBACK_24A437
 
