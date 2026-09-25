@@ -1,4 +1,5 @@
-#@runtime Jython
+# -*- coding: utf-8 -*-
+# @runtime Jython
 
 import os
 import re
@@ -27,7 +28,6 @@ _symidx = None
 _ifc = [None]
 _blocks = None
 
-# Список целевых функций: (имя_в_отчёте, [возможные_имена_символов])
 TARGETS = []
 TARGETS.append(("proc_ucred", ["_proc_ucred", "proc_ucred"]))
 TARGETS.append(("kauth_cred_getuid", ["_kauth_cred_getuid", "kauth_cred_getuid"]))
@@ -536,7 +536,7 @@ def main():
     lines.append("")
 
     if sym_count == 0:
-        lines.append("!! symbols.json EMPTY or missing — most values below are FALLBACK defaults")
+        lines.append("!! symbols.json EMPTY or missing -- most values below are FALLBACK defaults")
         lines.append("")
 
     lines.append("=== proc_p_ucred_off ===")
