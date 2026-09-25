@@ -13,6 +13,7 @@ except NameError:
 
 WS = os.environ.get("GITHUB_WORKSPACE", "/tmp")
 SYM = os.environ.get("SYMBOLS_JSON", os.path.join(WS, "symbols.json"))
+VERIFIED = os.environ.get("VERIFIED_JSON", os.path.join(WS, "verified_all_92.json"))
 OUT = os.path.join(WS, "result.txt")
 OUT_JSON = os.path.join(WS, "offsets.json")
 
@@ -25,6 +26,15 @@ _sym = None
 _symidx = None
 _blocks = None
 _text_range = [None, None]
+_verified = None
+
+FALLBACK_24A437 = {}
+FALLBACK_24A437["proc_p_ucred_off"] = 0x84
+FALLBACK_24A437["ucred_cr_uid_off"] = 0xC
+FALLBACK_24A437["ucred_cr_svuid_off"] = 0x14
+FALLBACK_24A437["NCF_ASSIGNED_OFF"] = 0x68
+FALLBACK_24A437["NCF_STRUCT_SZ"] = 0x100
+FALLBACK_24A437["amfi_get_out_of_my_way"] = None
 
 TARGETS = []
 TARGETS.append(("proc_ucred", ["_proc_ucred", "proc_ucred"]))
@@ -127,6 +137,25 @@ def strip_pac(p):
     return 0xFFFFFFF000000000 | (p & MASK48)
 
 
+def _load_verified():
+    global _verified
+    if _verified is not None:
+        return _verified
+    _verified = {}
+    if not os.path.exists(VERIFIED):
+        return _verified
+    try:
+        fh = open(VERIFIED)
+        raw = fh.read()
+        fh.close()
+        data = json.loads(raw)
+        if isinstance(data, dict):
+            _verified = data
+    except Exception:
+        pass
+    return _verified
+
+
 def _load_sym():
     global _sym
     if _sym is not None:
@@ -169,11 +198,6 @@ def _load_sym():
                 a = a.strip()
                 if a.startswith("0x") or a.startswith("0X"):
                     v = int(a, 16)
-                elif a.startswith("0") and len(a) > 1 and a[1] not in "xX":
-                    try:
-                        v = int(a, 16)
-                    except Exception:
-                        v = int(a)
                 else:
                     v = int(a)
             else:
@@ -229,7 +253,6 @@ def _load_sym():
 
     _walk(data, None, 0)
 
-    # Плоский fallback если ничего не нашли
     if len(_sym) <= 1 and isinstance(data, dict):
         for k, v in data.items():
             if isinstance(v, _STR_TYPES) and (v.startswith("0x") or v.startswith("0X")):
@@ -337,7 +360,6 @@ def fat(a):
 
 
 def decode_one(b, pc):
-    # LDR/STR unsigned
     if (b & 0xFFC00000) == 0xF9400000:
         return "ldr x%d, [x%d, #0x%X]" % (b & 0x1F, (b >> 5) & 0x1F, ((b >> 10) & 0xFFF) * 8)
     if (b & 0xFFC00000) == 0xB9400000:
@@ -346,7 +368,6 @@ def decode_one(b, pc):
         return "str x%d, [x%d, #0x%X]" % (b & 0x1F, (b >> 5) & 0x1F, ((b >> 10) & 0xFFF) * 8)
     if (b & 0xFFC00000) == 0xB9000000:
         return "str w%d, [x%d, #0x%X]" % (b & 0x1F, (b >> 5) & 0x1F, ((b >> 10) & 0xFFF) * 4)
-    # ldrb/strb/ldrh/strh
     if (b & 0xFFE00000) == 0x39400000:
         return "ldrb w%d, [x%d, #0x%X]" % (b & 0x1F, (b >> 5) & 0x1F, (b >> 10) & 0xFFF)
     if (b & 0xFFE00000) == 0x39000000:
@@ -355,7 +376,6 @@ def decode_one(b, pc):
         return "ldrh w%d, [x%d, #0x%X]" % (b & 0x1F, (b >> 5) & 0x1F, ((b >> 10) & 0xFFF) * 2)
     if (b & 0xFFE00000) == 0x79000000:
         return "strh w%d, [x%d, #0x%X]" % (b & 0x1F, (b >> 5) & 0x1F, ((b >> 10) & 0xFFF) * 2)
-    # ldur/stur signed
     if (b & 0xFFC00000) == 0xF8400000:
         imm = (b >> 12) & 0x1FF
         if imm & 0x100:
@@ -376,7 +396,6 @@ def decode_one(b, pc):
         if imm & 0x100:
             imm -= 0x200
         return "stur w%d, [x%d, #%d]" % (b & 0x1F, (b >> 5) & 0x1F, imm)
-    # ldp/stp
     if (b & 0xFFC00000) == 0xA9400000:
         return "ldp x%d, x%d, [x%d, #0x%X]" % (b & 0x1F, (b >> 10) & 0x1F, (b >> 5) & 0x1F, ((b >> 15) & 0x7F) * 8)
     if (b & 0xFFC00000) == 0xA9000000:
@@ -385,7 +404,6 @@ def decode_one(b, pc):
         return "ldp w%d, w%d, [x%d, #0x%X]" % (b & 0x1F, (b >> 10) & 0x1F, (b >> 5) & 0x1F, ((b >> 15) & 0x7F) * 4)
     if (b & 0xFFC00000) == 0x29000000:
         return "stp w%d, w%d, [x%d, #0x%X]" % (b & 0x1F, (b >> 10) & 0x1F, (b >> 5) & 0x1F, ((b >> 15) & 0x7F) * 4)
-    # pre-index ldp/stp
     if (b & 0xFFC00000) == 0xA9C00000:
         imm = (b >> 15) & 0x7F
         if imm & 0x40:
@@ -396,7 +414,6 @@ def decode_one(b, pc):
         if imm & 0x40:
             imm -= 0x80
         return "stp x%d, x%d, [x%d, #%d]!" % (b & 0x1F, (b >> 10) & 0x1F, (b >> 5) & 0x1F, imm * 8)
-    # movz/movk/movn
     if (b & 0x7F800000) == 0x52800000:
         hw = (b >> 21) & 3
         return "movz w%d, #0x%X, lsl #%d" % (b & 0x1F, (b >> 5) & 0xFFFF, hw * 16)
@@ -415,7 +432,6 @@ def decode_one(b, pc):
     if (b & 0x7F800000) == 0x92800000:
         hw = (b >> 21) & 3
         return "movn x%d, #0x%X, lsl #%d" % (b & 0x1F, (b >> 5) & 0xFFFF, hw * 16)
-    # add/sub imm
     if (b & 0x7F800000) == 0x11000000:
         sh = (b >> 22) & 1
         imm = (b >> 10) & 0xFFF
@@ -440,7 +456,6 @@ def decode_one(b, pc):
         if sh:
             imm <<= 12
         return "sub x%d, x%d, #0x%X" % (b & 0x1F, (b >> 5) & 0x1F, imm)
-    # add/sub shifted
     if (b & 0x7FE00000) == 0x0B000000:
         return "add w%d, w%d, w%d" % (b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x1F)
     if (b & 0x7FE00000) == 0x8B000000:
@@ -449,7 +464,6 @@ def decode_one(b, pc):
         return "sub w%d, w%d, w%d" % (b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x1F)
     if (b & 0x7FE00000) == 0xCB000000:
         return "sub x%d, x%d, x%d" % (b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x1F)
-    # logical
     if (b & 0x7FE00000) == 0x2A000000:
         return "orr w%d, w%d, w%d" % (b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x1F)
     if (b & 0x7FE00000) == 0xAA000000:
@@ -462,17 +476,14 @@ def decode_one(b, pc):
         return "eor w%d, w%d, w%d" % (b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x1F)
     if (b & 0x7FE00000) == 0xCA000000:
         return "eor x%d, x%d, x%d" % (b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x1F)
-    # subs
     if (b & 0x7FE00000) == 0x6B000000:
         return "subs w%d, w%d, w%d" % (b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x1F)
     if (b & 0x7FE00000) == 0xEB000000:
         return "subs x%d, x%d, x%d" % (b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x1F)
-    # madd/msub
     if (b & 0x7FE08000) == 0x1B000000:
         return "madd w%d, w%d, w%d, w%d" % (b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x1F, (b >> 10) & 0x1F)
     if (b & 0x7FE08000) == 0x9B000000:
         return "madd x%d, x%d, x%d, x%d" % (b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x1F, (b >> 10) & 0x1F)
-    # lsl/lsr/asr
     if (b & 0x7FE0FC00) == 0x1AC02000:
         return "lsl w%d, w%d, w%d" % (b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x1F)
     if (b & 0x7FE0FC00) == 0x9AC02000:
@@ -481,7 +492,6 @@ def decode_one(b, pc):
         return "lsr w%d, w%d, w%d" % (b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x1F)
     if (b & 0x7FE0FC00) == 0x9AC02400:
         return "lsr x%d, x%d, x%d" % (b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x1F)
-    # ubfm/sbfm
     if (b & 0x7F800000) == 0x53000000:
         return "ubfm w%d, w%d, #%d, #%d" % (b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x3F, (b >> 10) & 0x3F)
     if (b & 0x7F800000) == 0xD3000000:
@@ -490,7 +500,6 @@ def decode_one(b, pc):
         return "sbfm w%d, w%d, #%d, #%d" % (b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x3F, (b >> 10) & 0x3F)
     if (b & 0x7F800000) == 0x93000000:
         return "sbfm x%d, x%d, #%d, #%d" % (b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x3F, (b >> 10) & 0x3F)
-    # adrp/adr
     if (b & 0x9F000000) == 0x90000000:
         immlo = (b >> 29) & 3
         immhi = (b >> 5) & 0x7FFFF
@@ -506,7 +515,6 @@ def decode_one(b, pc):
         if imm & 0x100000:
             imm -= 0x200000
         return "adr x%d, 0x%016X" % (b & 0x1F, (pc + imm) & 0xFFFFFFFFFFFFFFFF)
-    # branches
     if (b & 0x7C000000) == 0x14000000:
         off = b & 0x03FFFFFF
         if off & 0x02000000:
@@ -537,7 +545,6 @@ def decode_one(b, pc):
         if off & 0x40000:
             off -= 0x80000
         return "cbnz x%d, #0x%X" % (b & 0x1F, off * 4)
-    # cmp
     if (b & 0x7F800000) == 0x71000000:
         return "cmp w%d, #0x%X" % ((b >> 5) & 0x1F, (b >> 10) & 0xFFF)
     if (b & 0x7F800000) == 0xF1000000:
@@ -546,7 +553,6 @@ def decode_one(b, pc):
         return "cmp w%d, w%d" % ((b >> 5) & 0x1F, (b >> 16) & 0x1F)
     if (b & 0x7FE00000) == 0xEB000000:
         return "cmp x%d, x%d" % ((b >> 5) & 0x1F, (b >> 16) & 0x1F)
-    # csel/csinc
     if (b & 0x7FE00C00) == 0x1A800000:
         return "csel w%d, w%d, w%d, #%d" % (b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x1F, b & 0xF)
     if (b & 0x7FE00C00) == 0x9A800000:
@@ -555,7 +561,6 @@ def decode_one(b, pc):
         return "csinc w%d, w%d, w%d, #%d" % (b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x1F, b & 0xF)
     if (b & 0x7FE00C00) == 0x9A800400:
         return "csinc x%d, x%d, x%d, #%d" % (b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x1F, b & 0xF)
-    # ret/pac/nop
     if b == 0xD65F03C0:
         return "ret"
     if b == 0xD503201F:
@@ -724,16 +729,22 @@ def main():
     print("=== kernel_offsets.py ===")
     _load_sym()
     _build_idx()
+    _load_verified()
 
     sym_count = len([k for k in (_sym or {}).keys() if not k.startswith("__")])
     diag = (_sym or {}).get("__diag__", "(no diag)")
     print("[+] sym: %d" % sym_count)
     print("[+] diag: %s" % diag)
+    print("[+] verified entries: %d" % len(_verified or {}))
+
+    fb = FALLBACK_24A437
 
     lines = []
     lines.append("=== SYMBOLS DIAG ===")
     lines.append(diag)
     lines.append("sym_count = %d" % sym_count)
+    lines.append("verified_entries = %d" % len(_verified or {}))
+    lines.append("fallback_target = 24A437")
     lines.append("")
 
     lines.append("=== TARGET OFFSETS ===")
@@ -759,6 +770,10 @@ def main():
         if addr is not None:
             p_off = imm
             p_src = "pattern LDR X0, [X0, #0x%X]; RET @ %s" % (imm, fmt(addr))
+
+    if p_off is None:
+        p_off = fb["proc_p_ucred_off"]
+        p_src = "FALLBACK 24A437"
 
     lines.append("  value  = " + (fmt(p_off) if p_off else "NOT_FOUND"))
     lines.append("  source = " + p_src)
@@ -797,8 +812,15 @@ def main():
             u_svuid = imm
             lines.append("  kauth_cred_getsvuid pattern @ %s -> 0x%X" % (fmt(addr), imm))
 
-    lines.append("  ucred_cr_uid_off    = " + (("0x%X" % u_uid) if u_uid else "FALLBACK 0xC"))
-    lines.append("  ucred_cr_svuid_off  = " + (("0x%X" % u_svuid) if u_svuid else "FALLBACK 0x14"))
+    if u_uid is None:
+        u_uid = fb["ucred_cr_uid_off"]
+        lines.append("  ucred_cr_uid_off FALLBACK -> 0x%X" % u_uid)
+    if u_svuid is None:
+        u_svuid = fb["ucred_cr_svuid_off"]
+        lines.append("  ucred_cr_svuid_off FALLBACK -> 0x%X" % u_svuid)
+
+    lines.append("  ucred_cr_uid_off    = 0x%X" % (u_uid or 0))
+    lines.append("  ucred_cr_svuid_off  = 0x%X" % (u_svuid or 0))
     lines.append("")
 
     # NECP flow
@@ -832,9 +854,12 @@ def main():
                 break
 
     if ncf_assigned is None:
-        ncf_assigned = 0x68
+        ncf_assigned = fb["NCF_ASSIGNED_OFF"]
+        lines.append("  NCF_ASSIGNED_OFF FALLBACK -> 0x%X" % ncf_assigned)
     if ncf_size is None:
-        ncf_size = 0x100
+        ncf_size = fb["NCF_STRUCT_SZ"]
+        lines.append("  NCF_STRUCT_SZ FALLBACK -> 0x%X" % ncf_size)
+
     lines.append("  NCF_ASSIGNED_OFF    = 0x%X" % ncf_assigned)
     lines.append("  NCF_STRUCT_SZ       = 0x%X" % ncf_size)
     lines.append("")
@@ -870,6 +895,7 @@ def main():
     jout["NCF_STRUCT_SZ"] = ncf_size
     jout["amfi_get_out_of_my_way"] = a_amfi
     jout["symbols_loaded"] = sym_count
+    jout["verified_entries"] = len(_verified or {})
     try:
         fh = open(OUT_JSON, "w")
         fh.write(json.dumps(jout, indent=2, sort_keys=True))
