@@ -24,6 +24,16 @@ KTEXT_HI = 0xFFF200000000
 _sym = None
 _symidx = None
 _blocks = None
+_text_range = [None, None]
+
+TARGETS = []
+TARGETS.append(("proc_ucred", ["_proc_ucred", "proc_ucred"]))
+TARGETS.append(("kauth_cred_getuid", ["_kauth_cred_getuid", "kauth_cred_getuid"]))
+TARGETS.append(("kauth_cred_getsvuid", ["_kauth_cred_getsvuid", "kauth_cred_getsvuid"]))
+TARGETS.append(("kauth_cred_getsavuid", ["_kauth_cred_getsavuid"]))
+TARGETS.append(("necp_client_add_flow", ["_necp_client_add_flow", "necp_client_add_flow"]))
+TARGETS.append(("necp_flow_alloc", ["_necp_flow_alloc", "necp_flow_alloc"]))
+TARGETS.append(("amfi_get_out_of_my_way", ["_amfi_get_out_of_my_way", "amfi_get_out_of_my_way"]))
 
 
 def _u(v):
@@ -68,13 +78,42 @@ def blocks():
             try:
                 if not b.isInitialized():
                     continue
-                out.append((_u(b.getStart().getOffset()), _u(b.getEnd().getOffset()), b.getName(), b.isExecute()))
+                out.append((_u(b.getStart().getOffset()),
+                            _u(b.getEnd().getOffset()),
+                            b.getName(), b.isExecute()))
             except Exception:
                 pass
     except Exception:
         pass
     _blocks = out
     return out
+
+
+def text_range():
+    if _text_range[0] is not None:
+        return _text_range[0], _text_range[1]
+    lo = None
+    hi = None
+    for s, e, n, x in blocks():
+        if "__text" in n and x:
+            lo = s
+            hi = e
+            break
+    if lo is None:
+        for s, e, n, x in blocks():
+            if x:
+                lo = s if lo is None else min(lo, s)
+                hi = e if hi is None else max(hi, e)
+    _text_range[0] = lo
+    _text_range[1] = hi
+    return lo, hi
+
+
+def inblk(a):
+    for s, e, n, x in blocks():
+        if s <= a < e:
+            return (s, e, n, x)
+    return None
 
 
 def is_ktext(p):
@@ -110,7 +149,14 @@ def _load_sym():
             if not isinstance(n, _STR_TYPES):
                 n = str(n)
             n = n.strip()
-            v = int(a, 16) if isinstance(a, _STR_TYPES) and a.startswith("0x") else int(a)
+            if isinstance(a, _STR_TYPES):
+                a = a.strip()
+                if a.startswith("0x") or a.startswith("0X"):
+                    v = int(a, 16)
+                else:
+                    v = int(a)
+            else:
+                v = int(a)
             v = _u(v)
             if v < 0xFFFF000000000000:
                 return
@@ -129,13 +175,11 @@ def _load_sym():
                     _add(nm, ad)
                     return
                 for k, v in node.items():
-                    if isinstance(v, _STR_TYPES) and _u(int(v, 16)) >= 0xFFFF000000000000 if v.startswith("0x") else False:
-                        _add(k, v)
-                    elif isinstance(v, dict) or isinstance(v, list):
+                    if isinstance(v, dict) or isinstance(v, list):
                         _walk(v)
                     elif isinstance(k, _STR_TYPES) and isinstance(v, _STR_TYPES):
                         try:
-                            if int(v, 16) >= 0xFFFF000000000000:
+                            if v.startswith("0x") and int(v, 16) >= 0xFFFF000000000000:
                                 _add(k, v)
                         except Exception:
                             pass
@@ -232,29 +276,8 @@ def efunc(a):
         return None
 
 
-def dis_raw(addr, count):
-    ga = sa(addr)
-    if ga is None:
-        return []
-    mem = currentProgram.getMemory()
-    out = []
-    i = 0
-    while i < count:
-        a = addr + i * 4
-        gaa = sa(a)
-        if gaa is None:
-            break
-        try:
-            b = mem.getInt(gaa) & 0xFFFFFFFF
-        except Exception:
-            break
-        insn = decode_one(b, a)
-        out.append("%016X  %08X  %s" % (a, b, insn))
-        i += 1
-    return out
-
-
 def decode_one(b, pc):
+    # --- LDR/STR (unsigned offset) ---
     if (b & 0xFFC00000) == 0xF9400000:
         return "ldr x%d, [x%d, #0x%X]" % (b & 0x1F, (b >> 5) & 0x1F, ((b >> 10) & 0xFFF) * 8)
     if (b & 0xFFC00000) == 0xB9400000:
@@ -263,6 +286,9 @@ def decode_one(b, pc):
         return "str x%d, [x%d, #0x%X]" % (b & 0x1F, (b >> 5) & 0x1F, ((b >> 10) & 0xFFF) * 8)
     if (b & 0xFFC00000) == 0xB9000000:
         return "str w%d, [x%d, #0x%X]" % (b & 0x1F, (b >> 5) & 0x1F, ((b >> 10) & 0xFFF) * 4)
+    if (b & 0xFFC00000) == 0xF9000000:
+        return "str x%d, [x%d, #0x%X]" % (b & 0x1F, (b >> 5) & 0x1F, ((b >> 10) & 0xFFF) * 8)
+    # byte/halfword
     if (b & 0xFFE00000) == 0x39400000:
         return "ldrb w%d, [x%d, #0x%X]" % (b & 0x1F, (b >> 5) & 0x1F, (b >> 10) & 0xFFF)
     if (b & 0xFFE00000) == 0x39000000:
@@ -271,6 +297,7 @@ def decode_one(b, pc):
         return "ldrh w%d, [x%d, #0x%X]" % (b & 0x1F, (b >> 5) & 0x1F, ((b >> 10) & 0xFFF) * 2)
     if (b & 0xFFE00000) == 0x79000000:
         return "strh w%d, [x%d, #0x%X]" % (b & 0x1F, (b >> 5) & 0x1F, ((b >> 10) & 0xFFF) * 2)
+    # ldr/str with signed 9-bit
     if (b & 0xFFC00000) == 0xF8400000:
         imm = (b >> 12) & 0x1FF
         if imm & 0x100:
@@ -291,18 +318,26 @@ def decode_one(b, pc):
         if imm & 0x100:
             imm -= 0x200
         return "stur w%d, [x%d, #%d]" % (b & 0x1F, (b >> 5) & 0x1F, imm)
+    # --- MOVZ/MOVK/MOVN ---
     if (b & 0x7F800000) == 0x52800000:
         hw = (b >> 21) & 3
         return "movz w%d, #0x%X, lsl #%d" % (b & 0x1F, (b >> 5) & 0xFFFF, hw * 16)
-    if (b & 0x7F w800000) == 0xD2800000:
-       %d hw = (b >> 21) & 3
+    if (b & 0x7F800000) == 0xD2800000:
+        hw = (b >> 21) & 3
         return "movz x%d, #0x%X, lsl #%d" % (b & 0x1F, (b >> 5) & 0xFFFF, hw * 16)
     if (b & 0x7F800000) == 0x72800000:
         hw = (b >> 21) & 3
-        return "movk, #0x%X, lsl #%d" % (b & 0x1F, (b >> 5) & 0xFFFF, hw * 16)
+        return "movk w%d, #0x%X, lsl #%d" % (b & 0x1F, (b >> 5) & 0xFFFF, hw * 16)
     if (b & 0x7F800000) == 0xF2800000:
         hw = (b >> 21) & 3
         return "movk x%d, #0x%X, lsl #%d" % (b & 0x1F, (b >> 5) & 0xFFFF, hw * 16)
+    if (b & 0x7F800000) == 0x12800000:
+        hw = (b >> 21) & 3
+        return "movn w%d, #0x%X, lsl #%d" % (b & 0x1F, (b >> 5) & 0xFFFF, hw * 16)
+    if (b & 0x7F800000) == 0x92800000:
+        hw = (b >> 21) & 3
+        return "movn x%d, #0x%X, lsl #%d" % (b & 0x1F, (b >> 5) & 0xFFFF, hw * 16)
+    # --- ADD/SUB (immediate) ---
     if (b & 0x7F800000) == 0x11000000:
         sh = (b >> 22) & 1
         imm = (b >> 10) & 0xFFF
@@ -316,9 +351,27 @@ def decode_one(b, pc):
             imm <<= 12
         return "add x%d, x%d, #0x%X" % (b & 0x1F, (b >> 5) & 0x1F, imm)
     if (b & 0x7F800000) == 0x51000000:
-        return "sub w%d, w%d, #0x%X" % (b & 0x1F, (b >> 5) & 0x1F, (b >> 10) & 0xFFF)
+        sh = (b >> 22) & 1
+        imm = (b >> 10) & 0xFFF
+        if sh:
+            imm <<= 12
+        return "sub w%d, w%d, #0x%X" % (b & 0x1F, (b >> 5) & 0x1F, imm)
     if (b & 0x7F800000) == 0xD1000000:
-        return "sub x%d, x%d, #0x%X" % (b & 0x1F, (b >> 5) & 0x1F, (b >> 10) & 0xFFF)
+        sh = (b >> 22) & 1
+        imm = (b >> 10) & 0xFFF
+        if sh:
+            imm <<= 12
+        return "sub x%d, x%d, #0x%X" % (b & 0x1F, (b >> 5) & 0x1F, imm)
+    # --- ADD/SUB (shifted register) ---
+    if (b & 0x7FE00000) == 0x0B000000:
+        return "add w%d, w%d, w%d" % (b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x1F)
+    if (b & 0x7FE00000) == 0x8B000000:
+        return "add x%d, x%d, x%d" % (b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x1F)
+    if (b & 0x7FE00000) == 0x4B000000:
+        return "sub w%d, w%d, w%d" % (b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x1F)
+    if (b & 0x7FE00000) == 0xCB000000:
+        return "sub x%d, x%d, x%d" % (b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x1F)
+    # --- logical ---
     if (b & 0x7FE00000) == 0x2A000000:
         return "orr w%d, w%d, w%d" % (b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x1F)
     if (b & 0x7FE00000) == 0xAA000000:
@@ -327,14 +380,63 @@ def decode_one(b, pc):
         return "and w%d, w%d, w%d" % (b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x1F)
     if (b & 0x7FE00000) == 0x8A000000:
         return "and x%d, x%d, x%d" % (b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x1F)
+    if (b & 0x7FE00000) == 0x4A000000:
+        return "eor w%d, w%d, w%d" % (b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x1F)
+    if (b & 0x7FE00000) == 0xCA000000:
+        return "eor x%d, x%d, x%d" % (b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x1F)
+    # --- SUBS (shifted) ---
     if (b & 0x7FE00000) == 0x6B000000:
         return "subs w%d, w%d, w%d" % (b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x1F)
     if (b & 0x7FE00000) == 0xEB000000:
         return "subs x%d, x%d, x%d" % (b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x1F)
-    if (b & 0x7F800000) == 0x71000000:
-        return "cmp w%d, #0x%X" % ((b >> 5) & 0x1F, (b >> 10) & 0xFFF)
-    if (b & 0x7F800000) == 0xF1000000:
-        return "cmp x%d, #0x%X" % ((b >> 5) & 0x1F, (b >> 10) & 0xFFF)
+    # --- MADD / MSUB ---
+    if (b & 0x7FE08000) == 0x1B000000:
+        return "madd w%d, w%d, w%d, w%d" % (b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x1F, (b >> 10) & 0x1F)
+    if (b & 0x7FE08000) == 0x9B000000:
+        return "madd x%d, x%d, x%d, x%d" % (b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x1F, (b >> 10) & 0x1F)
+    # --- LSL/LSR/ASR (register) ---
+    if (b & 0x7FE0FC00) == 0x1AC02000:
+        return "lsl w%d, w%d, w%d" % (b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x1F)
+    if (b & 0x7FE0FC00) == 0x9AC02000:
+        return "lsl x%d, x%d, x%d" % (b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x1F)
+    if (b & 0x7FE0FC00) == 0x1AC02400:
+        return "lsr w%d, w%d, w%d" % (b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x1F)
+    if (b & 0x7FE0FC00) == 0x9AC02400:
+        return "lsr x%d, x%d, x%d" % (b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x1F)
+    # --- UBFM/SBFM (bitfield) ---
+    if (b & 0x7F800000) == 0x53000000:
+        immr = (b >> 16) & 0x3F
+        imms = (b >> 10) & 0x3F
+        return "ubfm w%d, w%d, #%d, #%d" % (b & 0x1F, (b >> 5) & 0x1F, immr, imms)
+    if (b & 0x7F800000) == 0xD3000000:
+        immr = (b >> 16) & 0x3F
+        imms = (b >> 10) & 0x3F
+        return "ubfm x%d, x%d, #%d, #%d" % (b & 0x1F, (b >> 5) & 0x1F, immr, imms)
+    if (b & 0x7F800000) == 0x13000000:
+        immr = (b >> 16) & 0x3F
+        imms = (b >> 10) & 0x3F
+        return "sbfm w%d, w%d, #%d, #%d" % (b & 0x1F, (b >> 5) & 0x1F, immr, imms)
+    if (b & 0x7F800000) == 0x93000000:
+        immr = (b >> 16) & 0x3F
+        imms = (b >> 10) & 0x3F
+        return "sbfm x%d, x%d, #%d, #%d" % (b & 0x1F, (b >> 5) & 0x1F, immr, imms)
+    # --- ADRP / ADR ---
+    if (b & 0x9F000000) == 0x90000000:
+        immlo = (b >> 29) & 3
+        immhi = (b >> 5) & 0x7FFFF
+        imm = (immhi << 2) | immlo
+        if imm & 0x100000:
+            imm -= 0x200000
+        page = (pc & ~0xFFF) + (imm << 12)
+        return "adrp x%d, 0x%016X" % (b & 0x1F, page & 0xFFFFFFFFFFFFFFFF)
+    if (b & 0x9F000000) == 0x10000000:
+        immlo = (b >> 29) & 3
+        immhi = (b >> 5) & 0x7FFFF
+        imm = (immhi << 2) | immlo
+        if imm & 0x100000:
+            imm -= 0x200000
+        return "adr x%d, 0x%016X" % (b & 0x1F, (pc + imm) & 0xFFFFFFFFFFFFFFFF)
+    # --- branches ---
     if (b & 0x7C000000) == 0x14000000:
         off = b & 0x03FFFFFF
         if off & 0x02000000:
@@ -365,6 +467,35 @@ def decode_one(b, pc):
         if off & 0x40000:
             off -= 0x80000
         return "cbnz x%d, #0x%X" % (b & 0x1F, off * 4)
+    if (b & 0x7E000000) == 0x36000000:
+        off = (b >> 5) & 0x3FFF
+        if off & 0x2000:
+            off -= 0x4000
+        return "tbz w%d, #%d, #0x%X" % (b & 0x1F, (b >> 19) & 0x1F, off * 4)
+    if (b & 0x7E000000) == 0x37000000:
+        off = (b >> 5) & 0x3FFF
+        if off & 0x2000:
+            off -= 0x4000
+        return "tbnz w%d, #%d, #0x%X" % (b & 0x1F, (b >> 19) & 0x1F, off * 4)
+    # --- CMP ---
+    if (b & 0x7F800000) == 0x71000000:
+        return "cmp w%d, #0x%X" % ((b >> 5) & 0x1F, (b >> 10) & 0xFFF)
+    if (b & 0x7F800000) == 0xF1000000:
+        return "cmp x%d, #0x%X" % ((b >> 5) & 0x1F, (b >> 10) & 0xFFF)
+    if (b & 0x7FE00000) == 0x6B000000:
+        return "cmp w%d, w%d" % ((b >> 5) & 0x1F, (b >> 16) & 0x1F)
+    if (b & 0x7FE00000) == 0xEB000000:
+        return "cmp x%d, x%d" % ((b >> 5) & 0x1F, (b >> 16) & 0x1F)
+    # --- CSEL / CSINC ---
+    if (b & 0x7FE00C00) == 0x1A800000:
+        return "csel w%d, w%d, w%d, #%d" % (b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x1F, b & 0xF)
+    if (b & 0x7FE00C00) == 0x9A800000:
+        return "csel x%d, x%d, x%d, #%d" % (b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x1F, b & 0xF)
+    if (b & 0x7FE00C00) == 0x1A800400:
+        return "csinc w%d, w%d, w%d, #%d" % (b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x1F, b & 0xF)
+    if (b & 0x7FE00C00) == 0x9A800400:
+        return "csinc x%d, x%d, x%d, #%d" % (b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x1F, b & 0xF)
+    # --- misc ---
     if b == 0xD65F03C0:
         return "ret"
     if b == 0xD503201F:
@@ -373,69 +504,47 @@ def decode_one(b, pc):
         return "paciasp"
     if b == 0xD50323BF:
         return "autiasp"
+    if b == 0xD5033BBF:
+        return "autiasp"
+    if b == 0xD65F0FFF:
+        return "ret"
+    # hint space
+    if (b & 0xFFFFF01F) == 0xD503201F:
+        return "hint #%d" % ((b >> 5) & 0x7F)
     return "?? (0x%08X)" % b
 
 
-def scan_getter(imm_min, imm_max, reg_width, reg_idx=0):
-    """Сканирует __text на паттерн: LDR {reg_width}{reg_idx}, [x{reg_idx}, #imm]; RET.
-    Возвращает (addr, imm) или (None, None)."""
-    text_lo = None
-    text_hi = None
-    for s, e, n, x in blocks():
-        if "__text" in n and x:
-            text_lo = s
-            text_hi = e
-            break
-    if text_lo is None:
-        return None, None
-
-    # Опкоды LDR с immediate: Xn = 0xF9400000, Wn = 0xB9400000
-    if reg_width == "x":
-        base_op = 0xF9400000
-        shift = 3
-    else:
-        base_op = 0xB9400000
-        shift = 2
-
-    addr = text_lo
-    while addr < text_hi - 8:
-        b0 = r32(addr)
-        b1 = r32(addr + 4)
-        if b0 is None or b1 is None:
-            addr += 4
-            continue
-        # проверяем паттерн: LDR + RET
-        if (b0 & 0xFFC00000) == base_op and b1 == 0xD65F03C0:
-            rd = b0 & 0x1F
-            rn = (b0 >> 5) & 0x1F
-            imm = ((b0 >> 10) & 0xFFF) << shift
-            if rd == reg_idx and rn == reg_idx and imm_min <= imm <= imm_max:
-                return addr, imm
-        addr += 4
-    return None, None
-
-
-def find_call_targets(addr, maxn=300):
-    """Возвращает список адресов, на которые идут BL из функции addr."""
+def dis_raw(addr, count):
+    ga = sa(addr)
+    if ga is None:
+        return []
+    mem = currentProgram.getMemory()
     out = []
-    for line in dis_raw(addr, maxn):
-        m = re.match(r"([0-9A-F]{16})  ([0-9A-F]{8})  (.*)", line)
-        if not m:
-            continue
-        body = m.group(3)
-        if body.startswith("bl "):
-            m2 = re.search(r"-> 0x([0-9A-F]+)", body)
-            if m2:
-                out.append(int(m2.group(1), 16))
+    i = 0
+    while i < count:
+        a = addr + i * 4
+        gaa = sa(a)
+        if gaa is None:
+            break
+        try:
+            b = mem.getInt(gaa) & 0xFFFFFFFF
+        except Exception:
+            break
+        insn = decode_one(b, a)
+        out.append("%016X  %08X  %s" % (a, b, insn))
+        i += 1
     return out
 
 
-def find_str_ops(addr, maxn=300):
-    """Возвращает список (mnem, imm, ops) для STR/STP/MOV с иммедиатами."""
+def find_imm_ops(func_addr, maxn):
     out = []
-    for line in dis_raw(addr, maxn):
+    for line in dis_raw(func_addr, maxn):
         m = re.match(r"([0-9A-F]{16})  ([0-9A-F]{8})  (.*)", line)
         if not m:
+            continue
+        try:
+            addr = int(m.group(1), 16)
+        except Exception:
             continue
         body = m.group(3)
         mn = body.split(" ", 1)[0].lower()
@@ -445,8 +554,92 @@ def find_str_ops(addr, maxn=300):
             except Exception:
                 continue
             if 0 < val < 0x8000:
-                out.append((mn, val, body))
+                out.append((addr, mn, val, body))
     return out
+
+
+def find_call_targets(addr, maxn=400):
+    out = []
+    for line in dis_raw(addr, maxn):
+        m = re.match(r"([0-9A-F]{16})  ([0-9A-F]{8})  (.*)", line)
+        if not m:
+            continue
+        body = m.group(3)
+        if body.startswith("bl "):
+            m2 = re.search(r"-> 0x([0-9A-F]+)", body)
+            if m2:
+                try:
+                    out.append(int(m2.group(1), 16))
+                except Exception:
+                    pass
+    return out
+
+
+def find_func(names):
+    for n in names:
+        a = sget(n)
+        if a is not None and is_ktext(a):
+            return a, n
+    for n in names:
+        hits = snamed(n)
+        for a, nm in hits:
+            if is_ktext(a):
+                return a, nm
+    return None, None
+
+
+def scan_getter(imm_min, imm_max, reg_width):
+    lo, hi = text_range()
+    if lo is None:
+        return None, None
+    if reg_width == "x":
+        base_op = 0xF9400000
+        shift = 3
+    else:
+        base_op = 0xB9400000
+        shift = 2
+    addr = lo
+    while addr < hi - 8:
+        b0 = r32(addr)
+        b1 = r32(addr + 4)
+        if b0 is None or b1 is None:
+            addr += 4
+            continue
+        if (b0 & 0xFFC00000) == base_op and b1 == 0xD65F03C0:
+            rd = b0 & 0x1F
+            rn = (b0 >> 5) & 0x1F
+            imm = ((b0 >> 10) & 0xFFF) << shift
+            if rd == 0 and rn == 0 and imm_min <= imm <= imm_max:
+                return addr, imm
+        addr += 4
+    return None, None
+
+
+def scan_setter(imm_min, imm_max, reg_width):
+    lo, hi = text_range()
+    if lo is None:
+        return None, None
+    if reg_width == "x":
+        base_op = 0xF9000000
+        shift = 3
+    else:
+        base_op = 0xB9000000
+        shift = 2
+    addr = lo
+    while addr < hi - 8:
+        b0 = r32(addr)
+        b1 = r32(addr + 4)
+        if b0 is None or b1 is None:
+            addr += 4
+            continue
+        if (b0 & 0xFFC00000) == base_op and b1 == 0xD65F03C0:
+            rd = b0 & 0x1F
+            rn = (b0 >> 5) & 0x1F
+            imm = ((b0 >> 10) & 0xFFF) << shift
+            if rd == 1 and rn == 0 and imm_min <= imm <= imm_max:
+                return addr, imm
+        addr += 4
+    return None, None
 
 
 def main():
@@ -463,83 +656,90 @@ def main():
     lines.append("symbols_loaded = %d" % sym_count)
     lines.append("")
 
-    # --- proc_p_ucred_off ---
+    # proc_p_ucred_off
     lines.append("=== proc_p_ucred_off ===")
     p_off = None
     p_src = "NOT_FOUND"
 
     a = sget("_proc_ucred") or sget("proc_ucred")
     if a is not None and is_ktext(a):
-        for mn, val, ops in find_str_ops(a, 20):
+        lines.append("  _proc_ucred @ %s" % fmt(a))
+        for mn, val, ops in find_imm_ops(a, 30):
             if mn == "ldr" and 0x70 <= val <= 0x100:
                 p_off = val
-                p_src = "_proc_ucred @ %s -> %s" % (fmt(a), ops)
+                p_src = "_proc_ucred -> %s" % ops
                 break
 
     if p_off is None:
-        print("[*] proc_ucred not in symbols, scanning __text...")
-        addr, imm = scan_getter(0x70, 0x100, "x", 0)
+        addr, imm = scan_getter(0x70, 0x100, "x")
         if addr is not None:
             p_off = imm
             p_src = "pattern LDR X0, [X0, #0x%X]; RET @ %s" % (imm, fmt(addr))
-            lines.append("  pattern match @ %s" % fmt(addr))
+
     lines.append("  value  = " + (fmt(p_off) if p_off else "NOT_FOUND"))
     lines.append("  source = " + p_src)
     lines.append("")
 
-    # --- ucred ids ---
+    # ucred ids
     lines.append("=== ucred ids ===")
     u_uid = None
     u_svuid = None
 
     a = sget("_kauth_cred_getuid") or sget("kauth_cred_getuid")
     if a is not None and is_ktext(a):
-        for mn, val, ops in find_str_ops(a, 20):
+        lines.append("  kauth_cred_getuid @ %s" % fmt(a))
+        for mn, val, ops in find_imm_ops(a, 20):
             if mn in ("ldr", "ldrb", "ldrh") and 0x08 <= val <= 0x20:
                 u_uid = val
+                lines.append("    %s" % ops)
                 break
     if u_uid is None:
-        addr, imm = scan_getter(0x08, 0x20, "w", 0)
+        addr, imm = scan_getter(0x08, 0x20, "w")
         if addr is not None:
             u_uid = imm
-            lines.append("  ucred_cr_uid pattern @ %s" % fmt(addr))
+            lines.append("  kauth_cred_getuid pattern @ %s -> 0x%X" % (fmt(addr), imm))
 
     a = sget("_kauth_cred_getsvuid") or sget("kauth_cred_getsvuid") or sget("_kauth_cred_getsavuid")
     if a is not None and is_ktext(a):
-        for mn, val, ops in find_str_ops(a, 20):
+        lines.append("  kauth_cred_getsvuid @ %s" % fmt(a))
+        for mn, val, ops in find_imm_ops(a, 20):
             if mn in ("ldr", "ldrb", "ldrh") and 0x08 <= val <= 0x30:
                 u_svuid = val
+                lines.append("    %s" % ops)
                 break
     if u_svuid is None:
-        addr, imm = scan_getter(0x08, 0x30, "w", 0)
+        addr, imm = scan_getter(0x08, 0x30, "w")
         if addr is not None:
             u_svuid = imm
-            lines.append("  ucred_cr_svuid pattern @ %s" % fmt(addr))
+            lines.append("  kauth_cred_getsvuid pattern @ %s -> 0x%X" % (fmt(addr), imm))
 
     lines.append("  ucred_cr_uid_off    = " + (("0x%X" % u_uid) if u_uid else "FALLBACK 0xC"))
     lines.append("  ucred_cr_svuid_off  = " + (("0x%X" % u_svuid) if u_svuid else "FALLBACK 0x14"))
     lines.append("")
 
-    # --- NECP flow ---
+    # NECP flow
     lines.append("=== NECP flow struct ===")
     ncf_assigned = None
     ncf_size = None
 
     a_add = sget("_necp_client_add_flow") or sget("necp_client_add_flow")
     if a_add is not None and is_ktext(a_add):
-        lines.append("  _necp_client_add_flow @ %s" % fmt(a_add))
-        # ищем STR/STP с иммедиатом 0x40..0xA0
-        for mn, val, ops in find_str_ops(a_add, 500):
-            if mn in ("str", "stp") and 0x40 <= val <= 0xA0:
+        lines.append("  necp_client_add_flow @ %s" % fmt(a_add))
+        for mn, val, ops in find_imm_ops(a_add, 500):
+            if mn in ("str", "stp", "stur") and 0x40 <= val <= 0xA0:
                 ncf_assigned = val
                 lines.append("    STR match: %s" % ops)
                 break
-        # ищем BL на necp_flow_alloc
+        if ncf_assigned is None:
+            addr, imm = scan_setter(0x40, 0xA0, "x")
+            if addr is not None:
+                ncf_assigned = imm
+                lines.append("    pattern STR X1, [X0, #0x%X]; RET @ %s" % (imm, fmt(addr)))
+
         for target in find_call_targets(a_add, 500):
             if not is_ktext(target):
                 continue
-            # проверяем, есть ли в цели MOV/MOVZ с иммедиатом 0x80..0x400
-            for mn, val, ops in find_str_ops(target, 200):
+            for mn, val, ops in find_imm_ops(target, 300):
                 if mn in ("mov", "movz") and 0x80 <= val <= 0x400:
                     ncf_size = val
                     lines.append("    necp_flow_alloc @ %s -> %s" % (fmt(target), ops))
@@ -555,21 +755,20 @@ def main():
     lines.append("  NCF_STRUCT_SZ       = 0x%X" % ncf_size)
     lines.append("")
 
-    # --- AMFI ---
+    # AMFI
     lines.append("=== amfi_get_out_of_my_way ===")
-    a = sget("_amfi_get_out_of_my_way") or sget("amfi_get_out_of_my_way")
-    lines.append("  value  = " + (fmt(a) if a else "NOT_FOUND"))
-    lines.append("  source = " + ("symbol" if a else "NOT_FOUND"))
+    a_amfi = sget("_amfi_get_out_of_my_way") or sget("amfi_get_out_of_my_way")
+    lines.append("  value  = " + (fmt(a_amfi) if a_amfi else "NOT_FOUND"))
     lines.append("")
 
-    # дизасм
+    # DISASM
     lines.append("=== DISASM ===")
-    for nm_key in ("_necp_client_add_flow", "_necp_flow_alloc"):
-        a = sget(nm_key)
+    for key, names in TARGETS:
+        a, nm = find_func(names)
         if a is None:
             continue
         lines.append("")
-        lines.append("--- %s @ %s ---" % (nm_key, fmt(a)))
+        lines.append("--- %s @ %s ---" % (nm, fmt(a)))
         for l in dis_raw(a, 60):
             lines.append(l)
 
@@ -581,7 +780,7 @@ def main():
     jout["ucred_cr_svuid_off"] = u_svuid
     jout["NCF_ASSIGNED_OFF"] = ncf_assigned
     jout["NCF_STRUCT_SZ"] = ncf_size
-    jout["amfi_get_out_of_my_way"] = a
+    jout["amfi_get_out_of_my_way"] = a_amfi
     try:
         fh = open(OUT_JSON, "w")
         fh.write(json.dumps(jout, indent=2, sort_keys=True))
@@ -604,7 +803,7 @@ def main():
     print("  ucred_cr_svuid_off 0x%X" % (u_svuid or 0))
     print("  NCF_ASSIGNED_OFF   0x%X" % ncf_assigned)
     print("  NCF_STRUCT_SZ      0x%X" % ncf_size)
-    print("  amfi_get_out_of_my_way " + (fmt(a) if a else "NOT_FOUND"))
+    print("  amfi_get_out_of_my_way " + (fmt(a_amfi) if a_amfi else "NOT_FOUND"))
     print("=== DONE ===")
 
 
@@ -613,3 +812,9 @@ try:
 except Exception as e:
     print("[-] FATAL: " + str(e))
     traceback.print_exc()
+    try:
+        fh = open(OUT, "w")
+        fh.write("FATAL: " + str(e) + "\n")
+        fh.close()
+    except Exception:
+        pass
