@@ -17,65 +17,76 @@ jobs:
 
       - uses: actions/setup-java@v4
         with:
-          java-version: "21"
+          java-version: "25"
           distribution: temurin
 
-      # --- Ghidra: кэшируется, качается один раз ---
+      # --- Ghidra 12.1.2: кэш ---
       - name: Cache Ghidra
         id: cache-ghidra
         uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}/ghidra
-          key: ghidra-11.4.2
+          key: ghidra-12.1.2
 
-      - name: Install Ghidra
+      - name: Install Ghidra 12.1.2
         if: steps.cache-ghidra.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
-          curl -fsSL -o /tmp/g.zip https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_11.4.2_build/ghidra_11.4.2_PUBLIC_20250826.zip
+          curl -fsSL -o /tmp/g.zip \
+            https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_12.1.2_build/ghidra_12.1.2_PUBLIC_20260605.zip
           unzip -q /tmp/g.zip -d "$GITHUB_WORKSPACE"
-          mv "$GITHUB_WORKSPACE"/ghidra_11.4.2_PUBLIC "$GITHUB_WORKSPACE/ghidra"
+          mv "$GITHUB_WORKSPACE"/ghidra_12.1.2_PUBLIC "$GITHUB_WORKSPACE/ghidra"
           echo "GHIDRA_ROOT=$GITHUB_WORKSPACE/ghidra" >> "$GITHUB_ENV"
 
       - name: Set Ghidra env
         run: echo "GHIDRA_ROOT=$GITHUB_WORKSPACE/ghidra" >> "$GITHUB_ENV"
 
-      # --- ipsw: кэшируется, качается через gh с токеном (обходит 403) ---
+      # --- ipsw 3.1.716: кэш + прямая загрузка ---
       - name: Cache ipsw
         id: cache-ipsw
         uses: actions/cache@v4
         with:
           path: /usr/local/bin/ipsw
-          key: ipsw-latest
+          key: ipsw-3.1.716
 
-      - name: Install ipsw
+      - name: Install ipsw 3.1.716
         if: steps.cache-ipsw.outputs.cache-hit != 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          # gh аутентифицирован → нет rate limit
-          ASSET=$(gh release view --repo blacktop/ipsw --json assets --jq '.assets[] | select(.name | test("ipsw_.*_Linux_x86_64\\.tar\\.gz$")) | .name' | head -1)
-          if [ -z "$ASSET" ]; then
-            ASSET=$(gh release view --repo blacktop/ipsw --json assets --jq '.assets[] | select(.name | test("ipsw_.*_linux_amd64\\.tar\\.gz$")) | .name' | head -1)
-          fi
-          test -n "$ASSET"
-          echo "Downloading $ASSET"
-          gh release download --repo blacktop/ipsw --pattern "$ASSET" --dir /tmp/ipsw-dl
-          tar -C /usr/local/bin -xzf "/tmp/ipsw-dl/$ASSET" ipsw
+          curl -fsSL -o /tmp/ipsw.tar.gz \
+            https://github.com/blacktop/ipsw/releases/download/v3.1.716/ipsw_3.1.716_linux_x86_64.tar.gz
+          tar -C /usr/local/bin -xzf /tmp/ipsw.tar.gz ipsw
           ipsw version
 
-      # --- symbolicator: кэшируется ---
+      # --- symbolicator 26.8.0: кэш ---
       - name: Cache symbolicator
         id: cache-symbolicator
         uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}/symbolicator
-          key: symbolicator-latest
+          key: symbolicator-26.8.0
 
-      - name: Clone symbolicator
+      - name: Clone symbolicator 26.8.0
         if: steps.cache-symbolicator.outputs.cache-hit != 'true'
-        run: git clone --depth 1 https://github.com/blacktop/symbolicator.git "$GITHUB_WORKSPACE/symbolicator"
+        run: |
+          git clone --depth 1 --branch 26.8.0 \
+            https://github.com/getsentry/symbolicator.git "$GITHUB_WORKSPACE/symbolicator"
+
+      # --- verified_all_92.json: кэш ---
+      - name: Cache verified offsets
+        id: cache-verified
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/verified_all_92.json
+          key: verified-all-92-latest
+
+      - name: Download verified_all_92.json
+        if: steps.cache-verified.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          curl -fsSL -o "$GITHUB_WORKSPACE/verified_all_92.json" \
+            "https://raw.githubusercontent.com/jianbuzhai698-ui/ios/main/client/verified_all_92.json"
+          test -s "$GITHUB_WORKSPACE/verified_all_92.json"
 
       # --- Распаковка kernel ---
       - name: Unpack kernel
@@ -123,6 +134,7 @@ jobs:
         env:
           _JAVA_OPTIONS: "-Xmx8g -Djava.awt.headless=true"
           SYMBOLS_JSON: ${{ github.workspace }}/symbols.json
+          VERIFIED_JSON: ${{ github.workspace }}/verified_all_92.json
           GITHUB_WORKSPACE: ${{ github.workspace }}
         run: |
           "$GHIDRA_ROOT/support/analyzeHeadless" \
@@ -138,6 +150,7 @@ jobs:
         env:
           _JAVA_OPTIONS: "-Xmx8g -Djava.awt.headless=true"
           SYMBOLS_JSON: ${{ github.workspace }}/symbols.json
+          VERIFIED_JSON: ${{ github.workspace }}/verified_all_92.json
           GITHUB_WORKSPACE: ${{ github.workspace }}
         run: |
           rm -rf ghidra_project
@@ -158,7 +171,6 @@ jobs:
           [ -f offsets.json ] || echo '{}' > offsets.json
           ls -la
 
-      # --- symbols.json теперь возвращается в артефакты ---
       - uses: actions/upload-artifact@v4
         if: always()
         with:
