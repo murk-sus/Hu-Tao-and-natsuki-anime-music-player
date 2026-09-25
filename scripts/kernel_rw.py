@@ -22,7 +22,7 @@ KTEXT_LO = 0xFFF007004000
 KTEXT_HI = 0xFFF200000000
 STRIDE = 24
 MAX_DIS = 200
-MAX_TOTAL = 8000
+MAX_TOTAL = 12000
 
 _sym = None
 _strmap = None
@@ -45,15 +45,15 @@ CONF_S = {
     "thread_task_threads_next": 0x50,
 }
 
-# Целевые функции для дизасма
 TARGET_FUNCS = {
     "proc_ucred": ["_proc_ucred", "proc_ucred"],
     "kauth_cred_getuid": ["_kauth_cred_getuid", "kauth_cred_getuid"],
     "kauth_cred_getsvuid": ["_kauth_cred_getsvuid", "kauth_cred_getsvuid"],
     "kauth_cred_getsavuid": ["_kauth_cred_getsavuid"],
-    "necp_client_add_flow": ["_necp_client_add_flow", "necp_client_add_flow"],
-    "necp_flow_alloc": ["_necp_flow_alloc", "necp_flow_alloc"],
-    "amfi_get_out_of_my_way": ["_amfi_get_out_of_my_way", "amfi_get_out_of_my_way"],
+    "necp_client_add_flow": ["_necp_client_add_flow", "necp_client_add Exception_flow"],
+:
+    "necp_flow_alloc": ["_necp_       flow_alloc", "necp_flow_alloc"],
+    return "amfi_get_out_of_my None_way": ["_amfi_get_out_of_my_way", "amfi_get_out_of_my_way"],
 }
 
 
@@ -75,8 +75,7 @@ def _pa(v):
         if s.startswith(("0x", "0X")):
             return _u(int(s, 16))
         return _u(int(s, 10))
-    except Exception:
-        return None
+    except
 
 
 def fmt(v):
@@ -95,18 +94,6 @@ def sa(a):
         return None
 
 
-def r64(a):
-    if a is None:
-        return None
-    ga = sa(a)
-    if ga is None:
-        return None
-    try:
-        return int(currentProgram.getMemory().getLong(ga)) & 0xFFFFFFFFFFFFFFFF
-    except Exception:
-        return None
-
-
 def r32(a):
     if a is None:
         return None
@@ -115,18 +102,6 @@ def r32(a):
         return None
     try:
         return int(currentProgram.getMemory().getInt(ga)) & 0xFFFFFFFF
-    except Exception:
-        return None
-
-
-def r16(a):
-    if a is None:
-        return None
-    ga = sa(a)
-    if ga is None:
-        return None
-    try:
-        return int(currentProgram.getMemory().getShort(ga)) & 0xFFFF
     except Exception:
         return None
 
@@ -168,15 +143,6 @@ def is_ktext(p):
 
 def strip_pac(p):
     return 0xFFFFFFF000000000 | (p & MASK48)
-
-
-def is_exec(p):
-    if p is None:
-        return False
-    b = inblk(strip_pac(p))
-    if b is None:
-        return False
-    return b[3]
 
 
 def is_data_ptr(p):
@@ -395,57 +361,172 @@ def dec(f):
     return ""
 
 
-def dis(a, maxl=MAX_DIS):
+def dis_raw(addr, count=200):
+    ga = sa(addr)
+    if ga is None:
+        return []
+    mem = currentProgram.getMemory()
     out = []
-    f = fat(a)
-    if f is None:
-        f = efunc(a)
-    if f is None:
-        return out
-    try:
-        listing = currentProgram.getListing()
-        body = f.getBody()
-        if body is None:
-            return out
-        insn = listing.getInstructionAt(body.getMinAddress())
-        c = 0
-        while insn is not None and body.contains(insn.getAddress()) and c < maxl:
-            try:
-                aa = _u(insn.getAddress().getOffset())
-                w = r32(aa) or 0
-                mn = insn.getMnemonicString().lower()
-                tx = insn.toString()
-                out.append("{:016X}  {:08X}  {:<10} {}".format(aa, w, mn, tx))
-            except Exception:
-                pass
-            insn = insn.getNext()
-            c += 1
-    except Exception:
-        pass
+    for i in range(count):
+        a = addr + i * 4
+        gaa = sa(a)
+        if gaa is None:
+            break
+        try:
+            b = mem.getInt(gaa) & 0xFFFFFFFF
+        except Exception:
+            break
+        insn = ""
+        if (b & 0xFFC00000) == 0xF9400000:
+            imm = ((b >> 10) & 0xFFF) * 8
+            insn = "ldr x{}, [x{}, #0x{:X}]".format(b & 0x1F, (b >> 5) & 0x1F, imm)
+        elif (b & 0xFFC00000) == 0xB9400000:
+            imm = ((b >> 10) & 0xFFF) * 4
+            insn = "ldr w{}, [x{}, #0x{:X}]".format(b & 0x1F, (b >> 5) & 0x1F, imm)
+        elif (b & 0xFFC00000) == 0xF9000000:
+            imm = ((b >> 10) & 0xFFF) * 8
+            insn = "str x{}, [x{}, #0x{:X}]".format(b & 0x1F, (b >> 5) & 0x1F, imm)
+        elif (b & 0xFFC00000) == 0xB9000000:
+            imm = ((b >> 10) & 0xFFF) * 4
+            insn = "str w{}, [x{}, #0x{:X}]".format(b & 0x1F, (b >> 5) & 0x1F, imm)
+        elif (b & 0xFFE00000) == 0x39400000:
+            imm = (b >> 10) & 0xFFF
+            insn = "ldrb w{}, [x{}, #0x{:X}]".format(b & 0x1F, (b >> 5) & 0x1F, imm)
+        elif (b & 0xFFE00000) == 0x39000000:
+            imm = (b >> 10) & 0xFFF
+            insn = "strb w{}, [x{}, #0x{:X}]".format(b & 0x1F, (b >> 5) & 0x1F, imm)
+        elif (b & 0xFFE00000) == 0x79400000:
+            imm = ((b >> 10) & 0xFFF) * 2
+            insn = "ldrh w{}, [x{}, #0x{:X}]".format(b & 0x1F, (b >> 5) & 0x1F, imm)
+        elif (b & 0xFFE00000) == 0x79000000:
+            imm = ((b >> 10) & 0xFFF) * 2
+            insn = "strh w{}, [x{}, #0x{:X}]".format(b & 0x1F, (b >> 5) & 0x1F, imm)
+        elif (b & 0x7F800000) == 0x52800000:
+            hw = (b >> 21) & 0x3
+            insn = "movz w{}, #0x{:X}, lsl #{}".format(b & 0x1F, (b >> 5) & 0xFFFF, hw * 16)
+        elif (b & 0x7F800000) == 0xD2800000:
+            hw = (b >> 21) & 0x3
+            insn = "movz x{}, #0x{:X}, lsl #{}".format(b & 0x1F, (b >> 5) & 0xFFFF, hw * 16)
+        elif (b & 0x7F800000) == 0x72800000:
+            hw = (b >> 21) & 0x3
+            insn = "movk w{}, #0x{:X}, lsl #{}".format(b & 0x1F, (b >> 5) & 0xFFFF, hw * 16)
+        elif (b & 0x7F800000) == 0xF2800000:
+            hw = (b >> 21) & 0x3
+            insn = "movk x{}, #0x{:X}, lsl #{}".format(b & 0x1F, (b >> 5) & 0xFFFF, hw * 16)
+        elif (b & 0x7F800000) == 0x11000000:
+            sh = (b >> 22) & 0x1
+            imm = (b >> 10) & 0xFFF
+            if sh:
+                imm <<= 12
+            insn = "add w{}, w{}, #0x{:X}".format(b & 0x1F, (b >> 5) & 0x1F, imm)
+        elif (b & 0x7F800000) == 0x91000000:
+            sh = (b >> 22) & 0x1
+            imm = (b >> 10) & 0xFFF
+            if sh:
+                imm <<= 12
+            insn = "add x{}, x{}, #0x{:X}".format(b & 0x1F, (b >> 5) & 0x1F, imm)
+        elif (b & 0x7F800000) == 0x51000000:
+            imm = (b >> 10) & 0xFFF
+            insn = "sub w{}, w{}, #0x{:X}".format(b & 0x1F, (b >> 5) & 0x1F, imm)
+        elif (b & 0x7F800000) == 0xD1000000:
+            imm = (b >> 10) & 0xFFF
+            insn = "sub x{}, x{}, #0x{:X}".format(b & 0x1F, (b >> 5) & 0x1F, imm)
+        elif (b & 0x7FE00000) == 0x2A000000:
+            insn = "orr w{}, w{}, w{}".format(b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x1F)
+        elif (b & 0x7FE00000) == 0xAA000000:
+            insn = "orr x{}, x{}, x{}".format(b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x1F)
+        elif (b & 0x7FE00000) == 0x4A000000:
+            insn = "eor w{}, w{}, w{}".format(b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x1F)
+        elif (b & 0x7FE00000) == 0xCA000000:
+            insn = "eor x{}, x{}, x{}".format(b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x1F)
+        elif (b & 0x7FE00000) == 0x6B000000:
+            insn = "subs w{}, w{}, w{}".format(b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x1F)
+        elif (b & 0x7FE00000) == 0xEB000000:
+            insn = "subs x{}, x{}, x{}".format(b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x1F)
+        elif (b & 0x7FE00000) == 0x1A000000:
+            insn = "adc w{}, w{}, w{}".format(b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x1F)
+        elif (b & 0x7FE00000) == 0x0A000000:
+            insn = "and w{}, w{}, w{}".format(b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x1F)
+        elif (b & 0x7FE00000) == 0x8A000000:
+            insn = "and x{}, x{}, x{}".format(b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x1F)
+        elif (b & 0x7C000000) == 0x14000000:
+            off = b & 0x03FFFFFF
+            if off & 0x02000000:
+                off -= 0x04000000
+            insn = "b #0x{:X} (-> 0x{:016X})".format(off * 4, (a + off * 4) & 0xFFFFFFFFFFFFFFFF)
+        elif (b & 0x7C000000) == 0x94000000:
+            off = b & 0x03FFFFFF
+            if off & 0x02000000:
+                off -= 0x04000000
+            insn = "bl #0x{:X} (-> 0x{:016X})".format(off * 4, (a + off * 4) & 0xFFFFFFFFFFFFFFFF)
+        elif (b & 0x7E000000) == 0x34000000:
+            off = (b >> 5) & 0x7FFFF
+            if off & 0x40000:
+                off -= 0x80000
+            insn = "cbz w{}, #0x{:X}".format(b & 0x1F, off * 4)
+        elif (b & 0x7E000000) == 0x35000000:
+            off = (b >> 5) & 0x7FFFF
+            if off & 0x40000:
+                off -= 0x80000
+            insn = "cbnz w{}, #0x{:X}".format(b & 0x1F, off * 4)
+        elif (b & 0x7E000000) == 0xB4000000:
+            off = (b >> 5) & 0x7FFFF
+            if off & 0x40000:
+                off -= 0x80000
+            insn = "cbz x{}, #0x{:X}".format(b & 0x1F, off * 4)
+        elif (b & 0x7E000000) == 0xB5000000:
+            off = (b >> 5) & 0x7FFFF
+            if off & 0x40000:
+                off -= 0x80000
+            insn = "cbnz x{}, #0x{:X}".format(b & 0x1F, off * 4)
+        elif b == 0xD65F03C0:
+            insn = "ret"
+        elif b == 0xD503201F:
+            insn = "nop"
+        elif b == 0xD503233F:
+            insn = "paciasp"
+        elif b == 0xD50323BF:
+            insn = "autiasp"
+        elif (b & 0x7F800000) == 0x71000000:
+            imm = (b >> 10) & 0xFFF
+            insn = "cmp w{}, #0x{:X}".format((b >> 5) & 0x1F, imm)
+        elif (b & 0x7F800000) == 0xF1000000:
+            imm = (b >> 10) & 0xFFF
+            insn = "cmp x{}, #0x{:X}".format((b >> 5) & 0x1F, imm)
+        elif (b & 0x7FE00000) == 0x6B000000:
+            insn = "cmp w{}, w{}".format((b >> 5) & 0x1F, (b >> 16) & 0x1F)
+        elif (b & 0x7FE00000) == 0xEB000000:
+            insn = "cmp x{}, x{}".format((b >> 5) & 0x1F, (b >> 16) & 0x1F)
+        elif (b & 0xFFC00000) == 0xF8400000:
+            imm = ((b >> 12) & 0x1FF)
+            if imm & 0x100:
+                imm -= 0x200
+            insn = "ldur x{}, [x{}, #{}]".format(b & 0x1F, (b >> 5) & 0x1F, imm)
+        elif (b & 0xFFC00000) == 0xB8400000:
+            imm = ((b >> 12) & 0x1FF)
+            if imm & 0x100:
+                imm -= 0x200
+            insn = "ldur w{}, [x{}, #{}]".format(b & 0x1F, (b >> 5) & 0x1F, imm)
+        elif (b & 0xFFC00000) == 0xF8000000:
+            imm = ((b >> 12) & 0x1FF)
+            if imm & 0x100:
+                imm -= 0x200
+            insn = "stur x{}, [x{}, #{}]".format(b & 0x1F, (b >> 5) & 0x1F, imm)
+        elif (b & 0xFFC00000) == 0xB8000000:
+            imm = ((b >> 12) & 0x1FF)
+            if imm & 0x100:
+                imm -= 0x200
+            insn = "stur w{}, [x{}, #{}]".format(b & 0x1F, (b >> 5) & 0x1F, imm)
+        else:
+            insn = "?? (0x{:08X})".format(b)
+        out.append("{:016X}  {:08X}  {}".format(a, b, insn))
     return out
 
 
-def find_func(name_list):
-    """Ищет функцию по списку имён символов."""
-    for n in name_list:
-        a = sget(n)
-        if a is not None and is_ktext(a):
-            return a, n
-    # fallback: поиск по частичному имени в таблице символов Ghidra
-    for n in name_list:
-        hits = snamed(n)
-        for a, nm in hits:
-            if is_ktext(a):
-                return a, nm
-    return None, None
-
-
 def find_imm_ldr(func_addr, target_reg=None):
-    """Ищет в дизасме инструкции LDR/ADD с иммедиатом, возвращает список (addr, mnem, imm)."""
     out = []
-    dis_lines = dis(func_addr, maxl=100)
-    for line in dis_lines:
-        m = re.match(r"([0-9A-F]{16})\s+([0-9A-F]{8})\s+(\w+)\s+(.*)", line)
+    for line in dis_raw(func_addr, 200):
+        m = re.match(r"([0-9A-F]{16})\s+([0-9A-F]{8})\s+(\S+)\s+(.*)", line)
         if not m:
             continue
         addr_s, _, mnem, ops = m.groups()
@@ -454,26 +535,34 @@ def find_imm_ldr(func_addr, target_reg=None):
         except Exception:
             continue
         mn = mnem.lower()
-        if mn not in ("ldr", "ldrb", "ldrh", "str", "add", "mov", "movz", "movw", "movk"):
-            continue
-        # ищем иммедиат в операндах: #0x...
-        for im in re.finditer(r"#(0x[0-9a-fA-F]+|\d+)", ops):
+        for im in re.finditer(r"#(0x[0-9A-Fa-f]+|\d+)", ops):
             try:
                 val = int(im.group(1), 0)
             except Exception:
                 continue
-            if 0 < val < 0x4000:
+            if 0 < val < 0x8000:
                 out.append((addr, mn, val, ops.strip()))
     return out
 
 
+def find_func(name_list):
+    for n in name_list:
+        a = sget(n)
+        if a is not None and is_ktext(a):
+            return a, n
+    for n in name_list:
+        hits = snamed(n)
+        for a, nm in hits:
+            if is_ktext(a):
+                return a, nm
+    return None, None
+
+
 def analyze_proc_ucred():
-    """Ищет смещение p_ucred в proc через дизасм _proc_ucred."""
     a, nm = find_func(TARGET_FUNCS["proc_ucred"])
     if a is None:
         return None, "NOT_FOUND"
     imms = find_imm_ldr(a)
-    # Ищем LDR с иммедиатом в диапазоне 0x80-0xC0
     for addr, mn, val, ops in imms:
         if mn == "ldr" and 0x80 <= val <= 0xC0:
             return val, "{} @ {} -> LDR {}".format(nm, fmt(addr), ops)
@@ -481,7 +570,6 @@ def analyze_proc_ucred():
 
 
 def analyze_ucred_ids():
-    """Ищет cr_uid / cr_svuid через дизасм kauth_cred_getuid / getsavuid."""
     results = {}
     a1, n1 = find_func(TARGET_FUNCS["kauth_cred_getuid"])
     if a1 is not None:
@@ -499,7 +587,6 @@ def analyze_ucred_ids():
             if mn in ("ldr", "ldrb", "ldrh") and 0x08 <= val <= 0x30:
                 results["ucred_cr_svuid_off"] = val
                 break
-    # Fallback: стандартные смещения из XNU
     if "ucred_cr_uid_off" not in results:
         results["ucred_cr_uid_off"] = 0x0C
     if "ucred_cr_svuid_off" not in results:
@@ -508,18 +595,14 @@ def analyze_ucred_ids():
 
 
 def analyze_necp_flow():
-    """Ищет NCF_ASSIGNED_OFF и NCF_STRUCT_SZ через дизасм necp_client_add_flow / necp_flow_alloc."""
     result = {}
-    # Ищем necp_flow_alloc — там malloc с размером структуры
     a_alloc, n_alloc = find_func(TARGET_FUNCS["necp_flow_alloc"])
     if a_alloc is not None:
         imms = find_imm_ldr(a_alloc)
-        # Ищем MOV/MOVZ с размером в диапазоне 0x80-0x400
         for addr, mn, val, ops in imms:
             if mn in ("mov", "movz") and 0x80 <= val <= 0x400:
                 result["NCF_STRUCT_SZ"] = val
                 break
-    # Ищем necp_client_add_flow — там запись assigned
     a_add, n_add = find_func(TARGET_FUNCS["necp_client_add_flow"])
     if a_add is not None:
         imms = find_imm_ldr(a_add)
@@ -535,11 +618,9 @@ def analyze_necp_flow():
 
 
 def analyze_amfi():
-    """Ищет amfi_get_out_of_my_way."""
     a, nm = find_func(TARGET_FUNCS["amfi_get_out_of_my_way"])
     if a is not None:
         return a, nm
-    # fallback: поиск по строке
     sa_ = straddr("amfi_get_out_of_my_way")
     if sa_ is not None:
         return sa_, "string:amfi_get_out_of_my_way"
@@ -560,7 +641,6 @@ def main():
     lines.append("kernel_base = " + fmt(KBASE))
     lines.append("")
 
-    # 1. proc_p_ucred_off
     print("[*] proc_ucred...")
     p_off, p_src = analyze_proc_ucred()
     lines.append("=== proc_p_ucred_off ===")
@@ -568,7 +648,6 @@ def main():
     lines.append("  source = " + p_src)
     lines.append("")
 
-    # 2. ucred ids
     print("[*] ucred ids...")
     u = analyze_ucred_ids()
     lines.append("=== ucred ids ===")
@@ -576,7 +655,6 @@ def main():
         lines.append("  {:<30} 0x{:X}".format(k, u[k]))
     lines.append("")
 
-    # 3. NECP flow
     print("[*] necp flow...")
     n = analyze_necp_flow()
     lines.append("=== NECP flow struct ===")
@@ -584,7 +662,6 @@ def main():
         lines.append("  {:<30} 0x{:X}".format(k, n[k]))
     lines.append("")
 
-    # 4. AMFI
     print("[*] amfi...")
     amfi, amfi_src = analyze_amfi()
     lines.append("=== amfi_get_out_of_my_way ===")
@@ -592,7 +669,6 @@ def main():
     lines.append("  source = " + amfi_src)
     lines.append("")
 
-    # Дизасм всех найденных функций
     lines.append("=== DISASM ===")
     for key in ("proc_ucred", "kauth_cred_getuid", "kauth_cred_getsvuid",
                 "necp_client_add_flow", "necp_flow_alloc"):
@@ -601,10 +677,22 @@ def main():
             continue
         lines.append("")
         lines.append("--- {} @ {} ---".format(nm, fmt(a)))
-        for l in dis(a, maxl=80):
+        for l in dis_raw(a, maxl=80):
             lines.append(l)
 
-    # Итоговый JSON
+    lines.append("")
+    lines.append("=== BLOCK DIAG ===")
+    for key, names in TARGET_FUNCS.items():
+        a, nm = find_func(names)
+        if a is None:
+            lines.append("  {:<30} symbol not found".format(key))
+            continue
+        b = inblk(strip_pac(a))
+        if b is None:
+            lines.append("  {:<30} 0x{:016X} NOT IN ANY BLOCK".format(key, a))
+        else:
+            lines.append("  {:<30} 0x{:016X} block={} exec={}".format(key, a, b[2], b[3]))
+
     jout = {
         "kernel_base": fmt(KBASE),
         "proc_p_ucred_off": p_off,
