@@ -13,6 +13,7 @@ except NameError:
 
 WS = os.environ.get("GITHUB_WORKSPACE", "/tmp")
 SYM = os.environ.get("SYMBOLS_JSON", os.path.join(WS, "symbols.json"))
+KEXTS = os.environ.get("KEXTS_DIR", os.path.join(WS, "kexts"))
 OUT = os.path.join(WS, "result.txt")
 OUT_JSON = os.path.join(WS, "offsets.json")
 
@@ -40,11 +41,69 @@ TARGETS = []
 TARGETS.append(("proc_ucred", ["_proc_ucred", "proc_ucred"]))
 TARGETS.append(("kauth_cred_getuid", ["_kauth_cred_getuid", "kauth_cred_getuid"]))
 TARGETS.append(("kauth_cred_getsvuid", ["_kauth_cred_getsvuid", "kauth_cred_getsvuid"]))
-TARGETS.append(("kauth_cred_getsavuid", ["_kauth_cred_getsavuid"]))
 TARGETS.append(("necp_client_add_flow", ["_necp_client_add_flow", "necp_client_add_flow"]))
 TARGETS.append(("necp_flow_alloc", ["_necp_flow_alloc", "necp_flow_alloc"]))
 TARGETS.append(("necp_open", ["_necp_open", "necp_open"]))
 TARGETS.append(("amfi_get_out_of_my_way", ["_amfi_get_out_of_my_way", "amfi_get_out_of_my_way"]))
+
+# Валидация оффсетов из репо (кроме SPTM)
+VALIDATE_GROUPS = [
+    ("Kernel", [
+        ("off_kernel_base", "addr", 0xFFFFFFF007004000),
+        ("off_sysent_base", "addr", None),
+        ("off_sysent_count", "int", 558),
+        ("off_sysent_stride", "int", 24),
+        ("off_mach_trap_table", "addr", 0xFFFFFFF007BE8018),
+    ]),
+    ("Globals", [
+        ("off_g_kernproc", "addr", 0xFFFFFFF007BBF040),
+        ("off_g_kernel_task", "addr", 0xFFFFFFF00700DC70),
+        ("off_g_zone_map", "addr", 0xFFFFFFF00AD6A800),
+        ("off_g_task_list", "addr", 0xFFFFFFF0080D93F0),
+        ("off_g_kernel_map", "addr", 0xFFFFFFF007BBE228),
+        ("off_g_allproc", "addr", 0xFFFFFFF007BBF048),
+    ]),
+    ("Primitives", [
+        ("off_fn_copyin", "addr", 0xFFFFFFF00A7B9570),
+        ("off_fn_copyout", "addr", 0xFFFFFFF00A2C6C28),
+        ("off_fn_kalloc_ext", "addr", 0xFFFFFFF00A200DCC),
+        ("off_fn_kfree_ext", "addr", 0xFFFFFFF00A201000),
+    ]),
+    ("proc", [
+        ("off_proc_p_pid", "int", 0x74),
+        ("off_proc_ro_p_ucred", "int", 0xB8),
+    ]),
+    ("task / thread", [
+        ("off_task_map", "int", 0x28),
+        ("off_task_bsd_info", "int", 0x3A0),
+        ("off_task_itk_space", "int", 0x320),
+        ("off_thread_task_threads_next", "int", 0x50),
+    ]),
+    ("NECP", [
+        ("off_necp_open", "addr", 0xFFFFFFF00A4E411C),
+        ("off_necp_client_add_flow", "addr", 0xFFFFFFF00A4E843C),
+        ("off_necp_client_remove_flow", "addr", 0xFFFFFFF00A4E93C4),
+    ]),
+    ("Zones", [
+        ("off_zone_data_kalloc", "addr", 0xFFFFFFF007C62E70),
+        ("off_zone_early_kalloc", "addr", 0xFFFFFFF007BBB170),
+        ("off_zone_kalloc_type_var", "addr", 0xFFFFFFF007BC2800),
+        ("off_zone_site_struct_task", "addr", 0xFFFFFFF007C64080),
+        ("off_zone_site_struct_proc", "addr", 0xFFFFFFF007C71240),
+        ("off_zone_site_struct_thread", "addr", 0xFFFFFFF007C63D00),
+        ("off_zone_site_struct_ucred", "addr", 0xFFFFFFF007C6F140),
+        ("off_zone_site_struct_ipc_port", "addr", 0xFFFFFFF007C79248),
+        ("off_zone_site_struct_ipc_entry", "addr", 0xFFFFFFF007C79298),
+        ("off_zone_site_struct_fileproc", "addr", 0xFFFFFFF007C7CD08),
+        ("off_zone_site_struct_fileglob", "addr", 0xFFFFFFF007C7D708),
+        ("off_zone_site_struct_vnode", "addr", 0xFFFFFFF007C660C0),
+        ("off_zone_site_struct_mount", "addr", 0xFFFFFFF007C662C0),
+        ("off_zone_site_struct_socket", "addr", 0xFFFFFFF007C70C40),
+        ("off_zone_site_struct_inpcb", "addr", 0xFFFFFFF007C6D180),
+        ("off_zone_site_struct_pipe", "addr", 0xFFFFFFF007C6FE80),
+        ("off_zone_site_struct_vm_page", "addr", 0xFFFFFFF007C64C80),
+    ]),
+]
 
 
 def _u(v):
@@ -61,8 +120,13 @@ def fmt(v):
 
 
 def sa(a):
+    if a is None:
+        return None
     try:
-        return toAddr(int(a) & 0xFFFFFFFFFFFFFFFF)
+        v = int(a) & 0xFFFFFFFFFFFFFFFF
+        hexstr = "%X" % v
+        factory = currentProgram.getAddressFactory()
+        return factory.getAddress(hexstr)
     except Exception:
         return None
 
@@ -139,14 +203,9 @@ def is_ktext(p):
     return KTEXT_LO <= lo < KTEXT_HI
 
 
-def is_data(p):
-    if p is None or p == 0:
-        return False
-    lo = p & MASK48
-    return 0xFFF000000000 <= lo < 0xFFF400000000
-
-
 def inblk(a):
+    if a is None:
+        return None
     for s, e, n, x in blocks():
         if s <= a < e:
             return (s, e, n, x)
@@ -399,16 +458,6 @@ def decode_one(b, pc):
         return "ldp w%d, w%d, [x%d, #0x%X]" % (b & 0x1F, (b >> 10) & 0x1F, (b >> 5) & 0x1F, ((b >> 15) & 0x7F) * 4)
     if (b & 0xFFC00000) == 0x29000000:
         return "stp w%d, w%d, [x%d, #0x%X]" % (b & 0x1F, (b >> 10) & 0x1F, (b >> 5) & 0x1F, ((b >> 15) & 0x7F) * 4)
-    if (b & 0xFFC00000) == 0xA9C00000:
-        imm = (b >> 15) & 0x7F
-        if imm & 0x40:
-            imm -= 0x80
-        return "ldp x%d, x%d, [x%d, #%d]!" % (b & 0x1F, (b >> 10) & 0x1F, (b >> 5) & 0x1F, imm * 8)
-    if (b & 0xFFC00000) == 0xA9800000:
-        imm = (b >> 15) & 0x7F
-        if imm & 0x40:
-            imm -= 0x80
-        return "stp x%d, x%d, [x%d, #%d]!" % (b & 0x1F, (b >> 10) & 0x1F, (b >> 5) & 0x1F, imm * 8)
     if (b & 0x7F800000) == 0x52800000:
         hw = (b >> 21) & 3
         return "movz w%d, #0x%X, lsl #%d" % (b & 0x1F, (b >> 5) & 0xFFFF, hw * 16)
@@ -475,26 +524,14 @@ def decode_one(b, pc):
         return "subs w%d, w%d, w%d" % (b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x1F)
     if (b & 0x7FE00000) == 0xEB000000:
         return "subs x%d, x%d, x%d" % (b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x1F)
-    if (b & 0x7FE08000) == 0x1B000000:
-        return "madd w%d, w%d, w%d, w%d" % (b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x1F, (b >> 10) & 0x1F)
-    if (b & 0x7FE08000) == 0x9B000000:
-        return "madd x%d, x%d, x%d, x%d" % (b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x1F, (b >> 10) & 0x1F)
     if (b & 0x7FE0FC00) == 0x1AC02000:
         return "lsl w%d, w%d, w%d" % (b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x1F)
     if (b & 0x7FE0FC00) == 0x9AC02000:
         return "lsl x%d, x%d, x%d" % (b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x1F)
-    if (b & 0x7FE0FC00) == 0x1AC02400:
-        return "lsr w%d, w%d, w%d" % (b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x1F)
-    if (b & 0x7FE0FC00) == 0x9AC02400:
-        return "lsr x%d, x%d, x%d" % (b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x1F)
     if (b & 0x7F800000) == 0x53000000:
         return "ubfm w%d, w%d, #%d, #%d" % (b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x3F, (b >> 10) & 0x3F)
     if (b & 0x7F800000) == 0xD3000000:
         return "ubfm x%d, x%d, #%d, #%d" % (b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x3F, (b >> 10) & 0x3F)
-    if (b & 0x7F800000) == 0x13000000:
-        return "sbfm w%d, w%d, #%d, #%d" % (b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x3F, (b >> 10) & 0x3F)
-    if (b & 0x7F800000) == 0x93000000:
-        return "sbfm x%d, x%d, #%d, #%d" % (b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x3F, (b >> 10) & 0x3F)
     if (b & 0x9F000000) == 0x90000000:
         immlo = (b >> 29) & 3
         immhi = (b >> 5) & 0x7FFFF
@@ -544,18 +581,10 @@ def decode_one(b, pc):
         return "cmp w%d, #0x%X" % ((b >> 5) & 0x1F, (b >> 10) & 0xFFF)
     if (b & 0x7F800000) == 0xF1000000:
         return "cmp x%d, #0x%X" % ((b >> 5) & 0x1F, (b >> 10) & 0xFFF)
-    if (b & 0x7FE00000) == 0x6B000000:
-        return "cmp w%d, w%d" % ((b >> 5) & 0x1F, (b >> 16) & 0x1F)
-    if (b & 0x7FE00000) == 0xEB000000:
-        return "cmp x%d, x%d" % ((b >> 5) & 0x1F, (b >> 16) & 0x1F)
     if (b & 0x7FE00C00) == 0x1A800000:
         return "csel w%d, w%d, w%d, #%d" % (b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x1F, b & 0xF)
     if (b & 0x7FE00C00) == 0x9A800000:
         return "csel x%d, x%d, x%d, #%d" % (b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x1F, b & 0xF)
-    if (b & 0x7FE00C00) == 0x1A800400:
-        return "csinc w%d, w%d, w%d, #%d" % (b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x1F, b & 0xF)
-    if (b & 0x7FE00C00) == 0x9A800400:
-        return "csinc x%d, x%d, x%d, #%d" % (b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x1F, b & 0xF)
     if b == 0xD65F03C0:
         return "ret"
     if b == 0xD503201F:
@@ -573,18 +602,13 @@ def dis_raw(addr, count):
     if addr is None:
         return ["(addr is None)"]
 
-    blk = None
-    for s, e, n, x in blocks():
-        if s <= addr < e:
-            blk = (s, e, n, x)
-            break
-
+    blk = inblk(addr)
     if blk is None:
         return ["(addr %s NOT IN ANY LOADED BLOCK)" % fmt(addr)]
 
     ga = sa(addr)
     if ga is None:
-        return ["(cannot toAddr %s)" % fmt(addr)]
+        return ["(cannot toAddr %s — AddressFactory refused)" % fmt(addr)]
 
     mem = currentProgram.getMemory()
     try:
@@ -701,31 +725,23 @@ def scan_getter(imm_min, imm_max, reg_width):
     return None, None
 
 
-def scan_setter(imm_min, imm_max, reg_width):
-    lo, hi = text_range()
-    if lo is None:
-        return None, None
-    if reg_width == "x":
-        base_op = 0xF9000000
-        shift = 3
-    else:
-        base_op = 0xB9000000
-        shift = 2
-    addr = lo
-    while addr < hi - 8:
-        b0 = r32(addr)
-        b1 = r32(addr + 4)
-        if b0 is None or b1 is None:
-            addr += 4
+def find_offsets_json():
+    candidates = []
+    for root, dirs, files in os.walk(WS):
+        if ".git" in root or "node_modules" in root:
             continue
-        if (b0 & 0xFFC00000) == base_op and b1 == 0xD65F03C0:
-            rd = b0 & 0x1F
-            rn = (b0 >> 5) & 0x1F
-            imm = ((b0 >> 10) & 0xFFF) << shift
-            if rd == 1 and rn == 0 and imm_min <= imm <= imm_max:
-                return addr, imm
-        addr += 4
-    return None, None
+        for f in files:
+            if f == "offsets.json":
+                candidates.append(os.path.join(root, f))
+        if len(candidates) > 5:
+            break
+    for root, dirs, files in os.walk(WS):
+        if ".git" in root or "node_modules" in root:
+            continue
+        for f in files:
+            if f == "index.json" and "Offsets" in root:
+                candidates.append(os.path.join(root, f))
+    return candidates
 
 
 def load_offsets_repo():
@@ -734,23 +750,14 @@ def load_offsets_repo():
         return _offsets_repo
     _offsets_repo = {}
 
-    candidates = []
-    od = os.path.join(WS, "natsuk1/Offsets")
-    if os.path.isdir(od):
-        for f in sorted(os.listdir(od)):
-            if f.endswith(".json") and f != "index.json":
-                candidates.append(os.path.join(od, f))
-    candidates.append(os.path.join(WS, "offsets.json"))
-
+    candidates = find_offsets_json()
     for path in candidates:
-        if not os.path.exists(path):
-            continue
         try:
             fh = open(path)
             raw = fh.read()
             fh.close()
             data = json.loads(raw)
-            if isinstance(data, dict):
+            if isinstance(data, dict) and ("defaults" in data or "globals" in data or "kernel_base" in data):
                 _offsets_repo = data
                 _offsets_repo["__source__"] = path
                 return _offsets_repo
@@ -764,7 +771,13 @@ def validate_offsets():
     lines = []
     lines.append("=== OFFSETS.JSON VALIDATION ===")
     if not repo:
-        lines.append("  (offsets.json not found)")
+        found = find_offsets_json()
+        if found:
+            lines.append("  found candidates but none parsed:")
+            for p in found[:5]:
+                lines.append("    " + p)
+        else:
+            lines.append("  (offsets.json not found in workspace)")
         lines.append("")
         return lines
 
@@ -772,70 +785,112 @@ def validate_offsets():
     lines.append("  source = %s" % src)
     lines.append("")
 
+    defaults = repo.get("defaults", {})
+    if not defaults:
+        lines.append("  (no 'defaults' key in offsets.json)")
+        lines.append("")
+        return lines
+
+    # Прогоняем через группы VALIDATE_GROUPS, кроме SPTM
+    for group_name, items in VALIDATE_GROUPS:
+        lines.append("  --- %s ---" % group_name)
+        for key, kind, expected in items:
+            raw = defaults.get(key)
+            if raw is None:
+                lines.append("    %-40s MISSING in json" % key)
+                continue
+
+            if kind == "int":
+                try:
+                    ival = int(raw, 0) if isinstance(raw, _STR_TYPES) else int(raw)
+                except Exception as e:
+                    lines.append("    %-40s %s PARSE ERR: %s" % (key, raw, str(e)))
+                    continue
+                exp_ok = (expected is None) or (ival == expected)
+                lines.append("    %-40s 0x%X (%d) %s" % (key, ival, ival, "OK" if exp_ok else "MISMATCH expected 0x%X" % expected))
+                continue
+
+            # kind == "addr"
+            try:
+                aval = int(raw, 16) if isinstance(raw, _STR_TYPES) else int(raw)
+            except Exception as e:
+                lines.append("    %-40s %s PARSE ERR: %s" % (key, raw, str(e)))
+                continue
+
+            exp_ok = (expected is None) or (aval == expected)
+            blk = inblk(aval)
+            if blk is None:
+                # Может быть в KEXT, который не загружен
+                kexts_hint = ""
+                if os.path.isdir(KEXTS):
+                    kexts_hint = " (kexts dir present, run 'ipsw kernel extract --all')"
+                lines.append("    %-40s %s NOT IN LOADED BLOCKS%s" % (key, fmt(aval), kexts_hint))
+                continue
+
+            # Пробуем прочитать 8 байт по адресу
+            val = r64(aval)
+            val_str = fmt(val) if val is not None else "read_err"
+            lines.append("    %-40s %s in %s %s val=%s" % (
+                key, fmt(aval), blk[2], "OK" if exp_ok else "MISMATCH expected %s" % fmt(expected), val_str))
+
+        lines.append("")
+
+    # Также валидируем kernel_base отдельно, если оно есть
     kb = repo.get("kernel_base")
     if kb:
         try:
             kb_int = int(kb, 16) if isinstance(kb, _STR_TYPES) else int(kb)
-            ok = (kb_int == KBASE)
-            lines.append("  kernel_base = %s %s" % (kb, "OK" if ok else "MISMATCH (expected %s)" % fmt(KBASE)))
-        except Exception as e:
-            lines.append("  kernel_base = %s PARSE ERR: %s" % (kb, str(e)))
-    lines.append("")
-
-    gd = repo.get("globals", {})
-    lines.append("  --- globals ---")
-    for name in sorted(gd.keys()):
-        addr_s = gd[name]
-        try:
-            addr = int(addr_s, 16) if isinstance(addr_s, _STR_TYPES) else int(addr_s)
+            lines.append("  kernel_base = %s %s" % (kb, "OK" if kb_int == KBASE else "MISMATCH expected %s" % fmt(KBASE)))
         except Exception:
-            lines.append("    %-20s %s PARSE ERR" % (name, addr_s))
-            continue
-        val = r64(addr)
-        if val is None:
-            lines.append("    %-20s addr=%s READ FAIL (not loaded)" % (name, fmt(addr)))
-            continue
-        blk = inblk(val) if val else None
-        if blk is None:
-            lines.append("    %-20s addr=%s val=%s NOT IN LOADED BLOCKS" % (name, fmt(addr), fmt(val)))
-        else:
-            lines.append("    %-20s addr=%s val=%s in %s" % (name, fmt(addr), fmt(val), blk[2]))
-    lines.append("")
-
-    offs = repo.get("offsets", {})
-    lines.append("  --- numeric offsets ---")
-    for name in sorted(offs.keys()):
-        try:
-            ival = int(offs[name])
-        except Exception:
-            lines.append("    %-30s %s PARSE ERR" % (name, offs[name]))
-            continue
-        lines.append("    %-30s 0x%X (%d)" % (name, ival, ival))
-    lines.append("")
-
-    necp = repo.get("necp_symbols", {})
-    lines.append("  --- necp symbols ---")
-    for name in sorted(necp.keys()):
-        addr_s = necp[name]
-        try:
-            addr = int(addr_s, 16) if isinstance(addr_s, _STR_TYPES) else int(addr_s)
-        except Exception:
-            lines.append("    %-30s %s PARSE ERR" % (name, addr_s))
-            continue
-        blk = inblk(addr)
-        if blk is None:
-            lines.append("    %-30s %s NOT IN LOADED BLOCKS" % (name, fmt(addr)))
-        else:
-            lines.append("    %-30s %s in %s exec=%s" % (name, fmt(addr), blk[2], blk[3]))
-    lines.append("")
-
-    for key in ("mach_trap_table", "sysent_base"):
-        v = repo.get(key)
-        if v:
-            lines.append("  %s = %s" % (key, v))
+            lines.append("  kernel_base = %s PARSE ERR" % kb)
     lines.append("")
 
     return lines
+
+
+def diag_not_found(name, names, lines):
+    lines.append("  --- diagnostic: why '%s' not found ---" % name)
+
+    for n in names:
+        found_exact = snamed_exact(n)
+        if found_exact:
+            lines.append("    exact '%s': %d hits" % (n, len(found_exact)))
+            for a, nm in found_exact[:5]:
+                blk = inblk(a)
+                where = blk[2] if blk else "NO_BLOCK"
+                lines.append("      %s @ %s (%s)" % (nm, fmt(a), where))
+        else:
+            lines.append("    exact '%s': none" % n)
+
+    b = names[0].lstrip("_")
+    partial = snamed(b)
+    if partial:
+        lines.append("    partial '%s': %d hits (showing first 8)" % (b, len(partial)))
+        for a, nm in partial[:8]:
+            blk = inblk(a)
+            where = blk[2] if blk else "NO_BLOCK"
+            lines.append("      %s @ %s (%s)" % (nm, fmt(a), where))
+    else:
+        lines.append("    partial '%s': none" % b)
+
+    _load_sym()
+    if b in _sym:
+        a = _sym[b]
+        blk = inblk(a)
+        where = blk[2] if blk else "NO_BLOCK"
+        lines.append("    in symbols.json: %s (%s)" % (fmt(a), where))
+    else:
+        lines.append("    in symbols.json: NOT PRESENT")
+
+    if os.path.isdir(KEXTS):
+        try:
+            klist = sorted(os.listdir(KEXTS))
+            hits = [k for k in klist if "necp" in k.lower() or "amfi" in k.lower() or "bsd" in k.lower() or "kernel" in k.lower()]
+            if hits:
+                lines.append("    relevant kexts: %s" % ", ".join(hits[:8]))
+        except Exception:
+            pass
+    lines.append("")
 
 
 def main():
@@ -854,14 +909,17 @@ def main():
     lines.append("=== SYMBOLS DIAG ===")
     lines.append(diag)
     lines.append("sym_count = %d" % sym_count)
+    lines.append("workspace = %s" % WS)
+    lines.append("symbols_json = %s" % SYM)
+    lines.append("kexts_dir = %s (%s)" % (KEXTS, "present" if os.path.isdir(KEXTS) else "missing"))
     lines.append("")
 
     lines.extend(validate_offsets())
 
-    lines.append("=== MEMORY BLOCKS ===")
-    for s, e, n, x in blocks():
-        lines.append("  %016X - %016X  %-40s exec=%s size=%d MB" % (
-            s, e, n, x, (e - s) // (1024 * 1024)))
+    lo, hi = text_range()
+    lines.append("=== TEXT RANGE ===")
+    lines.append("  __text: %s - %s (%d MB)" % (fmt(lo), fmt(hi), ((hi - lo) // (1024*1024)) if lo and hi else 0))
+    lines.append("  total blocks: %d" % len(blocks()))
     lines.append("")
 
     lines.append("=== TARGET OFFSETS ===")
@@ -891,6 +949,7 @@ def main():
     if p_off is None:
         p_off = fb["proc_p_ucred_off"]
         p_src = "FALLBACK 24A437"
+        diag_not_found("proc_ucred", ["_proc_ucred", "proc_ucred"], lines)
 
     lines.append("  value  = " + (fmt(p_off) if p_off else "NOT_FOUND"))
     lines.append("  source = " + p_src)
@@ -932,15 +991,17 @@ def main():
     if u_uid is None:
         u_uid = fb["ucred_cr_uid_off"]
         lines.append("  ucred_cr_uid_off FALLBACK -> 0x%X" % u_uid)
+        diag_not_found("kauth_cred_getuid", ["_kauth_cred_getuid", "kauth_cred_getuid"], lines)
     if u_svuid is None:
         u_svuid = fb["ucred_cr_svuid_off"]
         lines.append("  ucred_cr_svuid_off FALLBACK -> 0x%X" % u_svuid)
+        diag_not_found("kauth_cred_getsvuid", ["_kauth_cred_getsvuid", "kauth_cred_getsvuid", "_kauth_cred_getsavuid"], lines)
 
     lines.append("  ucred_cr_uid_off    = 0x%X" % (u_uid or 0))
     lines.append("  ucred_cr_svuid_off  = 0x%X" % (u_svuid or 0))
     lines.append("")
 
-    # NECP flow
+    # NECP
     lines.append("=== NECP flow struct ===")
     ncf_assigned = None
     ncf_size = None
@@ -949,27 +1010,38 @@ def main():
     if a_add is not None:
         blk = inblk(a_add)
         if blk is not None:
-            lines.append("  necp_client_add_flow @ %s in %s" % (fmt(a_add), blk[2]))
+            lines.append("  necp_client_add_flow @ %s in %s exec=%s" % (fmt(a_add), blk[2], blk[3]))
+            lines.append("  disasm first 10:")
+            for l in dis_raw(a_add, 10):
+                lines.append("    " + l)
             for mn, val, ops in find_imm_ops(a_add, 500):
                 if mn in ("str", "stp", "stur") and 0x40 <= val <= 0xA0:
                     ncf_assigned = val
-                    lines.append("    STR match: %s" % ops)
+                    lines.append("  STR match: %s" % ops)
                     break
-            for target in find_call_targets(a_add, 500):
-                if not is_ktext(target):
-                    continue
-                for mn, val, ops in find_imm_ops(target, 300):
+            if ncf_assigned is None:
+                lines.append("  no STR in range 0x40-0xA0 found")
+                for mn, val, ops in find_imm_ops(a_add, 500):
+                    if mn in ("str", "stp", "stur"):
+                        lines.append("    candidate STR: %s" % ops)
+
+            call_targets = find_call_targets(a_add, 500)
+            lines.append("  BL targets: %d" % len(call_targets))
+            for t in call_targets[:5]:
+                blk_t = inblk(t)
+                lines.append("    -> %s (%s)" % (fmt(t), blk_t[2] if blk_t else "NO_BLOCK"))
+                for mn, val, ops in find_imm_ops(t, 300):
                     if mn in ("mov", "movz") and 0x80 <= val <= 0x400:
                         ncf_size = val
-                        lines.append("    necp_flow_alloc @ %s -> %s" % (fmt(target), ops))
+                        lines.append("      necp_flow_alloc candidate: %s" % ops)
                         break
                 if ncf_size is not None:
                     break
         else:
-            lines.append("  necp_client_add_flow @ %s NOT IN LOADED BLOCKS (KEXT not loaded)" % fmt(a_add))
-            lines.append("  hint: ipsw kernel extract <kc> --all")
+            lines.append("  necp_client_add_flow @ %s NOT IN LOADED BLOCKS" % fmt(a_add))
     else:
         lines.append("  necp_client_add_flow not in symbols")
+        diag_not_found("necp_client_add_flow", ["_necp_client_add_flow", "necp_client_add_flow"], lines)
 
     if ncf_assigned is None:
         ncf_assigned = fb["NCF_ASSIGNED_OFF"]
@@ -982,13 +1054,11 @@ def main():
     lines.append("  NCF_STRUCT_SZ       = 0x%X" % ncf_size)
     lines.append("")
 
-    # amfi
+    # AMFI
     lines.append("=== amfi_get_out_of_my_way ===")
     a_amfi = sget("_amfi_get_out_of_my_way") or sget("amfi_get_out_of_my_way")
     if a_amfi is None:
-        hits = snamed("amfi")
-        for a, nm in hits[:6]:
-            lines.append("  partial: %s @ %s" % (nm, fmt(a)))
+        diag_not_found("amfi_get_out_of_my_way", ["_amfi_get_out_of_my_way", "amfi_get_out_of_my_way"], lines)
     lines.append("  value  = " + (fmt(a_amfi) if a_amfi else "NOT_FOUND"))
     lines.append("")
 
@@ -997,13 +1067,28 @@ def main():
     for key, names in TARGETS:
         a, nm = find_func(names)
         if a is None:
+            lines.append("")
+            lines.append("--- %s : NOT FOUND ---" % key)
             continue
         lines.append("")
         lines.append("--- %s @ %s ---" % (nm, fmt(a)))
-        for l in dis_raw(a, 60):
+        for l in dis_raw(a, 40):
             lines.append(l)
 
-    # JSON
+    # Kexts listing
+    if os.path.isdir(KEXTS):
+        lines.append("")
+        lines.append("=== KEXTS ===")
+        try:
+            klist = sorted(os.listdir(KEXTS))
+            lines.append("  count = %d" % len(klist))
+            for k in klist[:30]:
+                lines.append("  " + k)
+            if len(klist) > 30:
+                lines.append("  ... and %d more" % (len(klist) - 30))
+        except Exception as e:
+            lines.append("  list err: %s" % str(e))
+
     jout = {}
     jout["kernel_base"] = fmt(KBASE)
     jout["proc_p_ucred_off"] = p_off
