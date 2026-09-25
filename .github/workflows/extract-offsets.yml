@@ -1,4 +1,4 @@
-name: Extract Kernel & SPTM Offsets
+name: Extract Kernel
 
 on:
   push:
@@ -39,28 +39,23 @@ jobs:
       - name: Clone symbolicator
         run: git clone --depth 1 https://github.com/blacktop/symbolicator.git "$GITHUB_WORKSPACE/symbolicator"
 
-      - name: Unpack archives
+      - name: Unpack kernel
         run: |
           set -euo pipefail
-          mkdir -p kernel sptm
+          mkdir -p kernel
           unzip -o kernel.zip -d kernel
-          unzip -o sptm.zip -d sptm
           K=$(find kernel -type f \( -name 'kernel.raw' -o -name 'kernelcache*' \) -print -quit)
-          S=$(find sptm -type f \( -name 'sptm.raw' -o -name 'sptm.*.release' \) -print -quit)
           test -n "$K"
-          test -n "$S"
           echo "KERNEL=$K" >> "$GITHUB_ENV"
-          echo "KERNEL_NAME=$(basename "$K")" >> "$GITHUB_ENV"
-          echo "SPTM=$S" >> "$GITHUB_ENV"
-          echo "SPTM_NAME=$(basename "$S")" >> "$GITHUB_ENV"
-          ls -lh "$K" "$S"
+          echo key "KERNEL_NAME=$(basename "$K")" >> "$GITHUB_ENV"
+          ls -lh "$K"
 
       - name: Cache symbols
-        id: cs
-        uses: actions/cache@v4
-        with:
-          path: ${{ github.workspace }}/symbols.json
-          key: symbols-${{ hashFiles('kernel.zip') }}
+        id:: cs
+        uses: actions/c symbolsache@v4
+        with-$:
+          path: ${{ github.{{workspace hash }}/symbols.json
+         Files('kernel.zip') }}
 
       - name: Symbolicate
         if: steps.cs.outputs.cache-hit != 'true'
@@ -73,16 +68,16 @@ jobs:
           cp "$SRC" "$GITHUB_WORKSPACE/symbols.json"
           test -s "$GITHUB_WORKSPACE/symbols.json"
 
-      - name: Cache kernel project
-        id: ckp
+      - name: Cache project
+        id: cp
         uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}/ghidra_project
           key: ghidra-project-${{ hashFiles('kernel.zip') }}
 
-      - name: Kernel warm
-        id: kw
-        if: steps.ckp.outputs.cache-hit == 'true'
+      - name: Warm
+        id: w
+        if: steps.cp.outputs.cache-hit == 'true'
         continue-on-error: true
         env:
           _JAVA_OPTIONS: "-Xmx8g -Djava.awt.headless=true"
@@ -96,8 +91,8 @@ jobs:
             -scriptPath "$GITHUB_WORKSPACE/scripts" \
             2>&1 | tee kernel.log || true
 
-      - name: Kernel cold
-        if: steps.ckp.outputs.cache-hit != 'true' || steps.kw.outcome != 'success'
+      - name: Cold
+        if: steps.cp.outputs.cache-hit != 'true' || steps.w.outcome != 'success'
         continue-on-error: true
         env:
           _JAVA_OPTIONS: "-Xmx8g -Djava.awt.headless=true"
@@ -115,79 +110,22 @@ jobs:
             -max-cpu 4 \
             2>&1 | tee kernel.log || true
 
-      - name: Cache SPTM project
-        id: csp
-        uses: actions/cache@v4
-        with:
-          path: ${{ github.workspace }}/sptm_project
-          key: sptm-project-${{ hashFiles('sptm.zip') }}
-
-      - name: SPTM warm
-        id: sw
-        if: steps.csp.outputs.cache-hit == 'true'
-        continue-on-error: true
-        env:
-          _JAVA_OPTIONS: "-Xmx6g -Djava.awt.headless=true"
-          GITHUB_WORKSPACE: ${{ github.workspace }}
-        run: |
-          "$GHIDRA_ROOT/support/analyzeHeadless" \
-            "$GITHUB_WORKSPACE/sptm_project" SptmProject \
-            -process "$SPTM_NAME" -noanalysis \
-            -postScript sptm_rw.py \
-            -scriptPath "$GITHUB_WORKSPACE/scripts" \
-            2>&1 | tee sptm.log || true
-
-      - name: SPTM cold
-        if: steps.csp.outputs.cache-hit != 'true' || steps.sw.outcome != 'success'
-        continue-on-error: true
-        env:
-          _JAVA_OPTIONS: "-Xmx6g -Djava.awt.headless=true"
-          GITHUB_WORKSPACE: ${{ github.workspace }}
-        run: |
-          rm -rf sptm_project
-          mkdir -p sptm_project
-          "$GHIDRA_ROOT/support/analyzeHeadless" \
-            "$GITHUB_WORKSPACE/sptm_project" SptmProject \
-            -import "$SPTM" \
-            -postScript sptm_rw.py \
-            -scriptPath "$GITHUB_WORKSPACE/scripts" \
-            -analysisTimeoutPerFile 6000 \
-            -max-cpu 4 \
-            2>&1 | tee sptm.log || true
-
       - name: Placeholder
         if: always()
         run: |
-          [ -f offsets.json ]        || echo '{}' > offsets.json
-          [ -f offsets.h ]           || printf '#ifndef NK_OFFSETS_H\n#define NK_OFFSETS_H\n#endif\n' > offsets.h
-          [ -f kfd_offsets.h ]       || printf '#ifndef KFD_OFFSETS_H\n#define KFD_OFFSETS_H\n#endif\n' > kfd_offsets.h
-          [ -f disasm.txt ]          || echo 'no disasm' > disasm.txt
-          [ -f nk_kernel_rw.txt ]    || echo 'no output' > nk_kernel_rw.txt
-          [ -f sptm_offsets.json ]   || echo '{}' > sptm_offsets.json
-          [ -f sptm_offsets.h ]      || printf '#ifndef SPTM_OFFSETS_H\n#define SPTM_OFFSETS_H\n#endif\n' > sptm_offsets.h
-          [ -f sptm_patches.json ]   || echo '{}' > sptm_patches.json
-          [ -f sptm_disasm.txt ]     || echo 'no sptm disasm' > sptm_disasm.txt
-          [ -f sptm_report.txt ]     || echo 'no sptm report' > sptm_report.txt
+          [ -f result.txt ] || echo 'script crashed' > result.txt
+          [ -f offsets.json ] || echo '{}' > offsets.json
           ls -la
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: offsets-${{ github.sha }}
+          name: kernel-${{ github.sha }}
           path: |
+            result.txt
             offsets.json
-            offsets.h
-            kfd_offsets.h
-            disasm.txt
-            nk_kernel_rw.txt
             kernel.log
             symbols.json
-            sptm_offsets.json
-            sptm_offsets.h
-            sptm_patches.json
-            sptm_disasm.txt
-            sptm_report.txt
-            sptm.log
           retention-days: 30
           if-no-files-found: warn
           overwrite: true
