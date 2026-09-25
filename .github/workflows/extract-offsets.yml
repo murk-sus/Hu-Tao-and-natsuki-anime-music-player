@@ -20,7 +20,15 @@ jobs:
           java-version: "21"
           distribution: temurin
 
+      - name: Cache Ghidra
+        id: cache-ghidra
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/ghidra
+          key: ghidra-11.4.2
+
       - name: Install Ghidra
+        if: steps.cache-ghidra.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
           curl -fsSL -o /tmp/g.zip https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_11.4.2_build/ghidra_11.4.2_PUBLIC_20250826.zip
@@ -28,7 +36,18 @@ jobs:
           mv "$GITHUB_WORKSPACE"/ghidra_11.4.2_PUBLIC "$GITHUB_WORKSPACE/ghidra"
           echo "GHIDRA_ROOT=$GITHUB_WORKSPACE/ghidra" >> "$GITHUB_ENV"
 
+      - name: Set Ghidra env
+        run: echo "GHIDRA_ROOT=$GITHUB_WORKSPACE/ghidra" >> "$GITHUB_ENV"
+
+      - name: Cache ipsw
+        id: cache-ipsw
+        uses: actions/cache@v4
+        with:
+          path: /usr/local/bin/ipsw
+          key: ipsw-latest
+
       - name: Install ipsw
+        if: steps.cache-ipsw.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
           V=$(curl -fsSL https://api.github.com/repos/blacktop/ipsw/releases/latest | jq -r .tag_name | sed 's/^v//')
@@ -36,7 +55,15 @@ jobs:
           tar -C /usr/local/bin -xzf /tmp/i.tgz ipsw
           ipsw version
 
+      - name: Cache symbolicator
+        id: cache-symbolicator
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/symbolicator
+          key: symbolicator-latest
+
       - name: Clone symbolicator
+        if: steps.cache-symbolicator.outputs.cache-hit != 'true'
         run: git clone --depth 1 https://github.com/blacktop/symbolicator.git "$GITHUB_WORKSPACE/symbolicator"
 
       - name: Unpack kernel
@@ -125,6 +152,7 @@ jobs:
             result.txt
             offsets.json
             kernel.log
+            symbols.json
           retention-days: 30
           if-no-files-found: warn
           overwrite: true
