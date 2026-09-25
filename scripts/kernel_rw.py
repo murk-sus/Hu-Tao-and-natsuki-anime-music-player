@@ -46,7 +46,6 @@ TARGETS.append(("necp_flow_alloc", ["_necp_flow_alloc", "necp_flow_alloc"]))
 TARGETS.append(("necp_open", ["_necp_open", "necp_open"]))
 TARGETS.append(("amfi_get_out_of_my_way", ["_amfi_get_out_of_my_way", "amfi_get_out_of_my_way"]))
 
-# Валидация оффсетов из репо (кроме SPTM)
 VALIDATE_GROUPS = [
     ("Kernel", [
         ("off_kernel_base", "addr", 0xFFFFFFF007004000),
@@ -636,14 +635,11 @@ def dis_raw(addr, count):
 
 
 def find_imm_ops(func_addr, maxn):
+    """Возвращает список (mnem, val, body)."""
     out = []
     for line in dis_raw(func_addr, maxn):
         m = re.match(r"([0-9A-F]{16})  ([0-9A-F]{8})  (.*)", line)
         if not m:
-            continue
-        try:
-            addr = int(m.group(1), 16)
-        except Exception:
             continue
         body = m.group(3)
         mn = body.split(" ", 1)[0].lower()
@@ -653,7 +649,7 @@ def find_imm_ops(func_addr, maxn):
             except Exception:
                 continue
             if 0 < val < 0x8000:
-                out.append((addr, mn, val, body))
+                out.append((mn, val, body))
     return out
 
 
@@ -791,13 +787,16 @@ def validate_offsets():
         lines.append("")
         return lines
 
-    # Прогоняем через группы VALIDATE_GROUPS, кроме SPTM
+    total_ok = 0
+    total_bad = 0
+
     for group_name, items in VALIDATE_GROUPS:
         lines.append("  --- %s ---" % group_name)
         for key, kind, expected in items:
             raw = defaults.get(key)
             if raw is None:
                 lines.append("    %-40s MISSING in json" % key)
+                total_bad += 1
                 continue
 
             if kind == "int":
@@ -805,37 +804,44 @@ def validate_offsets():
                     ival = int(raw, 0) if isinstance(raw, _STR_TYPES) else int(raw)
                 except Exception as e:
                     lines.append("    %-40s %s PARSE ERR: %s" % (key, raw, str(e)))
+                    total_bad += 1
                     continue
                 exp_ok = (expected is None) or (ival == expected)
+                if exp_ok:
+                    total_ok += 1
+                else:
+                    total_bad += 1
                 lines.append("    %-40s 0x%X (%d) %s" % (key, ival, ival, "OK" if exp_ok else "MISMATCH expected 0x%X" % expected))
                 continue
 
-            # kind == "addr"
             try:
                 aval = int(raw, 16) if isinstance(raw, _STR_TYPES) else int(raw)
             except Exception as e:
                 lines.append("    %-40s %s PARSE ERR: %s" % (key, raw, str(e)))
+                total_bad += 1
                 continue
 
             exp_ok = (expected is None) or (aval == expected)
             blk = inblk(aval)
             if blk is None:
-                # Может быть в KEXT, который не загружен
                 kexts_hint = ""
                 if os.path.isdir(KEXTS):
-                    kexts_hint = " (kexts dir present, run 'ipsw kernel extract --all')"
+                    kexts_hint = " (run 'ipsw kernel extract --all')"
                 lines.append("    %-40s %s NOT IN LOADED BLOCKS%s" % (key, fmt(aval), kexts_hint))
+                total_bad += 1
                 continue
 
-            # Пробуем прочитать 8 байт по адресу
             val = r64(aval)
             val_str = fmt(val) if val is not None else "read_err"
+            if exp_ok:
+                total_ok += 1
+            else:
+                total_bad += 1
             lines.append("    %-40s %s in %s %s val=%s" % (
                 key, fmt(aval), blk[2], "OK" if exp_ok else "MISMATCH expected %s" % fmt(expected), val_str))
 
         lines.append("")
 
-    # Также валидируем kernel_base отдельно, если оно есть
     kb = repo.get("kernel_base")
     if kb:
         try:
@@ -843,6 +849,9 @@ def validate_offsets():
             lines.append("  kernel_base = %s %s" % (kb, "OK" if kb_int == KBASE else "MISMATCH expected %s" % fmt(KBASE)))
         except Exception:
             lines.append("  kernel_base = %s PARSE ERR" % kb)
+    lines.append("")
+
+    lines.append("  summary: OK=%d BAD=%d" % (total_ok, total_bad))
     lines.append("")
 
     return lines
@@ -926,7 +935,6 @@ def main():
     lines.append("kernel_base = " + fmt(KBASE))
     lines.append("")
 
-    # proc_p_ucred_off
     lines.append("=== proc_p_ucred_off ===")
     p_off = None
     p_src = "NOT_FOUND"
@@ -955,7 +963,6 @@ def main():
     lines.append("  source = " + p_src)
     lines.append("")
 
-    # ucred ids
     lines.append("=== ucred ids ===")
     u_uid = None
     u_svuid = None
@@ -1001,7 +1008,6 @@ def main():
     lines.append("  ucred_cr_svuid_off  = 0x%X" % (u_svuid or 0))
     lines.append("")
 
-    # NECP
     lines.append("=== NECP flow struct ===")
     ncf_assigned = None
     ncf_size = None
@@ -1054,7 +1060,6 @@ def main():
     lines.append("  NCF_STRUCT_SZ       = 0x%X" % ncf_size)
     lines.append("")
 
-    # AMFI
     lines.append("=== amfi_get_out_of_my_way ===")
     a_amfi = sget("_amfi_get_out_of_my_way") or sget("amfi_get_out_of_my_way")
     if a_amfi is None:
@@ -1062,7 +1067,6 @@ def main():
     lines.append("  value  = " + (fmt(a_amfi) if a_amfi else "NOT_FOUND"))
     lines.append("")
 
-    # DISASM
     lines.append("=== DISASM ===")
     for key, names in TARGETS:
         a, nm = find_func(names)
@@ -1075,7 +1079,6 @@ def main():
         for l in dis_raw(a, 40):
             lines.append(l)
 
-    # Kexts listing
     if os.path.isdir(KEXTS):
         lines.append("")
         lines.append("=== KEXTS ===")
