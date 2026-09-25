@@ -42,7 +42,7 @@ jobs:
 
           JYTHON_ZIP=$(find "$GITHUB_WORKSPACE/ghidra/Extensions/Ghidra" -maxdepth 1 -name '*Jython*.zip' | head -n1)
           if [ -z "$JYTHON_ZIP" ]; then
-            echo "FATAL: Jython extension zip not found in Extensions/Ghidra/"
+            echo "FATAL: Jython extension zip not found"
             ls -la "$GITHUB_WORKSPACE/ghidra/Extensions/Ghidra/" || true
             exit 1
           fi
@@ -50,9 +50,6 @@ jobs:
 
           mkdir -p "$GITHUB_WORKSPACE/ghidra/Ghidra/Extensions"
           unzip -q "$JYTHON_ZIP" -d "$GITHUB_WORKSPACE/ghidra/Ghidra/Extensions"
-
-          echo "=== Ghidra/Extensions contents ==="
-          ls -la "$GITHUB_WORKSPACE/ghidra/Ghidra/Extensions/" || true
 
           echo "GHIDRA_ROOT=$GITHUB_WORKSPACE/ghidra" >> "$GITHUB_ENV"
 
@@ -76,7 +73,7 @@ jobs:
           tar -C /usr/local/bin -xzf /tmp/ipsw.tar.gz ipsw
           ipsw version
 
-      # --- symbolicator ---
+      # --- symbolicator 26.8.0 ---
       - name: Cache symbolicator
         id: cache-symbolicator
         uses: actions/cache@v4
@@ -118,6 +115,16 @@ jobs:
           echo "KERNEL_NAME=$(basename "$K")" >> "$GITHUB_ENV"
           ls -lh "$K"
 
+      # --- Извлечение KEXT ---
+      - name: Extract all KEXTs
+        run: |
+          set -euo pipefail
+          mkdir -p "$GITHUB_WORKSPACE/kexts"
+          ipsw kernel extract "$KERNEL" --all --output "$GITHUB_WORKSPACE/kexts" || true
+          echo "=== kexts ==="
+          ls -la "$GITHUB_WORKSPACE/kexts" | head -50
+          echo "KEXTS_DIR=$GITHUB_WORKSPACE/kexts" >> "$GITHUB_ENV"
+
       # --- symbols.json ---
       - name: Cache symbols
         id: cs
@@ -153,6 +160,7 @@ jobs:
           _JAVA_OPTIONS: "-Xmx8g -Djava.awt.headless=true"
           SYMBOLS_JSON: ${{ github.workspace }}/symbols.json
           VERIFIED_JSON: ${{ github.workspace }}/verified_all_92.json
+          KEXTS_DIR: ${{ github.workspace }}/kexts
           GITHUB_WORKSPACE: ${{ github.workspace }}
         run: |
           "$GHIDRA_ROOT/support/analyzeHeadless" \
@@ -169,6 +177,7 @@ jobs:
           _JAVA_OPTIONS: "-Xmx8g -Djava.awt.headless=true"
           SYMBOLS_JSON: ${{ github.workspace }}/symbols.json
           VERIFIED_JSON: ${{ github.workspace }}/verified_all_92.json
+          KEXTS_DIR: ${{ github.workspace }}/kexts
           GITHUB_WORKSPACE: ${{ github.workspace }}
         run: |
           rm -rf ghidra_project
