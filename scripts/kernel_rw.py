@@ -13,11 +13,8 @@ except NameError:
 
 WS = os.environ.get("GITHUB_WORKSPACE", "/tmp")
 SYM = os.environ.get("SYMBOLS_JSON", os.path.join(WS, "symbols.json"))
-OUT_H = os.path.join(WS, "offsets.h")
+OUT = os.path.join(WS, "result.txt")
 OUT_JSON = os.path.join(WS, "offsets.json")
-OUT_KFD = os.path.join(WS, "kfd_offsets.h")
-OUT_TXT = os.path.join(WS, "nk_kernel_rw.txt")
-OUT_DIS = os.path.join(WS, "disasm.txt")
 
 KBASE = 0xFFFFFFF007004000
 MASK48 = 0x0000FFFFFFFFFFFF
@@ -30,19 +27,9 @@ _strmap = None
 _strlist = None
 _symidx = None
 _ifc = [None]
-_okc = {}
 _blocks = None
 
-CONFIRMED = {
-    "kernel_base": KBASE,
-    "sysent_base": 0xFFFFFFF007C192A0,
-    "mach_trap_table": 0xFFFFFFF007BE8018,
-    "kfree_ext": 0xFFFFFFF00A201000,
-    "kalloc_ext": 0xFFFFFFF00A200DCC,
-    "copyin": 0xFFFFFFF00A7B9570,
-    "copyout": 0xFFFFFFF00A2C6C28,
-}
-CONFIRMED_G = {
+CONF_G = {
     "kernproc": 0xFFFFFFF007BBF040,
     "kernel_task": 0xFFFFFFF00700DC70,
     "zone_map": 0xFFFFFFF00AD6A800,
@@ -50,7 +37,7 @@ CONFIRMED_G = {
     "kernel_map": 0xFFFFFFF007BBE228,
     "allproc": 0xFFFFFFF007BBF048,
 }
-CONFIRMED_S = {
+CONF_S = {
     "proc_p_pid": 0x74,
     "proc_ro_p_ucred": 0xB8,
     "thread_task_threads_next": 0x50,
@@ -74,94 +61,63 @@ ACCESSORS = {
     "task_threads_next": ["_task_thread", "task_thread"],
     "task_itk_space": ["_task_get_itk_space"],
     "task_itk_self": ["_task_get_itk_self"],
-    "task_task_exc_guard": ["_task_get_exc_guard"],
-    "task_t_flags": ["_task_get_t_flags"],
     "thread_task_threads_next": ["_thread_get_next"],
-    "thread_ast": ["_thread_get_ast"],
-    "thread_ctid": ["_thread_get_ctid"],
-    "thread_options": ["_thread_get_options"],
     "thread_t_tro": ["_thread_get_tro"],
     "thread_ro_tro_task": ["_thread_ro_get_task"],
     "thread_ro_tro_proc": ["_thread_ro_get_proc"],
-    "thread_machine_upcb": ["_thread_get_upcb"],
-    "thread_machine_contextdata": ["_thread_get_contextdata"],
-    "thread_machine_kstackptr": ["_thread_get_kstackptr"],
-    "thread_mutex_lck_mtx_data": ["_thread_get_mutex"],
-    "thread_mach_exc_info_exception_type": ["_thread_get_exc_type"],
-    "thread_guard_exc_info_code": ["_thread_get_guard_exc_code"],
-    "ucred_cr_label": ["_kauth_cred_getlabel", "kauth_cred_getlabel"],
     "kauth_cred_uid": ["_kauth_cred_getuid", "kauth_cred_getuid"],
     "kauth_cred_gid": ["_kauth_cred_getgid", "kauth_cred_getgid"],
-    "kauth_cred_ruid": ["_kauth_cred_getruid"],
-    "kauth_cred_rgid": ["_kauth_cred_getrgid"],
-    "kauth_cred_svuid": ["_kauth_cred_getsvuid"],
-    "kauth_cred_svgid": ["_kauth_cred_getsvgid"],
-    "label_l_perpolicy_amfi": ["_mac_label_get_amfi"],
-    "label_l_perpolicy_sandbox": ["_mac_label_get_sandbox"],
-    "ipc_space_is_table": ["_ipc_space_get_table", "ipc_space_get_table"],
-    "ipc_space_active": ["_ipc_space_get_active"],
-    "ipc_entry_ie_object": ["_ipc_entry_get_object"],
-    "ipc_port_ip_kobject": ["_ipc_port_get_kobject", "ipc_port_get_kobject"],
-    "ipc_port_ip_receiver": ["_ipc_port_get_receiver"],
-    "ipc_port_ip_mscount": ["_ipc_port_get_mscount"],
-    "filedesc_fd_ofiles": ["_fdp_get_ofiles", "fdp_get_ofiles"],
-    "filedesc_fd_cdir": ["_fdp_get_cdir", "fdp_get_cdir"],
-    "fileproc_fp_glob": ["_fp_get_fglob", "fp_get_fglob"],
-    "fileproc_fp_fg": ["_fp_get_fg", "fp_get_fg"],
-    "fileglob_fg_data": ["_fileglob_get_data"],
-    "fileglob_fg_flag": ["_fileglob_get_flag"],
-    "vnode_v_iocount": ["_vnode_get_iocount"],
-    "vnode_v_writecount": ["_vnode_get_writecount"],
-    "vnode_v_flag": ["_vnode_get_flag"],
-    "vnode_v_mount": ["_vnode_get_mount"],
-    "vnode_v_parent": ["_vnode_get_parent"],
+    "ucred_cr_label": ["_kauth_cred_getlabel", "kauth_cred_getlabel"],
+    "ipc_space_is_table": ["_ipc_space_get_table"],
+    "ipc_port_ip_kobject": ["_ipc_port_get_kobject"],
+    "filedesc_fd_ofiles": ["_fdp_get_ofiles"],
+    "fileproc_fp_glob": ["_fp_get_fglob"],
     "vnode_v_data": ["_vnode_get_data"],
+    "vnode_v_mount": ["_vnode_get_mount"],
     "vnode_v_name": ["_vnode_get_name"],
     "vnode_v_usecount": ["_vnode_get_usecount"],
-    "vnode_v_ncchildren_tqh_first": ["_vnode_get_ncchildren_first"],
-    "vnode_v_nclinks_lh_first": ["_vnode_get_nclinks_first"],
-    "mount_mnt_flag": ["_mount_get_flag"],
-    "namecache_nc_vp": ["_namecache_get_vp"],
-    "namecache_nc_child_tqe_next": ["_namecache_get_child_next"],
     "vm_map_hdr": ["_vm_map_get_header"],
     "vm_map_pmap": ["_vm_map_get_pmap"],
-    "vm_map_ref_count": ["_vm_map_get_ref_count"],
-    "vm_map_header_nentries": ["_vm_map_header_get_nentries"],
     "vm_map_entry_links_next": ["_vm_map_entry_get_next"],
     "vm_map_entry_vme_object_or_delta": ["_vm_map_entry_get_object"],
-    "vm_map_entry_vme_alias": ["_vm_map_entry_get_alias"],
     "vm_object_vo_un1_vou_size": ["_vm_object_get_size"],
-    "vm_object_ref_count": ["_vm_object_get_ref_count"],
-    "vm_named_entry_backing_copy": ["_vm_named_entry_get_backing"],
-    "vm_named_entry_size": ["_vm_named_entry_get_size"],
-    "vm_page_vmp_offset": ["_vm_page_get_offset"],
-    "vm_page_vmp_object": ["_vm_page_get_object"],
-    "vm_page_vmp_next": ["_vm_page_get_next"],
-    "socket_so_usecount": ["_so_get_usecount"],
     "socket_so_proto": ["_so_get_proto", "so_get_proto"],
-    "socket_so_background_thread": ["_so_get_background_thread"],
-    "inpcb_inp_list_le_next": ["_inp_get_list_next"],
-    "inpcb_inp_pcbinfo": ["_inp_get_pcbinfo"],
-    "inpcb_inp_socket": ["_inp_get_socket", "inp_get_socket"],
-    "inpcbinfo_ipi_zone": ["_inpcbinfo_get_zone"],
-    "inpcb_inp_depend6_inp6_icmp6filt": ["_inp_get_icmp6filt"],
-    "inpcb_inp_depend6_inp6_chksum": ["_inp_get_chksum"],
-    "kalloc_type_view_kt_zv_zv_name": ["_kalloc_type_view_get_name"],
-    "arm_kernel_saved_state_sp": ["_arm_kernel_saved_state_get_sp"],
-    "arm_saved_state64_lr": ["_arm_saved_state64_get_lr"],
+    "inpcb_inp_socket": ["_inp_get_socket"],
     "arm_saved_state64_pc": ["_arm_saved_state64_get_pc"],
-    "arm_saved_state_us_ss_64": ["_arm_saved_state_get_us_ss"],
+    "arm_saved_state64_lr": ["_arm_saved_state64_get_lr"],
 }
 
-DISASM_TARGETS = [
+# Функции для дизасма. Адрес 0 = искать по символам/строкам.
+DISASM = [
     ("_copyin", 0xFFFFFFF00A7B9570),
     ("_copyout", 0xFFFFFFF00A2C6C28),
     ("_kalloc_ext", 0xFFFFFFF00A200DCC),
     ("_kfree_ext", 0xFFFFFFF00A201000),
 ]
 
-MAX_DIS_LINES = 60
-MAX_DIS_TOTAL = 5000
+# NECP функции ищем по символам.
+NECP_NAMES = [
+    "_necp_client_copy_result",
+    "necp_client_copy_result",
+    "_necp_client_remove_flow",
+    "necp_client_remove_flow",
+    "_necp_client_add_flow",
+    "necp_client_add_flow",
+    "_necp_flow_alloc",
+    "necp_flow_alloc",
+    "_necp_client_fd_copyout",
+    "necp_client_fd_copyout",
+    "_necp_open",
+    "necp_open",
+    "_necp_action",
+    "necp_action",
+]
+
+# Syscalls для NEСP, обрабатываем их через sysent.
+NECP_SYSCALLS = [501, 502]
+
+MAX_DIS = 120
+MAX_TOTAL = 15000
 
 
 def _u(v):
@@ -189,27 +145,15 @@ def _pa(v):
 def fmt(v):
     if v is None:
         return "0x0"
-    if isinstance(v, string_types):
-        p = _pa(v)
-        if p is None:
-            return "0x0"
-        return "0x{:016X}".format(p)
     try:
         return "0x{:016X}".format(int(v) & 0xFFFFFFFFFFFFFFFF)
     except Exception:
         return "0x0"
 
 
-def tl(v):
-    v = int(v) & 0xFFFFFFFFFFFFFFFF
-    if v >= 0x8000000000000000:
-        v -= 0x10000000000000000
-    return v
-
-
 def sa(a):
     try:
-        return toAddr(tl(a))
+        return toAddr(int(a) & 0xFFFFFFFFFFFFFFFF)
     except Exception:
         return None
 
@@ -250,18 +194,6 @@ def r16(a):
         return None
 
 
-def r8(a):
-    if a is None:
-        return None
-    ga = sa(a)
-    if ga is None:
-        return None
-    try:
-        return int(currentProgram.getMemory().getByte(ga)) & 0xFF
-    except Exception:
-        return None
-
-
 def blocks():
     global _blocks
     if _blocks is not None:
@@ -272,9 +204,9 @@ def blocks():
             try:
                 if not b.isInitialized():
                     continue
-                s = _u(b.getStart().getOffset())
-                e = _u(b.getEnd().getOffset())
-                out.append((s, e, b.getName(), b.isExecute()))
+                out.append((_u(b.getStart().getOffset()),
+                            _u(b.getEnd().getOffset()),
+                            b.getName(), b.isExecute()))
             except Exception:
                 pass
     except Exception:
@@ -288,15 +220,6 @@ def inblk(a):
         if s <= a < e:
             return (s, e, n, x)
     return None
-
-
-def is_data_ptr(p):
-    if p is None or p == 0:
-        return False
-    b = inblk(p)
-    if b is None:
-        return False
-    return not b[3]
 
 
 def is_ktext(p):
@@ -319,21 +242,13 @@ def is_exec(p):
     return b[3]
 
 
-def va(a, t="any"):
-    if a in _okc:
-        return _okc[a]
-    r = False
-    if a is not None:
-        b = inblk(a)
-        if b is not None:
-            if t == "ktext":
-                r = b[3]
-            elif t == "data":
-                r = not b[3]
-            else:
-                r = True
-    _okc[a] = r
-    return r
+def is_data_ptr(p):
+    if p is None or p == 0:
+        return False
+    b = inblk(p)
+    if b is None:
+        return False
+    return not b[3]
 
 
 def _load_sym():
@@ -389,7 +304,6 @@ def _load_sym():
             pass
 
     _walk(data)
-    print("[+] symbols: {}".format(len(_sym)))
 
 
 def sget(n):
@@ -433,7 +347,6 @@ def _build_strs():
                 pass
     except Exception:
         pass
-    print("[+] strings: {}".format(len(_strlist)))
 
 
 def straddr(s):
@@ -472,7 +385,6 @@ def _build_idx():
             continue
         _symidx.append((a, n))
         seen.add((a, n))
-    print("[+] symidx: {}".format(len(_symidx)))
 
 
 def snamed(p):
@@ -561,7 +473,7 @@ def dec(f):
     return ""
 
 
-def dis(a, maxl=MAX_DIS_LINES):
+def dis(a, maxl=MAX_DIS):
     out = []
     f = fat(a)
     if f is None:
@@ -591,80 +503,11 @@ def dis(a, maxl=MAX_DIS_LINES):
     return out
 
 
-def adrp_pairs(f):
-    if f is None:
-        return []
-    out = []
-    try:
-        listing = currentProgram.getListing()
-        body = f.getBody()
-        if body is None:
-            return out
-        insn = listing.getInstructionAt(body.getMinAddress())
-        prev = None
-        while insn is not None and body.contains(insn.getAddress()):
-            mn = insn.getMnemonicString().lower()
-            tx = insn.toString()
-            if mn == "adrp":
-                try:
-                    toks = tx.replace(",", " ").split()
-                    pg = int(toks[-1], 16) & 0xFFFFFFFFFFFFFFFF
-                    prev = (toks[1], pg)
-                except Exception:
-                    prev = None
-            elif prev is not None and mn in ("add", "ldr", "ldrsw", "ldp", "ldur", "ldrh", "ldrb"):
-                try:
-                    toks = tx.replace(",", " ").replace("[", " ").replace("]", " ").split()
-                    imm = 0
-                    for t in toks:
-                        if t.startswith("#0x"):
-                            imm = int(t[3:], 16)
-                            break
-                    br = toks[2] if len(toks) > 2 else ""
-                    if br == prev[0]:
-                        tgt = (prev[1] + imm) & 0xFFFFFFFFFFFFFFFF
-                        if 0xFFFFFFF000000000 <= tgt < 0xFFFFFFF200000000:
-                            out.append(tgt)
-                except Exception:
-                    pass
-                prev = None
-            else:
-                if mn not in ("nop", "bti", "pacibsp", "hint"):
-                    prev = None
-            insn = insn.getNext()
-    except Exception:
-        pass
-    return out
-
-
-def wl(path, lines):
-    try:
-        d = os.path.dirname(path)
-        if d and not os.path.isdir(d):
-            os.makedirs(d)
-    except Exception:
-        pass
-    try:
-        with open(path, "w") as fh:
-            for l in lines:
-                fh.write(l + "\n")
-    except Exception:
-        pass
-
-
-def nm(s):
-    return re.sub(r"[^A-Za-z0-9_]", "_", s)
-
-
+# ВАЖНО: правильный декодер для iOS 27 sysent
 def _dec_sysent(raw):
-    if raw is None:
+    if raw is None or raw == 0:
         return None
-    if raw >= 0xFFFF000000000000:
-        return strip_pac(raw)
-    lo = raw & 0xFFFFFFFF
-    if lo < 0x10000000:
-        return (KBASE + lo) & 0xFFFFFFFFFFFFFFFF
-    return None
+    return (raw & MASK48) | 0xFFFFFFF000000000
 
 
 def _sysent_e(base, i):
@@ -674,7 +517,7 @@ def _sysent_e(base, i):
         if rc is None:
             return None
         call = _dec_sysent(rc)
-        if call is None or call == 0:
+        if call is None:
             return None
         if not is_ktext(call) or not is_exec(call):
             return None
@@ -785,7 +628,7 @@ def deref_var(v):
     return x
 
 
-def find_pid_off(pp, cands=(0x74, 0x68, 0x70, 0x78, 0x80)):
+def find_pid(pp, cands=(0x74, 0x68, 0x70, 0x78, 0x80)):
     for o in cands:
         p = r32(pp + o)
         if p is not None and 0 < p < 0x100000:
@@ -883,23 +726,23 @@ def acc_search():
             code = dec(fn)
             if not code:
                 continue
-            found = False
             for pat in [
                 r"\*\([^)]*\*\)\s*\(\s*\w+\s*\+\s*(0x[0-9a-fA-F]+|\d+)\s*\)",
                 r"return\s+\*\([^)]*\)\s*\(\s*\w+\s*\+\s*(0x[0-9a-fA-F]+|\d+)\s*\)",
             ]:
+                done = False
                 for m in re.finditer(pat, code):
                     try:
                         o = int(m.group(1), 0)
                         if 0 < o < 0x2000:
                             out[f] = o
-                            found = True
+                            done = True
                             break
                     except Exception:
                         pass
-                if found:
+                if done:
                     break
-            if found:
+            if f in out:
                 break
     return out
 
@@ -907,11 +750,13 @@ def acc_search():
 def glob_sym():
     out = {}
     for lb in ("allproc", "rootvnode", "proc_find", "task_init",
-               "vm_map_kernel", "kernel_map", "chroot", "cs_enforcement",
-               "kalloc_type", "mac_policy"):
+               "vm_map_kernel", "kernel_map", "chroot",
+               "cs_enforcement", "kalloc_type", "mac_policy"):
         a = sget("_" + lb) or sget(lb)
-        if a is not None and va(a, "any"):
-            out[lb] = a
+        if a is not None:
+            blk = inblk(a)
+            if blk is not None and not blk[3]:
+                out[lb] = a
     return out
 
 
@@ -932,203 +777,196 @@ def zones():
     return out
 
 
-def disasm_all():
-    lines = []
-    lines.append("=== DISASM ===")
+def find_necp_funcs():
+    out = {}
+    for n in NECP_NAMES:
+        a = sget(n)
+        if a is not None and is_ktext(a):
+            out[n] = a
+    return out
+
+
+def dump_dis(name, addr, lines):
     lines.append("")
-    total = 0
-    for name, addr in DISASM_TARGETS:
-        if not va(addr, "ktext"):
-            continue
-        lines.append("=== {} @ {} ===".format(name, fmt(addr)))
-        lines.append("")
-        for l in dis(addr):
+    lines.append("=== {} @ {} ===".format(name, fmt(addr)))
+    lines.append("")
+    for l in dis(addr):
+        lines.append(l)
+    f = fat(addr)
+    code = dec(f)
+    if code:
+        lines.append("--- decompile ---")
+        for l in code.split("\n")[:150]:
             lines.append(l)
-            total += 1
-            if total > MAX_DIS_TOTAL:
-                lines.append("=== TRUNCATED ===")
-                return lines
-        lines.append("")
-        f = fat(addr)
-        code = dec(f)
-        if code:
-            lines.append("--- decompile ---")
-            for l in code.split("\n")[:80]:
-                lines.append(l)
-            lines.append("")
-    return lines
 
 
 def main():
     print("=== kernel_rw.py ===")
-    report = []
-    jout = {}
 
-    try:
-        img = int(currentProgram.getImageBase().getOffset()) & 0xFFFFFFFFFFFFFFFF
-    except Exception:
-        img = KBASE
+    _load_sym()
+    _build_strs()
+    _build_idx()
+    print("[+] sym: {}".format(len(_sym or {})))
+    print("[+] str: {}".format(len(_strlist or [])))
 
-    report.append("=== BASE ===")
-    report.append("image_base  = " + fmt(img))
-    report.append("kernel_base = " + fmt(KBASE))
-    jout["kernel_base"] = fmt(KBASE)
-    jout["image_base"] = fmt(img)
+    lines = []
+    lines.append("=== BASE ===")
+    lines.append("kernel_base = " + fmt(KBASE))
 
     print("[*] sysent...")
     sb, ss = find_sysent()
     n_sys = 0
+    sysent_list = []
     if sb:
         for i in range(2000):
-            if _sysent_e(sb, i) is None:
+            e = _sysent_e(sb, i)
+            if e is None:
                 break
             n_sys = i + 1
-    report.append("")
-    report.append("=== SYSENT ===")
-    report.append("source  = " + ss)
-    report.append("base    = " + fmt(sb))
-    report.append("count   = " + str(n_sys))
-    jout["sysent_base"] = fmt(sb) if sb else None
-    jout["sysent_count"] = n_sys
-    jout["sysent_stride"] = STRIDE
+            sysent_list.append((i, e))
+    lines.append("")
+    lines.append("=== SYSENT ===")
+    lines.append("source = " + ss)
+    lines.append("base   = " + fmt(sb))
+    lines.append("count  = " + str(n_sys))
+    lines.append("")
+    for i, e in sysent_list[:30]:
+        call, na, rt, ab = e
+        f = fat(call)
+        nm = f.getName() if f else "?"
+        lines.append("  #{} {} narg={} ret={} name={}".format(
+            i, fmt(call), na, rt, nm))
+
+    # NECP syscalls
+    if sysent_list:
+        lines.append("")
+        lines.append("=== NECP SYSCALLS ===")
+        for idx in NECP_SYSCALLS:
+            if idx < len(sysent_list):
+                call, na, rt, ab = sysent_list[idx][1]
+                lines.append("  syscall {} handler = {} narg={}".format(idx, fmt(call), na))
+                dump_dis("syscall_{}".format(idx), call, lines)
 
     print("[*] mach_traps...")
     mt, ms = find_mt()
-    report.append("")
-    report.append("=== MACH TRAPS ===")
-    report.append("base = " + fmt(mt))
-    jout["mach_trap_table"] = fmt(mt) if mt else None
+    lines.append("")
+    lines.append("=== MACH TRAPS ===")
+    lines.append("base = " + fmt(mt))
 
     print("[*] globals...")
     g = glob_sym()
-    for k, v in CONFIRMED_G.items():
+    for k, v in CONF_G.items():
         g[k] = v
-    report.append("")
-    report.append("=== GLOBALS ===")
+    lines.append("")
+    lines.append("=== GLOBALS ===")
     for k in sorted(g.keys()):
-        report.append("  {:<20} {}".format(k, fmt(g[k])))
-    jout["globals"] = {k: fmt(v) for k, v in g.items()}
+        lines.append("  {:<20} {}".format(k, fmt(g[k])))
 
     print("[*] accessors...")
     acc = acc_search()
-    report.append("")
-    report.append("=== ACCESSORS ===")
+    lines.append("")
+    lines.append("=== ACCESSORS ===")
     for k in sorted(acc.keys()):
-        report.append("  {:<40} 0x{:X}".format(k, acc[k]))
+        lines.append("  {:<40} 0x{:X}".format(k, acc[k]))
 
-    print("[*] walk proc...")
+    print("[*] proc walk...")
     kp = g.get("kernproc")
     kpp = deref_var(kp)
     pid_off = None
     pw = {}
     if kpp is not None:
-        pid_off, _ = find_pid_off(kpp)
+        pid_off, _ = find_pid(kpp)
         pw = walk_proc(kpp, pid_off)
-        report.append("")
-        report.append("=== PROC ===")
-        report.append("ptr = " + fmt(kpp))
-        for k in sorted(pw.keys()):
-            report.append("  {:<30} 0x{:X}".format(k, pw[k]))
+    lines.append("")
+    lines.append("=== PROC ===")
+    lines.append("kernproc_var = " + fmt(kp))
+    lines.append("proc_ptr     = " + fmt(kpp))
+    for k in sorted(pw.keys()):
+        lines.append("  {:<30} 0x{:X}".format(k, pw[k]))
 
-    print("[*] walk task...")
+    print("[*] task walk...")
     tp = deref_var(g.get("kernel_task"))
     tw = walk_task(tp)
-    report.append("")
-    report.append("=== TASK ===")
-    report.append("ptr = " + fmt(tp))
+    lines.append("")
+    lines.append("=== TASK ===")
+    lines.append("kernel_task_var = " + fmt(g.get("kernel_task")))
+    lines.append("task_ptr        = " + fmt(tp))
     for k in sorted(tw.keys()):
-        report.append("  {:<30} 0x{:X}".format(k, tw[k]))
+        lines.append("  {:<30} 0x{:X}".format(k, tw[k]))
 
+    # merged
     merged = {}
-    for src in (CONFIRMED_S, acc, pw, tw):
+    for src in (CONF_S, acc, pw, tw):
         for k, v in src.items():
             if isinstance(v, int):
                 merged[k] = v
-
-    report.append("")
-    report.append("=== OFFSETS ===")
+    lines.append("")
+    lines.append("=== OFFSETS (final) ===")
     for k in sorted(merged.keys()):
-        report.append("  off_{:<40} 0x{:X}".format(k, merged[k]))
-    jout["offsets"] = merged
+        lines.append("  off_{:<40} 0x{:X}".format(k, merged[k]))
 
-    prim = {
-        "_copyin": CONFIRMED["copyin"],
-        "_copyout": CONFIRMED["copyout"],
-        "_kalloc_ext": CONFIRMED["kalloc_ext"],
-        "_kfree_ext": CONFIRMED["kfree_ext"],
-    }
-    jout["primitives"] = {k: fmt(v) for k, v in prim.items()}
-
+    print("[*] zones...")
     zs = zones()
-    report.append("")
-    report.append("=== ZONES ===")
+    lines.append("")
+    lines.append("=== ZONES ===")
     for k in sorted(zs.keys()):
-        report.append("  {:<45} {}".format(k, fmt(zs[k])))
-    jout["zones"] = {k: fmt(v) for k, v in zs.items()}
+        lines.append("  {:<45} {}".format(k, fmt(zs[k])))
 
-    jout["sptm"] = {
-        "sptm_base": "0xFFFFFFF027004000",
-        "ctrr_lock_boot": "0xFFFFFFF027006E62",
-        "cpu_lock_system_registers": "0xFFFFFFF0270B39B4",
-        "sptm_determine_kernel_ctrr": "0xFFFFFFF0270B2224",
-        "sptm_bootstrap": "0xFFFFFFF0270D21CC",
-        "sptm_map": "0xFFFFFFF0270E97BC",
-        "sptm_page_table": "0xFFFFFFF0270D13D4",
-        "sptm_panic": "0xFFFFFFF0270BEE18",
-        "sptm_region": "0xFFFFFFF0270ECEF0",
+    print("[*] necp funcs...")
+    necp = find_necp_funcs()
+    lines.append("")
+    lines.append("=== NECP SYMBOLS ===")
+    for k in sorted(necp.keys()):
+        lines.append("  {:<40} {}".format(k, fmt(necp[k])))
+
+    print("[*] disasm hardcoded...")
+    for name, addr in DISASM:
+        if not is_ktext(addr):
+            continue
+        dump_dis(name, addr, lines)
+
+    print("[*] disasm necp symbols...")
+    for k in sorted(necp.keys()):
+        dump_dis(k, necp[k], lines)
+
+    # JSON
+    jout = {
+        "kernel_base": fmt(KBASE),
+        "sysent_base": fmt(sb) if sb else None,
+        "sysent_count": n_sys,
+        "mach_trap_table": fmt(mt) if mt else None,
+        "globals": {k: fmt(v) for k, v in g.items()},
+        "offsets": merged,
+        "accessors": acc,
+        "zones": {k: fmt(v) for k, v in zs.items()},
+        "necp_symbols": {k: fmt(v) for k, v in necp.items()},
     }
-
-    wl(OUT_TXT, report)
-
-    hd = ["#ifndef NK_OFFSETS_H", "#define NK_OFFSETS_H", ""]
-    hd.append("#define NK_KERNEL_BASE " + fmt(KBASE) + "ULL")
-    hd.append("#define NK_SYSENT_BASE " + fmt(sb) + "ULL")
-    hd.append("#define NK_SYSENT_COUNT " + str(n_sys))
-    hd.append("#define NK_MACH_TRAP_TABLE " + fmt(mt) + "ULL")
-    hd.append("")
-    for k in sorted(g.keys()):
-        hd.append("#define NK_G_{:<30} {}ULL".format(k.upper(), fmt(g[k])))
-    hd.append("")
-    for k in sorted(merged.keys()):
-        hd.append("#define off_{:<40} 0x{:X}".format(k, merged[k]))
-    hd.append("")
-    for k in sorted(prim.keys()):
-        hd.append("#define NK_FN_{:<30} {}ULL".format(k.upper(), fmt(prim[k])))
-    hd.append("")
-    for k in sorted(zs.keys()):
-        hd.append("#define NK_ZONE_{:<40} {}ULL".format(nm(k).upper()[:40], fmt(zs[k])))
-    hd.append("")
-    hd.append("#endif")
-    wl(OUT_H, hd)
-
-    kd = ["#ifndef KFD_OFFSETS_H", "#define KFD_OFFSETS_H", ""]
-    for k in sorted(merged.keys()):
-        kd.append("#define off_{:<45} 0x{:X}".format(k, merged[k]))
-    kd.append("")
-    for k in sorted(prim.keys()):
-        kd.append("#define kfd_fn_{:<40} {}ULL".format(k.lstrip("_"), fmt(prim[k])))
-    kd.append("")
-    kd.append("#endif")
-    wl(OUT_KFD, kd)
-
-    print("[*] disasm...")
-    dis_lines = disasm_all()
-    wl(OUT_DIS, dis_lines)
-
     try:
         with open(OUT_JSON, "w") as fh:
             fh.write(json.dumps(jout, indent=2, sort_keys=True))
     except Exception:
         pass
 
-    print("")
+    # Обрезаем если разрастается
+    if len(lines) > MAX_TOTAL:
+        lines = lines[:MAX_TOTAL]
+        lines.append("=== TRUNCATED ===")
+
+    try:
+        with open(OUT, "w") as fh:
+            for l in lines:
+                fh.write(l + "\n")
+        print("[+] wrote " + OUT + " ({} lines)".format(len(lines)))
+    except Exception as e:
+        print("[-] write: " + str(e))
+
     print("=== SUMMARY ===")
     print("  sysent_count  {}".format(n_sys))
     print("  globals       {}".format(len(g)))
     print("  accessors     {}".format(len(acc)))
     print("  offsets       {}".format(len(merged)))
     print("  zones         {}".format(len(zs)))
-    print("  disasm_lines  {}".format(len(dis_lines)))
+    print("  necp_funcs    {}".format(len(necp)))
     print("=== DONE ===")
 
 
@@ -1137,3 +975,8 @@ try:
 except Exception as e:
     print("[-] FATAL: " + str(e))
     traceback.print_exc()
+    try:
+        with open(OUT, "w") as fh:
+            fh.write("FATAL: " + str(e) + "\n")
+    except Exception:
+        pass
