@@ -125,7 +125,6 @@ jobs:
             result.txt
             offsets.json
             kernel.log
-            symbols.json
           retention-days: 30
           if-no-files-found: warn
           overwrite: true
