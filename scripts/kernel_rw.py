@@ -21,6 +21,8 @@ MASK48 = 0x0000FFFFFFFFFFFF
 KTEXT_LO = 0xFFF007004000
 KTEXT_HI = 0xFFF200000000
 STRIDE = 24
+MAX_DIS = 200
+MAX_TOTAL = 8000
 
 _sym = None
 _strmap = None
@@ -43,81 +45,16 @@ CONF_S = {
     "thread_task_threads_next": 0x50,
 }
 
-ACCESSORS = {
-    "proc_p_pid": ["_proc_pid", "proc_pid"],
-    "proc_p_ppid": ["_proc_ppid", "proc_ppid"],
-    "proc_p_list_le_next": ["_proc_get_list_next"],
-    "proc_p_list_le_prev": ["_proc_get_list_prev"],
-    "proc_p_proc_ro": ["_proc_get_ro"],
-    "proc_p_fd": ["_proc_fd", "proc_fd"],
-    "proc_p_flag": ["_proc_flag", "proc_flag"],
-    "proc_p_textvp": ["_proc_textvp", "proc_textvp"],
-    "proc_p_name": ["_proc_name", "proc_name"],
-    "proc_p_task": ["_proc_task", "proc_task"],
-    "proc_ro_pr_task": ["_proc_ro_get_task"],
-    "proc_ro_p_ucred": ["_proc_ucred", "proc_ucred"],
-    "task_bsd_info": ["_get_bsdtask_info", "task_bsd_info"],
-    "task_map": ["_task_vm_map", "task_vm_map"],
-    "task_threads_next": ["_task_thread", "task_thread"],
-    "task_itk_space": ["_task_get_itk_space"],
-    "task_itk_self": ["_task_get_itk_self"],
-    "thread_task_threads_next": ["_thread_get_next"],
-    "thread_t_tro": ["_thread_get_tro"],
-    "thread_ro_tro_task": ["_thread_ro_get_task"],
-    "thread_ro_tro_proc": ["_thread_ro_get_proc"],
-    "kauth_cred_uid": ["_kauth_cred_getuid", "kauth_cred_getuid"],
-    "kauth_cred_gid": ["_kauth_cred_getgid", "kauth_cred_getgid"],
-    "ucred_cr_label": ["_kauth_cred_getlabel", "kauth_cred_getlabel"],
-    "ipc_space_is_table": ["_ipc_space_get_table"],
-    "ipc_port_ip_kobject": ["_ipc_port_get_kobject"],
-    "filedesc_fd_ofiles": ["_fdp_get_ofiles"],
-    "fileproc_fp_glob": ["_fp_get_fglob"],
-    "vnode_v_data": ["_vnode_get_data"],
-    "vnode_v_mount": ["_vnode_get_mount"],
-    "vnode_v_name": ["_vnode_get_name"],
-    "vnode_v_usecount": ["_vnode_get_usecount"],
-    "vm_map_hdr": ["_vm_map_get_header"],
-    "vm_map_pmap": ["_vm_map_get_pmap"],
-    "vm_map_entry_links_next": ["_vm_map_entry_get_next"],
-    "vm_map_entry_vme_object_or_delta": ["_vm_map_entry_get_object"],
-    "vm_object_vo_un1_vou_size": ["_vm_object_get_size"],
-    "socket_so_proto": ["_so_get_proto", "so_get_proto"],
-    "inpcb_inp_socket": ["_inp_get_socket"],
-    "arm_saved_state64_pc": ["_arm_saved_state64_get_pc"],
-    "arm_saved_state64_lr": ["_arm_saved_state64_get_lr"],
+# Целевые функции для дизасма
+TARGET_FUNCS = {
+    "proc_ucred": ["_proc_ucred", "proc_ucred"],
+    "kauth_cred_getuid": ["_kauth_cred_getuid", "kauth_cred_getuid"],
+    "kauth_cred_getsvuid": ["_kauth_cred_getsvuid", "kauth_cred_getsvuid"],
+    "kauth_cred_getsavuid": ["_kauth_cred_getsavuid"],
+    "necp_client_add_flow": ["_necp_client_add_flow", "necp_client_add_flow"],
+    "necp_flow_alloc": ["_necp_flow_alloc", "necp_flow_alloc"],
+    "amfi_get_out_of_my_way": ["_amfi_get_out_of_my_way", "amfi_get_out_of_my_way"],
 }
-
-# Функции для дизасма. Адрес 0 = искать по символам/строкам.
-DISASM = [
-    ("_copyin", 0xFFFFFFF00A7B9570),
-    ("_copyout", 0xFFFFFFF00A2C6C28),
-    ("_kalloc_ext", 0xFFFFFFF00A200DCC),
-    ("_kfree_ext", 0xFFFFFFF00A201000),
-]
-
-# NECP функции ищем по символам.
-NECP_NAMES = [
-    "_necp_client_copy_result",
-    "necp_client_copy_result",
-    "_necp_client_remove_flow",
-    "necp_client_remove_flow",
-    "_necp_client_add_flow",
-    "necp_client_add_flow",
-    "_necp_flow_alloc",
-    "necp_flow_alloc",
-    "_necp_client_fd_copyout",
-    "necp_client_fd_copyout",
-    "_necp_open",
-    "necp_open",
-    "_necp_action",
-    "necp_action",
-]
-
-# Syscalls для NEСP, обрабатываем их через sysent.
-NECP_SYSCALLS = [501, 502]
-
-MAX_DIS = 120
-MAX_TOTAL = 15000
 
 
 def _u(v):
@@ -396,21 +333,6 @@ def snamed(p):
     return out
 
 
-def xrefs(a):
-    if a is None:
-        return []
-    out = []
-    try:
-        ga = sa(a)
-        if ga is None:
-            return out
-        for r in currentProgram.getReferenceManager().getReferencesTo(ga):
-            out.append(_u(r.getFromAddress().getOffset()))
-    except Exception:
-        pass
-    return out
-
-
 def fat(a):
     if a is None:
         return None
@@ -503,305 +425,129 @@ def dis(a, maxl=MAX_DIS):
     return out
 
 
-# ВАЖНО: правильный декодер для iOS 27 sysent
-def _dec_sysent(raw):
-    if raw is None or raw == 0:
-        return None
-    return (raw & MASK48) | 0xFFFFFFF000000000
-
-
-def _sysent_e(base, i):
-    try:
-        a = base + i * STRIDE
-        rc = r64(a)
-        if rc is None:
-            return None
-        call = _dec_sysent(rc)
-        if call is None:
-            return None
-        if not is_ktext(call) or not is_exec(call):
-            return None
-        rt = r32(a + 16)
-        na = r16(a + 20)
-        ab = r16(a + 22)
-        if rt is None or rt > 9:
-            return None
-        if na is None or na > 12:
-            return None
-        if ab is None or ab > 96:
-            return None
-        return (call, na, rt, ab)
-    except Exception:
-        return None
-
-
-def _score_sys(base, samp=12):
-    h = 0
-    z = 0
-    for i in range(samp):
-        e = _sysent_e(base, i)
-        if e is None:
-            z += 1
-            if z >= 3:
-                return h
-            continue
-        z = 0
-        try:
-            _, na, rt, ab = e
-            h += 2 if (na > 0 or rt > 0 or ab > 0) else 1
-        except Exception:
-            pass
-    return h
-
-
-def find_sysent():
-    for n in ("_sysent", "sysent", "_unix_sysent"):
+def find_func(name_list):
+    """Ищет функцию по списку имён символов."""
+    for n in name_list:
         a = sget(n)
-        if a and _score_sys(a) >= 10:
-            return a, "sym:" + n
-    try:
-        bl = []
-        for b in currentProgram.getMemory().getBlocks():
-            try:
-                if not b.isInitialized():
-                    continue
-                s = _u(b.getStart().getOffset())
-                if not (0xFFFFFFF000000000 <= s < 0xFFFFFFF200000000):
-                    continue
-                n = b.getName()
-                if "DATA_CONST" in n:
-                    p = 0
-                elif n.startswith("__const"):
-                    p = 1
-                elif "DATA" in n:
-                    p = 2
-                else:
-                    continue
-                bl.append((p, b))
-            except Exception:
-                pass
-        bl.sort(key=lambda x: x[0])
-        for _, b in bl:
-            try:
-                s = _u(b.getStart().getOffset())
-                e = _u(b.getEnd().getOffset())
-                hi = min(e, s + 0x200000)
-                if hi - s < STRIDE * 200:
-                    continue
-                a = s + ((-s) % 8)
-                ma = hi - STRIDE * 200
-                best = None
-                bs = 0
-                while a < ma:
-                    sc = _score_sys(a)
-                    if sc > bs:
-                        bs = sc
-                        best = a
-                        if sc >= 20:
-                            return a, "scan:" + b.getName()
-                    a += 8
-                if best is not None and bs >= 12:
-                    return best, "scan:" + b.getName()
-            except Exception:
-                pass
-    except Exception:
-        pass
-    return None, "NOT_FOUND"
-
-
-def find_mt():
-    for n in ("_mach_trap_table", "mach_trap_table"):
-        a = sget(n)
-        if a:
-            return a, "sym:" + n
-    return None, "NOT_FOUND"
-
-
-def deref_var(v):
-    if v is None:
-        return None
-    x = r64(v)
-    if x is None:
-        return None
-    if not is_data_ptr(x):
-        return None
-    return x
-
-
-def find_pid(pp, cands=(0x74, 0x68, 0x70, 0x78, 0x80)):
-    for o in cands:
-        p = r32(pp + o)
-        if p is not None and 0 < p < 0x100000:
-            return o, p
+        if a is not None and is_ktext(a):
+            return a, n
+    # fallback: поиск по частичному имени в таблице символов Ghidra
+    for n in name_list:
+        hits = snamed(n)
+        for a, nm in hits:
+            if is_ktext(a):
+                return a, nm
     return None, None
 
 
-def walk_proc(pp, pidoff):
-    out = {}
-    if pidoff is not None:
-        out["proc_p_pid"] = pidoff
-    for o in range(0x08, 0x80, 8):
-        v = r64(pp + o)
-        if not is_data_ptr(v):
+def find_imm_ldr(func_addr, target_reg=None):
+    """Ищет в дизасме инструкции LDR/ADD с иммедиатом, возвращает список (addr, mnem, imm)."""
+    out = []
+    dis_lines = dis(func_addr, maxl=100)
+    for line in dis_lines:
+        m = re.match(r"([0-9A-F]{16})\s+([0-9A-F]{8})\s+(\w+)\s+(.*)", line)
+        if not m:
             continue
-        p2 = r32(v + (pidoff if pidoff else 0x74))
-        if p2 is not None and 0 < p2 < 0x100000:
-            out["proc_p_list_le_next"] = o
-            break
-    for o in range(0x08, 0x80, 8):
-        if o == out.get("proc_p_list_le_next"):
+        addr_s, _, mnem, ops = m.groups()
+        try:
+            addr = int(addr_s, 16)
+        except Exception:
             continue
-        v = r64(pp + o)
-        if not is_data_ptr(v):
+        mn = mnem.lower()
+        if mn not in ("ldr", "ldrb", "ldrh", "str", "add", "mov", "movz", "movw", "movk"):
             continue
-        p2 = r32(v + (pidoff if pidoff else 0x74))
-        if p2 is not None and 0 < p2 < 0x100000:
-            out["proc_p_list_le_prev"] = o
-            break
-    for o in range(0x08, 0x100, 8):
-        v = r64(pp + o)
-        if not is_data_ptr(v):
-            continue
-        if is_data_ptr(r64(v + 0x18)):
-            out["proc_p_proc_ro"] = o
-            break
-    for o in range(0x18, 0x80, 8):
-        v = r64(pp + o)
-        if not is_data_ptr(v):
-            continue
-        if is_data_ptr(r64(v)):
-            out["proc_p_fd"] = o
-            break
+        # ищем иммедиат в операндах: #0x...
+        for im in re.finditer(r"#(0x[0-9a-fA-F]+|\d+)", ops):
+            try:
+                val = int(im.group(1), 0)
+            except Exception:
+                continue
+            if 0 < val < 0x4000:
+                out.append((addr, mn, val, ops.strip()))
     return out
 
 
-def walk_task(tp):
-    out = {}
-    if tp is None:
-        return out
-    for o in range(0x18, 0x60, 8):
-        v = r64(tp + o)
-        if not is_data_ptr(v):
-            continue
-        if is_data_ptr(r64(v + 0x08)):
-            out["task_map"] = o
-            break
-    for o in range(0x40, 0x80, 8):
-        v = r64(tp + o)
-        if not is_data_ptr(v):
-            continue
-        if is_data_ptr(r64(v)):
-            out["task_threads_next"] = o
-            break
-    for o in range(0x280, 0x3A0, 8):
-        v = r64(tp + o)
-        if not is_data_ptr(v):
-            continue
-        if is_data_ptr(r64(v + 0x20)):
-            out["task_itk_space"] = o
-            out["task_itk_self"] = o
-            break
-    for o in range(0x300, 0x420, 8):
-        v = r64(tp + o)
-        if not is_data_ptr(v):
-            continue
-        p = r32(v + 0x74)
-        if p is not None and 0 < p < 0x100000:
-            out["task_bsd_info"] = o
-            break
-    return out
+def analyze_proc_ucred():
+    """Ищет смещение p_ucred в proc через дизасм _proc_ucred."""
+    a, nm = find_func(TARGET_FUNCS["proc_ucred"])
+    if a is None:
+        return None, "NOT_FOUND"
+    imms = find_imm_ldr(a)
+    # Ищем LDR с иммедиатом в диапазоне 0x80-0xC0
+    for addr, mn, val, ops in imms:
+        if mn == "ldr" and 0x80 <= val <= 0xC0:
+            return val, "{} @ {} -> LDR {}".format(nm, fmt(addr), ops)
+    return None, "{} @ {} no LDR in range".format(nm, fmt(a))
 
 
-def acc_search():
-    out = {}
-    for f, names in ACCESSORS.items():
-        for n in names:
-            hits = snamed(n)
-            if not hits:
-                continue
-            a, nn = hits[0]
-            fn = efunc(a)
-            if fn is None:
-                continue
-            code = dec(fn)
-            if not code:
-                continue
-            for pat in [
-                r"\*\([^)]*\*\)\s*\(\s*\w+\s*\+\s*(0x[0-9a-fA-F]+|\d+)\s*\)",
-                r"return\s+\*\([^)]*\)\s*\(\s*\w+\s*\+\s*(0x[0-9a-fA-F]+|\d+)\s*\)",
-            ]:
-                done = False
-                for m in re.finditer(pat, code):
-                    try:
-                        o = int(m.group(1), 0)
-                        if 0 < o < 0x2000:
-                            out[f] = o
-                            done = True
-                            break
-                    except Exception:
-                        pass
-                if done:
-                    break
-            if f in out:
+def analyze_ucred_ids():
+    """Ищет cr_uid / cr_svuid через дизасм kauth_cred_getuid / getsavuid."""
+    results = {}
+    a1, n1 = find_func(TARGET_FUNCS["kauth_cred_getuid"])
+    if a1 is not None:
+        imms = find_imm_ldr(a1)
+        for addr, mn, val, ops in imms:
+            if mn in ("ldr", "ldrb", "ldrh") and 0x08 <= val <= 0x20:
+                results["ucred_cr_uid_off"] = val
                 break
-    return out
+    a2, n2 = find_func(TARGET_FUNCS["kauth_cred_getsvuid"])
+    if a2 is None:
+        a2, n2 = find_func(TARGET_FUNCS["kauth_cred_getsavuid"])
+    if a2 is not None:
+        imms = find_imm_ldr(a2)
+        for addr, mn, val, ops in imms:
+            if mn in ("ldr", "ldrb", "ldrh") and 0x08 <= val <= 0x30:
+                results["ucred_cr_svuid_off"] = val
+                break
+    # Fallback: стандартные смещения из XNU
+    if "ucred_cr_uid_off" not in results:
+        results["ucred_cr_uid_off"] = 0x0C
+    if "ucred_cr_svuid_off" not in results:
+        results["ucred_cr_svuid_off"] = 0x14
+    return results
 
 
-def glob_sym():
-    out = {}
-    for lb in ("allproc", "rootvnode", "proc_find", "task_init",
-               "vm_map_kernel", "kernel_map", "chroot",
-               "cs_enforcement", "kalloc_type", "mac_policy"):
-        a = sget("_" + lb) or sget(lb)
-        if a is not None:
-            blk = inblk(a)
-            if blk is not None and not blk[3]:
-                out[lb] = a
-    return out
+def analyze_necp_flow():
+    """Ищет NCF_ASSIGNED_OFF и NCF_STRUCT_SZ через дизасм necp_client_add_flow / necp_flow_alloc."""
+    result = {}
+    # Ищем necp_flow_alloc — там malloc с размером структуры
+    a_alloc, n_alloc = find_func(TARGET_FUNCS["necp_flow_alloc"])
+    if a_alloc is not None:
+        imms = find_imm_ldr(a_alloc)
+        # Ищем MOV/MOVZ с размером в диапазоне 0x80-0x400
+        for addr, mn, val, ops in imms:
+            if mn in ("mov", "movz") and 0x80 <= val <= 0x400:
+                result["NCF_STRUCT_SZ"] = val
+                break
+    # Ищем necp_client_add_flow — там запись assigned
+    a_add, n_add = find_func(TARGET_FUNCS["necp_client_add_flow"])
+    if a_add is not None:
+        imms = find_imm_ldr(a_add)
+        for addr, mn, val, ops in imms:
+            if mn in ("str", "stp") and 0x40 <= val <= 0xA0:
+                result["NCF_ASSIGNED_OFF"] = val
+                break
+    if "NCF_STRUCT_SZ" not in result:
+        result["NCF_STRUCT_SZ"] = 0x100
+    if "NCF_ASSIGNED_OFF" not in result:
+        result["NCF_ASSIGNED_OFF"] = 0x68
+    return result
 
 
-def zones():
-    out = {}
-    for z in ("kalloc.type.var", "data.kalloc", "early.kalloc",
-              "site.struct task", "site.struct proc", "site.struct thread",
-              "site.struct ucred", "site.struct ipc_port", "site.struct ipc_entry",
-              "site.struct fileproc", "site.struct fileglob", "site.struct vnode",
-              "site.struct mount", "site.struct socket", "site.struct inpcb",
-              "site.struct pipe", "site.struct vm_page"):
-        a = straddr(z)
-        if a is None:
-            continue
-        kv = [x for x in xrefs(a) if 0xFFFFFFF000000000 <= x < 0xFFFFFFF200000000]
-        if kv:
-            out[z] = kv[0]
-    return out
-
-
-def find_necp_funcs():
-    out = {}
-    for n in NECP_NAMES:
-        a = sget(n)
-        if a is not None and is_ktext(a):
-            out[n] = a
-    return out
-
-
-def dump_dis(name, addr, lines):
-    lines.append("")
-    lines.append("=== {} @ {} ===".format(name, fmt(addr)))
-    lines.append("")
-    for l in dis(addr):
-        lines.append(l)
-    f = fat(addr)
-    code = dec(f)
-    if code:
-        lines.append("--- decompile ---")
-        for l in code.split("\n")[:150]:
-            lines.append(l)
+def analyze_amfi():
+    """Ищет amfi_get_out_of_my_way."""
+    a, nm = find_func(TARGET_FUNCS["amfi_get_out_of_my_way"])
+    if a is not None:
+        return a, nm
+    # fallback: поиск по строке
+    sa_ = straddr("amfi_get_out_of_my_way")
+    if sa_ is not None:
+        return sa_, "string:amfi_get_out_of_my_way"
+    return None, "NOT_FOUND"
 
 
 def main():
-    print("=== kernel_rw.py ===")
+    print("=== kernel_offsets.py ===")
 
     _load_sym()
     _build_strs()
@@ -810,136 +556,63 @@ def main():
     print("[+] str: {}".format(len(_strlist or [])))
 
     lines = []
-    lines.append("=== BASE ===")
+    lines.append("=== TARGET OFFSETS ===")
     lines.append("kernel_base = " + fmt(KBASE))
-
-    print("[*] sysent...")
-    sb, ss = find_sysent()
-    n_sys = 0
-    sysent_list = []
-    if sb:
-        for i in range(2000):
-            e = _sysent_e(sb, i)
-            if e is None:
-                break
-            n_sys = i + 1
-            sysent_list.append((i, e))
     lines.append("")
-    lines.append("=== SYSENT ===")
-    lines.append("source = " + ss)
-    lines.append("base   = " + fmt(sb))
-    lines.append("count  = " + str(n_sys))
+
+    # 1. proc_p_ucred_off
+    print("[*] proc_ucred...")
+    p_off, p_src = analyze_proc_ucred()
+    lines.append("=== proc_p_ucred_off ===")
+    lines.append("  value = " + (fmt(p_off) if p_off else "NOT_FOUND"))
+    lines.append("  source = " + p_src)
     lines.append("")
-    for i, e in sysent_list[:30]:
-        call, na, rt, ab = e
-        f = fat(call)
-        nm = f.getName() if f else "?"
-        lines.append("  #{} {} narg={} ret={} name={}".format(
-            i, fmt(call), na, rt, nm))
 
-    # NECP syscalls
-    if sysent_list:
-        lines.append("")
-        lines.append("=== NECP SYSCALLS ===")
-        for idx in NECP_SYSCALLS:
-            if idx < len(sysent_list):
-                call, na, rt, ab = sysent_list[idx][1]
-                lines.append("  syscall {} handler = {} narg={}".format(idx, fmt(call), na))
-                dump_dis("syscall_{}".format(idx), call, lines)
-
-    print("[*] mach_traps...")
-    mt, ms = find_mt()
+    # 2. ucred ids
+    print("[*] ucred ids...")
+    u = analyze_ucred_ids()
+    lines.append("=== ucred ids ===")
+    for k in sorted(u.keys()):
+        lines.append("  {:<30} 0x{:X}".format(k, u[k]))
     lines.append("")
-    lines.append("=== MACH TRAPS ===")
-    lines.append("base = " + fmt(mt))
 
-    print("[*] globals...")
-    g = glob_sym()
-    for k, v in CONF_G.items():
-        g[k] = v
+    # 3. NECP flow
+    print("[*] necp flow...")
+    n = analyze_necp_flow()
+    lines.append("=== NECP flow struct ===")
+    for k in sorted(n.keys()):
+        lines.append("  {:<30} 0x{:X}".format(k, n[k]))
     lines.append("")
-    lines.append("=== GLOBALS ===")
-    for k in sorted(g.keys()):
-        lines.append("  {:<20} {}".format(k, fmt(g[k])))
 
-    print("[*] accessors...")
-    acc = acc_search()
+    # 4. AMFI
+    print("[*] amfi...")
+    amfi, amfi_src = analyze_amfi()
+    lines.append("=== amfi_get_out_of_my_way ===")
+    lines.append("  value  = " + (fmt(amfi) if amfi else "NOT_FOUND"))
+    lines.append("  source = " + amfi_src)
     lines.append("")
-    lines.append("=== ACCESSORS ===")
-    for k in sorted(acc.keys()):
-        lines.append("  {:<40} 0x{:X}".format(k, acc[k]))
 
-    print("[*] proc walk...")
-    kp = g.get("kernproc")
-    kpp = deref_var(kp)
-    pid_off = None
-    pw = {}
-    if kpp is not None:
-        pid_off, _ = find_pid(kpp)
-        pw = walk_proc(kpp, pid_off)
-    lines.append("")
-    lines.append("=== PROC ===")
-    lines.append("kernproc_var = " + fmt(kp))
-    lines.append("proc_ptr     = " + fmt(kpp))
-    for k in sorted(pw.keys()):
-        lines.append("  {:<30} 0x{:X}".format(k, pw[k]))
-
-    print("[*] task walk...")
-    tp = deref_var(g.get("kernel_task"))
-    tw = walk_task(tp)
-    lines.append("")
-    lines.append("=== TASK ===")
-    lines.append("kernel_task_var = " + fmt(g.get("kernel_task")))
-    lines.append("task_ptr        = " + fmt(tp))
-    for k in sorted(tw.keys()):
-        lines.append("  {:<30} 0x{:X}".format(k, tw[k]))
-
-    # merged
-    merged = {}
-    for src in (CONF_S, acc, pw, tw):
-        for k, v in src.items():
-            if isinstance(v, int):
-                merged[k] = v
-    lines.append("")
-    lines.append("=== OFFSETS (final) ===")
-    for k in sorted(merged.keys()):
-        lines.append("  off_{:<40} 0x{:X}".format(k, merged[k]))
-
-    print("[*] zones...")
-    zs = zones()
-    lines.append("")
-    lines.append("=== ZONES ===")
-    for k in sorted(zs.keys()):
-        lines.append("  {:<45} {}".format(k, fmt(zs[k])))
-
-    print("[*] necp funcs...")
-    necp = find_necp_funcs()
-    lines.append("")
-    lines.append("=== NECP SYMBOLS ===")
-    for k in sorted(necp.keys()):
-        lines.append("  {:<40} {}".format(k, fmt(necp[k])))
-
-    print("[*] disasm hardcoded...")
-    for name, addr in DISASM:
-        if not is_ktext(addr):
+    # Дизасм всех найденных функций
+    lines.append("=== DISASM ===")
+    for key in ("proc_ucred", "kauth_cred_getuid", "kauth_cred_getsvuid",
+                "necp_client_add_flow", "necp_flow_alloc"):
+        a, nm = find_func(TARGET_FUNCS.get(key, [key]))
+        if a is None:
             continue
-        dump_dis(name, addr, lines)
+        lines.append("")
+        lines.append("--- {} @ {} ---".format(nm, fmt(a)))
+        for l in dis(a, maxl=80):
+            lines.append(l)
 
-    print("[*] disasm necp symbols...")
-    for k in sorted(necp.keys()):
-        dump_dis(k, necp[k], lines)
-
-    # JSON
+    # Итоговый JSON
     jout = {
         "kernel_base": fmt(KBASE),
-        "sysent_base": fmt(sb) if sb else None,
-        "sysent_count": n_sys,
-        "mach_trap_table": fmt(mt) if mt else None,
-        "globals": {k: fmt(v) for k, v in g.items()},
-        "offsets": merged,
-        "accessors": acc,
-        "zones": {k: fmt(v) for k, v in zs.items()},
-        "necp_symbols": {k: fmt(v) for k, v in necp.items()},
+        "proc_p_ucred_off": p_off,
+        "ucred_cr_uid_off": u.get("ucred_cr_uid_off"),
+        "ucred_cr_svuid_off": u.get("ucred_cr_svuid_off"),
+        "NCF_ASSIGNED_OFF": n.get("NCF_ASSIGNED_OFF"),
+        "NCF_STRUCT_SZ": n.get("NCF_STRUCT_SZ"),
+        "amfi_get_out_of_my_way": amfi,
     }
     try:
         with open(OUT_JSON, "w") as fh:
@@ -947,7 +620,6 @@ def main():
     except Exception:
         pass
 
-    # Обрезаем если разрастается
     if len(lines) > MAX_TOTAL:
         lines = lines[:MAX_TOTAL]
         lines.append("=== TRUNCATED ===")
@@ -961,12 +633,12 @@ def main():
         print("[-] write: " + str(e))
 
     print("=== SUMMARY ===")
-    print("  sysent_count  {}".format(n_sys))
-    print("  globals       {}".format(len(g)))
-    print("  accessors     {}".format(len(acc)))
-    print("  offsets       {}".format(len(merged)))
-    print("  zones         {}".format(len(zs)))
-    print("  necp_funcs    {}".format(len(necp)))
+    print("  proc_p_ucred_off   {}".format(fmt(p_off) if p_off else "NOT_FOUND"))
+    print("  ucred_cr_uid_off   0x{:X}".format(u.get("ucred_cr_uid_off", 0)))
+    print("  ucred_cr_svuid_off 0x{:X}".format(u.get("ucred_cr_svuid_off", 0)))
+    print("  NCF_ASSIGNED_OFF   0x{:X}".format(n.get("NCF_ASSIGNED_OFF", 0)))
+    print("  NCF_STRUCT_SZ      0x{:X}".format(n.get("NCF_STRUCT_SZ", 0)))
+    print("  amfi_get_out_of_my_way {}".format(fmt(amfi) if amfi else "NOT_FOUND"))
     print("=== DONE ===")
 
 
