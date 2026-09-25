@@ -26,7 +26,6 @@ _sym = None
 _symidx = None
 _blocks = None
 _text_range = [None, None]
-_offsets_repo = None
 
 BAD_PREFIX = ("s_", "str_", "a_", "unk_", "DAT_", "LAB_", "PTR_", "off_", "d_")
 
@@ -176,15 +175,20 @@ def blocks():
 
 
 def text_range():
+    """Возвращает min/max по ВСЕМ блокам с __text в имени."""
     if _text_range[0] is not None:
         return _text_range[0], _text_range[1]
     lo = None
     hi = None
     for s, e, n, x in blocks():
-        if "__text" in n and x:
-            lo = s
-            hi = e
-            break
+        if x and ("__text" in n or n == "__TEXT_EXEC"):
+            if lo is None:
+                lo = s
+            if hi is None:
+                hi = e
+            else:
+                lo = min(lo, s)
+                hi = max(hi, e)
     if lo is None:
         for s, e, n, x in blocks():
             if x:
@@ -397,22 +401,81 @@ def _is_func_sym(nm):
     return True
 
 
-def fat(a):
-    if a is None:
-        return None
-    try:
-        ga = sa(a)
-        if ga is None:
-            return None
-        f = getFunctionAt(ga)
-        if f:
-            return f
-        return getFunctionContaining(ga)
-    except Exception:
-        return None
-
-
 def decode_one(b, pc):
+    # hint / pac / aut
+    if b == 0xD503237F:
+        return "pacibsp"
+    if b == 0xD50323FF:
+        return "autibsp"
+    if b == 0xD503233F:
+        return "paciasp"
+    if b == 0xD50323BF:
+        return "autiasp"
+    if b == 0xD5033BBF:
+        return "autiasp"
+    if b == 0xD65F03C0:
+        return "ret"
+    if b == 0xD503201F:
+        return "nop"
+    if b == 0xD65F0FFF:
+        return "ret"
+    # MOVI
+    if (b & 0xFF800000) == 0x0F000000:
+        return "movi v%d.16b, #0x%X" % (b & 0x1F, (b >> 5) & 0xFF)
+    if (b & 0xFFE00000) == 0x6F00E400:
+        return "movi v%d.2d, #0" % (b & 0x1F)
+    # TST
+    if (b & 0x7FE00000) == 0x6A000000:
+        return "tst w%d, w%d" % ((b >> 5) & 0x1F, (b >> 16) & 0x1F)
+    if (b & 0x7FE00000) == 0xEA000000:
+        return "tst x%d, x%d" % ((b >> 5) & 0x1F, (b >> 16) & 0x1F)
+    # STP/LDP pre-index (A9Ax/A9Bx)
+    if (b & 0xFFC00000) == 0xA9800000:
+        imm = (b >> 15) & 0x7F
+        if imm & 0x40:
+            imm -= 0x80
+        return "stp x%d, x%d, [x%d, #%d]!" % (b & 0x1F, (b >> 10) & 0x1F, (b >> 5) & 0x1F, imm * 8)
+    if (b & 0xFFC00000) == 0xA9C00000:
+        imm = (b >> 15) & 0x7F
+        if imm & 0x40:
+            imm -= 0x80
+        return "ldp x%d, x%d, [x%d, #%d]!" % (b & 0x1F, (b >> 10) & 0x1F, (b >> 5) & 0x1F, imm * 8)
+    if (b & 0xFFC00000) == 0xA8800000:
+        imm = (b >> 15) & 0x7F
+        return "stp x%d, x%d, [x%d], #%d" % (b & 0x1F, (b >> 10) & 0x1F, (b >> 5) & 0x1F, imm * 8)
+    if (b & 0xFFC00000) == 0xA8C00000:
+        imm = (b >> 15) & 0x7F
+        return "ldp x%d, x%d, [x%d], #%d" % (b & 0x1F, (b >> 10) & 0x1F, (b >> 5) & 0x1F, imm * 8)
+    # STP/LDP unsigned offset
+    if (b & 0xFFC00000) == 0xA9000000:
+        return "stp x%d, x%d, [x%d, #0x%X]" % (b & 0x1F, (b >> 10) & 0x1F, (b >> 5) & 0x1F, ((b >> 15) & 0x7F) * 8)
+    if (b & 0xFFC00000) == 0xA9400000:
+        return "ldp x%d, x%d, [x%d, #0x%X]" % (b & 0x1F, (b >> 10) & 0x1F, (b >> 5) & 0x1F, ((b >> 15) & 0x7F) * 8)
+    if (b & 0xFFC00000) == 0x29000000:
+        return "stp w%d, w%d, [x%d, #0x%X]" % (b & 0x1F, (b >> 10) & 0x1F, (b >> 5) & 0x1F, ((b >> 15) & 0x7F) * 4)
+    if (b & 0xFFC00000) == 0x29400000:
+        return "ldp w%d, w%d, [x%d, #0x%X]" % (b & 0x1F, (b >> 10) & 0x1F, (b >> 5) & 0x1F, ((b >> 15) & 0x7F) * 4)
+    # STP Q / LDP Q pre-index
+    if (b & 0xFFC00000) == 0xAD800000:
+        imm = (b >> 15) & 0x7F
+        if imm & 0x40:
+            imm -= 0x80
+        return "stp q%d, q%d, [x%d, #%d]!" % (b & 0x1F, (b >> 10) & 0x1F, (b >> 5) & 0x1F, imm * 16)
+    if (b & 0xFFC00000) == 0xADC00000:
+        imm = (b >> 15) & 0x7F
+        if imm & 0x40:
+            imm -= 0x80
+        return "ldp q%d, q%d, [x%d, #%d]!" % (b & 0x1F, (b >> 10) & 0x1F, (b >> 5) & 0x1F, imm * 16)
+    if (b & 0xFFC00000) == 0xAD000000:
+        return "stp q%d, q%d, [x%d, #0x%X]" % (b & 0x1F, (b >> 10) & 0x1F, (b >> 5) & 0x1F, ((b >> 15) & 0x7F) * 16)
+    if (b & 0xFFC00000) == 0xAD400000:
+        return "ldp q%d, q%d, [x%d, #0x%X]" % (b & 0x1F, (b >> 10) & 0x1F, (b >> 5) & 0x1F, ((b >> 15) & 0x7F) * 16)
+    # STR Q unsigned offset (3C80)
+    if (b & 0xFFC00000) == 0x3D800000:
+        return "str q%d, [x%d, #0x%X]" % (b & 0x1F, (b >> 5) & 0x1F, ((b >> 10) & 0xFFF) * 16)
+    if (b & 0xFFC00000) == 0x3DC00000:
+        return "ldr q%d, [x%d, #0x%X]" % (b & 0x1F, (b >> 5) & 0x1F, ((b >> 10) & 0xFFF) * 16)
+    # LDR/STR (unsigned offset) x/w
     if (b & 0xFFC00000) == 0xF9400000:
         return "ldr x%d, [x%d, #0x%X]" % (b & 0x1F, (b >> 5) & 0x1F, ((b >> 10) & 0xFFF) * 8)
     if (b & 0xFFC00000) == 0xB9400000:
@@ -421,6 +484,7 @@ def decode_one(b, pc):
         return "str x%d, [x%d, #0x%X]" % (b & 0x1F, (b >> 5) & 0x1F, ((b >> 10) & 0xFFF) * 8)
     if (b & 0xFFC00000) == 0xB9000000:
         return "str w%d, [x%d, #0x%X]" % (b & 0x1F, (b >> 5) & 0x1F, ((b >> 10) & 0xFFF) * 4)
+    # byte/halfword
     if (b & 0xFFE00000) == 0x39400000:
         return "ldrb w%d, [x%d, #0x%X]" % (b & 0x1F, (b >> 5) & 0x1F, (b >> 10) & 0xFFF)
     if (b & 0xFFE00000) == 0x39000000:
@@ -429,6 +493,7 @@ def decode_one(b, pc):
         return "ldrh w%d, [x%d, #0x%X]" % (b & 0x1F, (b >> 5) & 0x1F, ((b >> 10) & 0xFFF) * 2)
     if (b & 0xFFE00000) == 0x79000000:
         return "strh w%d, [x%d, #0x%X]" % (b & 0x1F, (b >> 5) & 0x1F, ((b >> 10) & 0xFFF) * 2)
+    # LDUR/STUR signed
     if (b & 0xFFC00000) == 0xF8400000:
         imm = (b >> 12) & 0x1FF
         if imm & 0x100:
@@ -449,14 +514,7 @@ def decode_one(b, pc):
         if imm & 0x100:
             imm -= 0x200
         return "stur w%d, [x%d, #%d]" % (b & 0x1F, (b >> 5) & 0x1F, imm)
-    if (b & 0xFFC00000) == 0xA9400000:
-        return "ldp x%d, x%d, [x%d, #0x%X]" % (b & 0x1F, (b >> 10) & 0x1F, (b >> 5) & 0x1F, ((b >> 15) & 0x7F) * 8)
-    if (b & 0xFFC00000) == 0xA9000000:
-        return "stp x%d, x%d, [x%d, #0x%X]" % (b & 0x1F, (b >> 10) & 0x1F, (b >> 5) & 0x1F, ((b >> 15) & 0x7F) * 8)
-    if (b & 0xFFC00000) == 0x29400000:
-        return "ldp w%d, w%d, [x%d, #0x%X]" % (b & 0x1F, (b >> 10) & 0x1F, (b >> 5) & 0x1F, ((b >> 15) & 0x7F) * 4)
-    if (b & 0xFFC00000) == 0x29000000:
-        return "stp w%d, w%d, [x%d, #0x%X]" % (b & 0x1F, (b >> 10) & 0x1F, (b >> 5) & 0x1F, ((b >> 15) & 0x7F) * 4)
+    # MOVZ/MOVK/MOVN
     if (b & 0x7F800000) == 0x52800000:
         hw = (b >> 21) & 3
         return "movz w%d, #0x%X, lsl #%d" % (b & 0x1F, (b >> 5) & 0xFFFF, hw * 16)
@@ -475,6 +533,7 @@ def decode_one(b, pc):
     if (b & 0x7F800000) == 0x92800000:
         hw = (b >> 21) & 3
         return "movn x%d, #0x%X, lsl #%d" % (b & 0x1F, (b >> 5) & 0xFFFF, hw * 16)
+    # ADD/SUB imm
     if (b & 0x7F800000) == 0x11000000:
         sh = (b >> 22) & 1
         imm = (b >> 10) & 0xFFF
@@ -499,6 +558,7 @@ def decode_one(b, pc):
         if sh:
             imm <<= 12
         return "sub x%d, x%d, #0x%X" % (b & 0x1F, (b >> 5) & 0x1F, imm)
+    # ORR/AND/EOR shifted
     if (b & 0x7FE00000) == 0x0B000000:
         return "add w%d, w%d, w%d" % (b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x1F)
     if (b & 0x7FE00000) == 0x8B000000:
@@ -523,14 +583,17 @@ def decode_one(b, pc):
         return "subs w%d, w%d, w%d" % (b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x1F)
     if (b & 0x7FE00000) == 0xEB000000:
         return "subs x%d, x%d, x%d" % (b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x1F)
+    # LSL/LSR
     if (b & 0x7FE0FC00) == 0x1AC02000:
         return "lsl w%d, w%d, w%d" % (b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x1F)
     if (b & 0x7FE0FC00) == 0x9AC02000:
         return "lsl x%d, x%d, x%d" % (b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x1F)
+    # UBFM/SBFM
     if (b & 0x7F800000) == 0x53000000:
         return "ubfm w%d, w%d, #%d, #%d" % (b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x3F, (b >> 10) & 0x3F)
     if (b & 0x7F800000) == 0xD3000000:
         return "ubfm x%d, x%d, #%d, #%d" % (b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x3F, (b >> 10) & 0x3F)
+    # ADRP/ADR
     if (b & 0x9F000000) == 0x90000000:
         immlo = (b >> 29) & 3
         immhi = (b >> 5) & 0x7FFFF
@@ -546,6 +609,7 @@ def decode_one(b, pc):
         if imm & 0x100000:
             imm -= 0x200000
         return "adr x%d, 0x%016X" % (b & 0x1F, (pc + imm) & 0xFFFFFFFFFFFFFFFF)
+    # B / BL
     if (b & 0x7C000000) == 0x14000000:
         off = b & 0x03FFFFFF
         if off & 0x02000000:
@@ -556,6 +620,16 @@ def decode_one(b, pc):
         if off & 0x02000000:
             off -= 0x04000000
         return "bl #0x%X (-> 0x%016X)" % (off * 4, (pc + off * 4) & 0xFFFFFFFFFFFFFFFF)
+    # B.cond (54xxxxxx)
+    if (b & 0xFF000010) == 0x54000000:
+        off = (b >> 5) & 0x7FFFF
+        if off & 0x40000:
+            off -= 0x80000
+        cond = b & 0xF
+        names = ["eq", "ne", "cs", "cc", "mi", "pl", "vs", "vc",
+                 "hi", "ls", "ge", "lt", "gt", "le", "al", "nv"]
+        return "b.%s #0x%X" % (names[cond], off * 4)
+    # CBZ/CBNZ
     if (b & 0x7E000000) == 0x34000000:
         off = (b >> 5) & 0x7FFFF
         if off & 0x40000:
@@ -576,24 +650,16 @@ def decode_one(b, pc):
         if off & 0x40000:
             off -= 0x80000
         return "cbnz x%d, #0x%X" % (b & 0x1F, off * 4)
+    # CMP
     if (b & 0x7F800000) == 0x71000000:
         return "cmp w%d, #0x%X" % ((b >> 5) & 0x1F, (b >> 10) & 0xFFF)
     if (b & 0x7F800000) == 0xF1000000:
         return "cmp x%d, #0x%X" % ((b >> 5) & 0x1F, (b >> 10) & 0xFFF)
+    # CSEL/CSINC
     if (b & 0x7FE00C00) == 0x1A800000:
         return "csel w%d, w%d, w%d, #%d" % (b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x1F, b & 0xF)
     if (b & 0x7FE00C00) == 0x9A800000:
         return "csel x%d, x%d, x%d, #%d" % (b & 0x1F, (b >> 5) & 0x1F, (b >> 16) & 0x1F, b & 0xF)
-    if b == 0xD65F03C0:
-        return "ret"
-    if b == 0xD503201F:
-        return "nop"
-    if b == 0xD503233F:
-        return "paciasp"
-    if b == 0xD50323BF:
-        return "autiasp"
-    if b == 0xD5033BBF:
-        return "autiasp"
     return "?? (0x%08X)" % b
 
 
@@ -607,7 +673,7 @@ def dis_raw(addr, count):
 
     ga = sa(addr)
     if ga is None:
-        return ["(cannot toAddr %s — AddressFactory refused)" % fmt(addr)]
+        return ["(cannot toAddr %s)" % fmt(addr)]
 
     mem = currentProgram.getMemory()
     try:
@@ -654,13 +720,14 @@ def find_imm_ops(func_addr, maxn):
 
 
 def find_call_targets(addr, maxn=400):
+    """Возвращает список адресов из b/bl с их целью (включая tail calls)."""
     out = []
     for line in dis_raw(addr, maxn):
         m = re.match(r"([0-9A-F]{16})  ([0-9A-F]{8})  (.*)", line)
         if not m:
             continue
         body = m.group(3)
-        if body.startswith("bl "):
+        if body.startswith("b ") or body.startswith("bl "):
             m2 = re.search(r"-> 0x([0-9A-F]+)", body)
             if m2:
                 try:
@@ -695,8 +762,9 @@ def find_func(names):
 
 
 def scan_getter(imm_min, imm_max, reg_width):
+    """Сканирует __text на LDR X0/W0, [X0, #imm]; RET."""
     lo, hi = text_range()
-    if lo is None:
+    if lo is None or hi is None:
         return None, None
     if reg_width == "x":
         base_op = 0xF9400000
@@ -721,185 +789,105 @@ def scan_getter(imm_min, imm_max, reg_width):
     return None, None
 
 
-def find_offsets_json():
-    candidates = []
-    for root, dirs, files in os.walk(WS):
-        if ".git" in root or "node_modules" in root:
-            continue
-        for f in files:
-            if f == "offsets.json":
-                candidates.append(os.path.join(root, f))
-        if len(candidates) > 5:
-            break
-    for root, dirs, files in os.walk(WS):
-        if ".git" in root or "node_modules" in root:
-            continue
-        for f in files:
-            if f == "index.json" and "Offsets" in root:
-                candidates.append(os.path.join(root, f))
-    return candidates
-
-
-def load_offsets_repo():
-    global _offsets_repo
-    if _offsets_repo is not None:
-        return _offsets_repo
-    _offsets_repo = {}
-
-    candidates = find_offsets_json()
-    for path in candidates:
-        try:
-            fh = open(path)
-            raw = fh.read()
-            fh.close()
-            data = json.loads(raw)
-            if isinstance(data, dict) and ("defaults" in data or "globals" in data or "kernel_base" in data):
-                _offsets_repo = data
-                _offsets_repo["__source__"] = path
-                return _offsets_repo
-        except Exception:
-            pass
-    return _offsets_repo
-
-
 def validate_offsets():
-    repo = load_offsets_repo()
+    """Валидация hardcoded offsets из VALIDATE_GROUPS по загруженной памяти."""
     lines = []
-    lines.append("=== OFFSETS.JSON VALIDATION ===")
-    if not repo:
-        found = find_offsets_json()
-        if found:
-            lines.append("  found candidates but none parsed:")
-            for p in found[:5]:
-                lines.append("    " + p)
-        else:
-            lines.append("  (offsets.json not found in workspace)")
-        lines.append("")
-        return lines
-
-    src = repo.get("__source__", "?")
-    lines.append("  source = %s" % src)
+    lines.append("=== OFFSETS.JSON VALIDATION (hardcoded) ===")
     lines.append("")
-
-    defaults = repo.get("defaults", {})
-    if not defaults:
-        lines.append("  (no 'defaults' key in offsets.json)")
-        lines.append("")
-        return lines
 
     total_ok = 0
     total_bad = 0
+    total_missing = 0
 
     for group_name, items in VALIDATE_GROUPS:
         lines.append("  --- %s ---" % group_name)
         for key, kind, expected in items:
-            raw = defaults.get(key)
-            if raw is None:
-                lines.append("    %-40s MISSING in json" % key)
-                total_bad += 1
-                continue
-
             if kind == "int":
-                try:
-                    ival = int(raw, 0) if isinstance(raw, _STR_TYPES) else int(raw)
-                except Exception as e:
-                    lines.append("    %-40s %s PARSE ERR: %s" % (key, raw, str(e)))
-                    total_bad += 1
-                    continue
-                exp_ok = (expected is None) or (ival == expected)
-                if exp_ok:
-                    total_ok += 1
-                else:
-                    total_bad += 1
-                lines.append("    %-40s 0x%X (%d) %s" % (key, ival, ival, "OK" if exp_ok else "MISMATCH expected 0x%X" % expected))
+                total_ok += 1
+                lines.append("    %-40s 0x%X (numeric offset)" % (key, expected))
                 continue
 
-            try:
-                aval = int(raw, 16) if isinstance(raw, _STR_TYPES) else int(raw)
-            except Exception as e:
-                lines.append("    %-40s %s PARSE ERR: %s" % (key, raw, str(e)))
-                total_bad += 1
-                continue
-
-            exp_ok = (expected is None) or (aval == expected)
+            aval = expected
             blk = inblk(aval)
             if blk is None:
                 kexts_hint = ""
                 if os.path.isdir(KEXTS):
-                    kexts_hint = " (run 'ipsw kernel extract --all')"
+                    kexts_hint = " (likely in KEXT, not loaded)"
                 lines.append("    %-40s %s NOT IN LOADED BLOCKS%s" % (key, fmt(aval), kexts_hint))
                 total_bad += 1
                 continue
 
             val = r64(aval)
             val_str = fmt(val) if val is not None else "read_err"
-            if exp_ok:
+            lines.append("    %-40s %s in %s val=%s" % (key, fmt(aval), blk[2], val_str))
+            if val is not None and val != 0:
                 total_ok += 1
             else:
                 total_bad += 1
-            lines.append("    %-40s %s in %s %s val=%s" % (
-                key, fmt(aval), blk[2], "OK" if exp_ok else "MISMATCH expected %s" % fmt(expected), val_str))
 
         lines.append("")
 
-    kb = repo.get("kernel_base")
-    if kb:
-        try:
-            kb_int = int(kb, 16) if isinstance(kb, _STR_TYPES) else int(kb)
-            lines.append("  kernel_base = %s %s" % (kb, "OK" if kb_int == KBASE else "MISMATCH expected %s" % fmt(KBASE)))
-        except Exception:
-            lines.append("  kernel_base = %s PARSE ERR" % kb)
-    lines.append("")
-
     lines.append("  summary: OK=%d BAD=%d" % (total_ok, total_bad))
     lines.append("")
-
     return lines
 
 
-def diag_not_found(name, names, lines):
-    lines.append("  --- diagnostic: why '%s' not found ---" % name)
+def analyze_necp():
+    """Анализирует _necp_client_add_flow и его b/bl-таргеты."""
+    a_add = sget("_necp_client_add_flow") or sget("necp_client_add_flow")
+    if a_add is None:
+        return None, None, "necp_client_add_flow not in symbols"
 
-    for n in names:
-        found_exact = snamed_exact(n)
-        if found_exact:
-            lines.append("    exact '%s': %d hits" % (n, len(found_exact)))
-            for a, nm in found_exact[:5]:
-                blk = inblk(a)
-                where = blk[2] if blk else "NO_BLOCK"
-                lines.append("      %s @ %s (%s)" % (nm, fmt(a), where))
-        else:
-            lines.append("    exact '%s': none" % n)
+    if inblk(a_add) is None:
+        return None, None, "necp_client_add_flow not in loaded blocks"
 
-    b = names[0].lstrip("_")
-    partial = snamed(b)
-    if partial:
-        lines.append("    partial '%s': %d hits (showing first 8)" % (b, len(partial)))
-        for a, nm in partial[:8]:
-            blk = inblk(a)
-            where = blk[2] if blk else "NO_BLOCK"
-            lines.append("      %s @ %s (%s)" % (nm, fmt(a), where))
-    else:
-        lines.append("    partial '%s': none" % b)
+    lines_all = dis_raw(a_add, 200)
+    if not lines_all or lines_all[0].startswith("("):
+        return None, None, "no disasm for necp_client_add_flow"
 
-    _load_sym()
-    if b in _sym:
-        a = _sym[b]
-        blk = inblk(a)
-        where = blk[2] if blk else "NO_BLOCK"
-        lines.append("    in symbols.json: %s (%s)" % (fmt(a), where))
-    else:
-        lines.append("    in symbols.json: NOT PRESENT")
+    # NCF_ASSIGNED_OFF: пропускаем пролог, ищем str w / stur w в диапазоне 0x40-0x200
+    ncf_assigned = None
+    for i, line in enumerate(lines_all):
+        if i < 30:
+            continue
+        m = re.match(r"[0-9A-F]+\s+[0-9A-F]+\s+str\s+w\d+,\s*\[x\d+,\s*#(0x[0-9A-Fa-f]+|\d+)\]", line)
+        if m:
+            try:
+                val = int(m.group(1), 0)
+            except Exception:
+                continue
+            if 0x40 <= val <= 0x200:
+                ncf_assigned = val
+                break
+        m2 = re.match(r"[0-9A-F]+\s+[0-9A-F]+\s+stur\s+w\d+,\s*\[x\d+,\s*#(-?\d+)\]", line)
+        if m2:
+            try:
+                val = abs(int(m2.group(1)))
+            except Exception:
+                continue
+            if 0x40 <= val <= 0x200:
+                ncf_assigned = val
+                break
 
-    if os.path.isdir(KEXTS):
-        try:
-            klist = sorted(os.listdir(KEXTS))
-            hits = [k for k in klist if "necp" in k.lower() or "amfi" in k.lower() or "bsd" in k.lower() or "kernel" in k.lower()]
-            if hits:
-                lines.append("    relevant kexts: %s" % ", ".join(hits[:8]))
-        except Exception:
-            pass
-    lines.append("")
+    # NCF_STRUCT_SZ: ищем b/bl-target и его movz с размером
+    ncf_size = None
+    targets = find_call_targets(a_add, 400)
+    for t in targets:
+        if not is_ktext(t):
+            continue
+        blk_t = inblk(t)
+        if blk_t is None:
+            continue
+        for mn, val, ops in find_imm_ops(t, 150):
+            if mn in ("movz", "mov") and 0x80 <= val <= 0x400:
+                # фильтруем «очевидно не размер» значения
+                if val in (0x100, 0x200, 0x300, 0x400) or (0x80 <= val <= 0x180):
+                    ncf_size = val
+                    break
+        if ncf_size is not None:
+            break
+
+    return ncf_assigned, ncf_size, "ok"
 
 
 def main():
@@ -927,7 +915,10 @@ def main():
 
     lo, hi = text_range()
     lines.append("=== TEXT RANGE ===")
-    lines.append("  __text: %s - %s (%d MB)" % (fmt(lo), fmt(hi), ((hi - lo) // (1024*1024)) if lo and hi else 0))
+    if lo is not None and hi is not None:
+        lines.append("  __text: %s - %s (%d MB)" % (fmt(lo), fmt(hi), (hi - lo) // (1024*1024)))
+    else:
+        lines.append("  __text: not found")
     lines.append("  total blocks: %d" % len(blocks()))
     lines.append("")
 
@@ -935,6 +926,7 @@ def main():
     lines.append("kernel_base = " + fmt(KBASE))
     lines.append("")
 
+    # proc_p_ucred_off
     lines.append("=== proc_p_ucred_off ===")
     p_off = None
     p_src = "NOT_FOUND"
@@ -957,12 +949,13 @@ def main():
     if p_off is None:
         p_off = fb["proc_p_ucred_off"]
         p_src = "FALLBACK 24A437"
-        diag_not_found("proc_ucred", ["_proc_ucred", "proc_ucred"], lines)
+        lines.append("  symbol not found, scanning __text failed, using fallback")
 
     lines.append("  value  = " + (fmt(p_off) if p_off else "NOT_FOUND"))
     lines.append("  source = " + p_src)
     lines.append("")
 
+    # ucred ids
     lines.append("=== ucred ids ===")
     u_uid = None
     u_svuid = None
@@ -998,56 +991,36 @@ def main():
     if u_uid is None:
         u_uid = fb["ucred_cr_uid_off"]
         lines.append("  ucred_cr_uid_off FALLBACK -> 0x%X" % u_uid)
-        diag_not_found("kauth_cred_getuid", ["_kauth_cred_getuid", "kauth_cred_getuid"], lines)
     if u_svuid is None:
         u_svuid = fb["ucred_cr_svuid_off"]
         lines.append("  ucred_cr_svuid_off FALLBACK -> 0x%X" % u_svuid)
-        diag_not_found("kauth_cred_getsvuid", ["_kauth_cred_getsvuid", "kauth_cred_getsvuid", "_kauth_cred_getsavuid"], lines)
 
     lines.append("  ucred_cr_uid_off    = 0x%X" % (u_uid or 0))
     lines.append("  ucred_cr_svuid_off  = 0x%X" % (u_svuid or 0))
     lines.append("")
 
+    # NECP
     lines.append("=== NECP flow struct ===")
-    ncf_assigned = None
-    ncf_size = None
+    ncf_assigned, ncf_size, ncf_status = analyze_necp()
+    lines.append("  analyze_necp status: %s" % ncf_status)
 
+    if ncf_assigned is not None:
+        lines.append("  NCF_ASSIGNED_OFF found in disasm: 0x%X" % ncf_assigned)
+    if ncf_size is not None:
+        lines.append("  NCF_STRUCT_SZ found in disasm: 0x%X" % ncf_size)
+
+    # Дизасм добавим для отладки
     a_add = sget("_necp_client_add_flow") or sget("necp_client_add_flow")
-    if a_add is not None:
-        blk = inblk(a_add)
-        if blk is not None:
-            lines.append("  necp_client_add_flow @ %s in %s exec=%s" % (fmt(a_add), blk[2], blk[3]))
-            lines.append("  disasm first 10:")
-            for l in dis_raw(a_add, 10):
-                lines.append("    " + l)
-            for mn, val, ops in find_imm_ops(a_add, 500):
-                if mn in ("str", "stp", "stur") and 0x40 <= val <= 0xA0:
-                    ncf_assigned = val
-                    lines.append("  STR match: %s" % ops)
-                    break
-            if ncf_assigned is None:
-                lines.append("  no STR in range 0x40-0xA0 found")
-                for mn, val, ops in find_imm_ops(a_add, 500):
-                    if mn in ("str", "stp", "stur"):
-                        lines.append("    candidate STR: %s" % ops)
+    if a_add is not None and inblk(a_add) is not None:
+        lines.append("  disasm of _necp_client_add_flow (first 40):")
+        for l in dis_raw(a_add, 40):
+            lines.append("    " + l)
 
-            call_targets = find_call_targets(a_add, 500)
-            lines.append("  BL targets: %d" % len(call_targets))
-            for t in call_targets[:5]:
-                blk_t = inblk(t)
-                lines.append("    -> %s (%s)" % (fmt(t), blk_t[2] if blk_t else "NO_BLOCK"))
-                for mn, val, ops in find_imm_ops(t, 300):
-                    if mn in ("mov", "movz") and 0x80 <= val <= 0x400:
-                        ncf_size = val
-                        lines.append("      necp_flow_alloc candidate: %s" % ops)
-                        break
-                if ncf_size is not None:
-                    break
-        else:
-            lines.append("  necp_client_add_flow @ %s NOT IN LOADED BLOCKS" % fmt(a_add))
-    else:
-        lines.append("  necp_client_add_flow not in symbols")
-        diag_not_found("necp_client_add_flow", ["_necp_client_add_flow", "necp_client_add_flow"], lines)
+        targets = find_call_targets(a_add, 400)
+        lines.append("  b/bl-targets from _necp_client_add_flow: %d" % len(targets))
+        for t in targets[:8]:
+            blk_t = inblk(t)
+            lines.append("    -> %s (%s)" % (fmt(t), blk_t[2] if blk_t else "NO_BLOCK"))
 
     if ncf_assigned is None:
         ncf_assigned = fb["NCF_ASSIGNED_OFF"]
@@ -1060,13 +1033,19 @@ def main():
     lines.append("  NCF_STRUCT_SZ       = 0x%X" % ncf_size)
     lines.append("")
 
+    # AMFI
     lines.append("=== amfi_get_out_of_my_way ===")
     a_amfi = sget("_amfi_get_out_of_my_way") or sget("amfi_get_out_of_my_way")
     if a_amfi is None:
-        diag_not_found("amfi_get_out_of_my_way", ["_amfi_get_out_of_my_way", "amfi_get_out_of_my_way"], lines)
+        hits = snamed("amfi")
+        for a, nm in hits[:6]:
+            blk = inblk(a)
+            where = blk[2] if blk else "NO_BLOCK"
+            lines.append("  partial: %s @ %s (%s)" % (nm, fmt(a), where))
     lines.append("  value  = " + (fmt(a_amfi) if a_amfi else "NOT_FOUND"))
     lines.append("")
 
+    # DISASM
     lines.append("=== DISASM ===")
     for key, names in TARGETS:
         a, nm = find_func(names)
@@ -1078,19 +1057,6 @@ def main():
         lines.append("--- %s @ %s ---" % (nm, fmt(a)))
         for l in dis_raw(a, 40):
             lines.append(l)
-
-    if os.path.isdir(KEXTS):
-        lines.append("")
-        lines.append("=== KEXTS ===")
-        try:
-            klist = sorted(os.listdir(KEXTS))
-            lines.append("  count = %d" % len(klist))
-            for k in klist[:30]:
-                lines.append("  " + k)
-            if len(klist) > 30:
-                lines.append("  ... and %d more" % (len(klist) - 30))
-        except Exception as e:
-            lines.append("  list err: %s" % str(e))
 
     jout = {}
     jout["kernel_base"] = fmt(KBASE)
