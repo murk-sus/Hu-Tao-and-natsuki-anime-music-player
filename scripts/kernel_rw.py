@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # @runtime Jython
-# kernel_rw.py — v9 (full blacktop symbols + fallback + NECP dispatcher)
+# kernel_rw.py — v10 (full blacktop symbols + built-in fallback + all NECP)
 
 import os, json, traceback
 from jarray import zeros
@@ -20,9 +20,9 @@ NECP_FALLBACK = {
     "necp_client_copy_interface":  0xFFFFFFF00A4EAC7C,
     "necp_client_copy_update":     0xFFFFFFF00A4EC264,
     "necp_client_action":          0xFFFFFFF00A4E5C28,
-    "necp_client_copy_result":     0xFFFFFFF00A4E7BE8,  # opcode 4
-    "necp_client_remove_client":   0xFFFFFFF00A4E76F4,  # opcode 2
-    "necp_client_copy_list":       0xFFFFFFF00A4E80FC,  # opcode 5
+    "necp_client_copy_result":     0xFFFFFFF00A4E7BE8,
+    "necp_client_remove_client":   0xFFFFFFF00A4E76F4,
+    "necp_client_copy_list":       0xFFFFFFF00A4E80FC,
 }
 
 NECP_TARGET_NAMES = list(NECP_FALLBACK.keys())
@@ -143,7 +143,7 @@ def decompile(f, timeout=240):
 def main():
     lines = []
     offsets_out = {}
-    print("=== kernel_rw.py v9 ===")
+    print("=== kernel_rw.py v10 ===")
 
     lines.append("=== PROGRAM ===")
     lines.append("name = %s" % currentProgram.getName())
