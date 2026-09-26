@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # @runtime Jython
-# kernel_rw.py — v5 (symbols-first, fast, fallback-aware)
+# kernel_rw.py — v6 (symbols-first, fast)
 
 import os, json, traceback
 from jarray import zeros
@@ -24,7 +24,6 @@ NECP_FALLBACK = {
     "necp_client_copy_update":     0xFFFFFFF00A4EC264,
 }
 
-# Целевые функции для поиска в symbols.json
 NECP_TARGET_NAMES = [
     "necp_open",
     "necp_client_add_flow",
@@ -77,7 +76,6 @@ def get_func(addr):
     except: return None
 
 def load_symbols(path):
-    """Загружает symbols.json от ipsw. Формат: список объектов {addr, name} или dict."""
     if not os.path.exists(path):
         print("[!] symbols.json not found")
         return {}
@@ -91,7 +89,9 @@ def load_symbols(path):
     if isinstance(data, list):
         for e in data:
             if isinstance(e, dict) and "name" in e and "addr" in e:
-                try: syms[e["name"]] = int(e["addr"], 16) if isinstance(e["addr"], str) else int(e["addr"])
+                try:
+                    a = e["addr"]
+                    syms[e["name"]] = int(a, 16) if isinstance(a, str) else int(a)
                 except: pass
     elif isinstance(data, dict):
         for k, v in data.items():
@@ -165,7 +165,7 @@ def decompile(f, timeout=180):
 def main():
     lines = []
     offsets_out = {}
-    print("=== kernel_rw.py v5 ===")
+    print("=== kernel_rw.py v6 ===")
 
     lines.append("=== PROGRAM ===")
     lines.append("name = %s" % currentProgram.getName())
@@ -173,7 +173,7 @@ def main():
     lines.append("max  = %s" % fmt(currentProgram.getMemory().getMaxAddress().getOffset()))
     lines.append("")
 
-    # 1) Загружаем symbols.json от ipsw
+    # 1) Загружаем symbols.json
     syms = load_symbols(SYMBOLS_JSON)
     lines.append("=== SYMBOLS ===")
     lines.append("loaded = %d" % len(syms))
@@ -187,7 +187,6 @@ def main():
     lines.append("=== RESOLVED NECP TARGETS ===")
     for name in NECP_TARGET_NAMES:
         found = None
-        # Ищем по имени (с учётом возможного префикса _)
         for k in syms:
             if k.lstrip("_") == name or k == name:
                 found = syms[k]; break
