@@ -1,384 +1,62 @@
-name: Extract Offsets
-
-on:
-  push:
-    branches: [ main ]
-  workflow_dispatch:
-
-permissions:
-  contents: read
-
-jobs:
-  offsets:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 360
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Clean stale outputs
-        run: |
-          rm -f result.txt offsets.json kernel.log symbols.json
-          rm -f /tmp/so.txt /tmp/se.txt /tmp/sym_out.txt /tmp/sym_err.txt /tmp/dl.log
-          rm -rf /tmp/sigs /tmp/sig.tar.gz
-          ls -la
-
-      - uses: actions/setup-java@v4
-        with:
-          java-version: "25"
-          distribution: temurin
-
-      - uses: actions/cache@v4
-        id: cache-ghidra
-        with:
-          path: ${{ github.workspace }}/ghidra
-          key: ghidra-12.1.2-jython-v4
-
-      - if: steps.cache-ghidra.outputs.cache-hit != 'true'
-        name: Install Ghidra
-        run: |
-          set -euo pipefail
-          echo "=== Ghidra cache MISS ==="
-          df -h /
-          curl -fsSL -o /tmp/g.zip https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_12.1.2_build/ghidra_12.1.2_PUBLIC_20260605.zip
-          unzip -q /tmp/g.zip -d "$GITHUB_WORKSPACE"
-          mv "$GITHUB_WORKSPACE/ghidra_12.1.2_PUBLIC" "$GITHUB_WORKSPACE/ghidra"
-          JYTHON_ZIP=$(find "$GITHUB_WORKSPACE/ghidra/Extensions/Ghidra" -maxdepth 1 -name "*Jython*.zip" | head -n1)
-          echo "JYTHON_ZIP=$JYTHON_ZIP"
-          test -n "$JYTHON_ZIP"
-          mkdir -p "$GITHUB_WORKSPACE/ghidra/Ghidra/Extensions"
-          unzip -q "$JYTHON_ZIP" -d "$GITHUB_WORKSPACE/ghidra/Ghidra/Extensions"
-          rm -f /tmp/g.zip
-
-      - name: Set GHIDRA_ROOT
-        run: echo "GHIDRA_ROOT=$GITHUB_WORKSPACE/ghidra" >> "$GITHUB_ENV"
-
-      - name: Validate Ghidra
-        run: |
-          set -euo pipefail
-          echo "GHIDRA_ROOT=$GHIDRA_ROOT"
-          test -x "$GHIDRA_ROOT/support/analyzeHeadless"
-          test -d "$GHIDRA_ROOT/Ghidra/Extensions/Jython"
-          ls -la "$GHIDRA_ROOT/support/analyzeHeadless"
-          ls -la "$GHIDRA_ROOT/Ghidra/Extensions/Jython" | head -5
-          echo "Ghidra OK"
-
-      - uses: actions/cache@v4
-        id: cache-ipsw
-        with:
-          path: /usr/local/bin/ipsw
-          key: ipsw-3.1.716-v4
-
-      - if: steps.cache-ipsw.outputs.cache-hit != 'true'
-        name: Install ipsw
-        run: |
-          set -euo pipefail
-          echo "=== ipsw cache MISS ==="
-          curl -fsSL -o /tmp/ipsw.tar.gz https://github.com/blacktop/ipsw/releases/download/v3.1.716/ipsw_3.1.716_linux_x86_64.tar.gz
-          tar -C /usr/local/bin -xzf /tmp/ipsw.tar.gz ipsw
-          rm -f /tmp/ipsw.tar.gz
-
-      - name: Validate ipsw
-        run: |
-          set -euo pipefail
-          test -x /usr/local/bin/ipsw
-          /usr/local/bin/ipsw version
-          echo "ipsw OK"
-
-      - uses: actions/cache@v4
-        id: cache-symbolicator
-        with:
-          path: ${{ github.workspace }}/symbolicator
-          key: symbolicator-v6
-
-      - if: steps.cache-symbolicator.outputs.cache-hit != 'true'
-        name: Clone symbolicator
-        run: |
-          set -euo pipefail
-          echo "=== symbolicator cache MISS ==="
-          rm -rf "$GITHUB_WORKSPACE/symbolicator"
-          git clone --depth 1 https://github.com/blacktop/symbolicator.git "$GITHUB_WORKSPACE/symbolicator"
-
-      - name: Validate symbolicator
-        run: |
-          set -euo pipefail
-          ROOT="$GITHUB_WORKSPACE/symbolicator/kernel"
-          test -d "$ROOT"
-          echo "=== versions ==="
-          ls -1 "$ROOT"
-          if [ -d "$ROOT/27.0" ]; then
-            ls -la "$ROOT/27.0"
-            if [ -d "$ROOT/27.0/kexts" ]; then
-              N=$(find "$ROOT/27.0/kexts" -maxdepth 1 -type f -name "*.json" | wc -l)
-              echo "kexts json: $N"
-            fi
-          fi
-
-      - id: sigs
-        name: Pick signature dir
-        run: |
-          set -uo pipefail
-          ROOT="$GITHUB_WORKSPACE/symbolicator/kernel"
-          test -d "$ROOT" || { echo "::error::no symbolicator"; exit 1; }
-          SIGDIR=""
-          SIG_VER=""
-          for V in 27.0 27.1 27.2 27.3 26.0 26.1 26.2 26.3 25.6 25.5 25.4 25.3; do
-            if [ -d "$ROOT/$V" ]; then
-              SIGDIR="$ROOT/$V"
-              SIG_VER="$V"
-              break
-            fi
-          done
-          if [ -z "$SIGDIR" ]; then
-            echo "::error::no version dir"; exit 1
-          fi
-          echo "SIGDIR=$SIGDIR"   >> "$GITHUB_ENV"
-          echo "SIG_VER=$SIG_VER" >> "$GITHUB_ENV"
-          echo "selected version: $SIG_VER"
-          ls -la "$SIGDIR"
-
-      - uses: actions/cache@v4
-        id: cache-kernelcache
-        with:
-          path: ${{ github.workspace }}/kernelcache
-          key: kernelcache-iPhone14_5-24A437-v4
-
-      - if: steps.cache-kernelcache.outputs.cache-hit != 'true'
-        name: Download and extract kernelcache
-        run: |
-          set -euo pipefail
-          echo "=== kernelcache cache MISS ==="
-          mkdir -p ipsw kernelcache
-          ipsw download ipsw --device iPhone14,5 --build 24A437 --output ipsw 2>&1 | tee /tmp/dl.log || true
-          IPS -W=$(find ipsw -namen "*.ipsw" -type f | head -n1)
-          echo "IPSW=$IPSW"
-          test -n "$IPSW"
-          test -s "$IPSW"
-          ipsw extract --kernel "$IPSW" --output kernelcache
-          find kernelcache -type f ! -name "kernelcache*" -delete
-          find kernelcache -type d -empty -delete
-          rm -rf ipsw
-
-      - id: kernel
-        name: Locate kernel
-        run: |
-          set -euo pipefail
-          KERNEL=$(find "$GITHUB_WORKSPACE/kernelcache" -type f -name "kernelcache*" | head -n1)
-          echo "KERNEL=$KERNEL"
-          test "$KERNEL"
-          test -s "$KERNEL"
-          file "$KERNEL" | grep -qi "Mach-O" || { echo "::error::not Mach-O"; exit 1; }
-          ls -la "$KERNEL"
-          echo "KERNEL=$KERNEL" >> "$GITHUB_ENV"
-          echo "KERNEL_DIR=$(dirname "$KERNEL")" >> "$GITHUB_ENV"
-          echo "KERNEL_NAME=$(basename "$KERNEL")" >> "$GITHUB_ENV"
-
-      - name: Validate scripts
-        run: |
-          set -euo pipefail
-          test -f "$GITHUB_WORKSPACE/scripts/kernel_rw.py"
-          python3 -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "$GITHUB_WORKSPACE/scripts/kernel_rw.py"
-          echo "kernel_rw.py OK"
-
-      - uses: actions/cache@v4
-        id: cache-symbols
-        with:
-          path: ${{ github.workspace }}/symbols.json
-          key: symbols-24A437-v8
-
-      - name: Symbolicate
-        if: steps.cache-symbols.outputs.cache-hit != 'true'
-        run: |
-          set -uo pipefail
-          OUT="$GITHUB_WORKSPACE/symbols.json"
-          echo "[]" > "$OUT"
-
-          count_entries() {
-            jq 'if type=="array" then length elif type=="object" then (keys|length) else 0 end' "$1" 2>/dev/null || echo 0
-          }
-
-          grab() {
-            local f="$1"
-            if [ -s "$f" ] && jq empty "$f" 2>/dev/null; then
-              local N=$(count_entries "$f")
-              if [ "$N" -gt 100 ]; then
-                cp "$f" "$OUT"
-                echo "    GRAB $f -> $N entries"
-                return 0
-              fi
-            fi
-            return 1
-          }
-
-          run_one() {
-            local SIG="$1"
-            local TAG="$2"
-            echo ""
-            echo "=== [$TAG] sig=$SIG ==="
-            rm -f /tmp/so.txt /tmp/se.txt
-
-            ipsw kernel symbolicate --signatures "$SIG" --json "$KERNEL" \
-              > /tmp/so.txt 2> /tmp/se.txt
-            local RC=$?
-            local SO=$(wc -c < /tmp/so.txt 2>/dev/null || echo 0)
-            local SE=$(wc -c < /tmp/se.txt 2>/dev/null || echo 0)
-            echo "    rc=$RC stdout=$SO stderr=$SE"
-
-            if [ -s /tmp/se.txt ]; then
-              echo "    stderr (head 5):"
-              head -5 /tmp/se.txt | sed 's/^/      /' || true
-            fi
-
-            if grab /tmp/so.txt; then return 0; fi
-
-            local REPORTED=$(grep -oE "Writing symbols as JSON to [^ ]+" /tmp/se.txt 2>/dev/null | head -1 | awk '{print $NF}')
-            if [ -n "$REPORTED" ]; then
-              echo "    reported path: $REPORTED"
-              if grab "$REPORTED"; then return 0; fi
-            fi
-
-            for f in \
-              "$KERNEL_DIR/$KERNEL_NAME.json" \
-              "$KERNEL_DIR/${KERNEL_NAME}.symbols.json" \
-              "$KERNEL_DIR/symbols.json" \
-              "$GITHUB_WORKSPACE/symbols.json.tmp" \
-              "$(pwd)/symbols.json" \
-              "/tmp/symbols.json"; do
-              if [ -f "$f" ] && [ "$f" != "$OUT" ]; then
-                if grab "$f"; then return 0; fi
-              fi
-            done
-
-            for f in $(find "$GITHUB_WORKSPACE" -maxdepth 3 -type f -name "*.json" -newermt "30 seconds ago" 2>/dev/null | grep -v ghidra | grep -v symbolicator); do
-              if [ "$f" != "$OUT" ] && grab "$f"; then return 0; fi
-            done
-
-            return 1
-          }
-
-          if run_one "$SIGDIR" "27.0-full"; then
-            echo "OK full 27.0"
-          elif run_one "$SIGDIR/xnu.json" "27.0-xnu"; then
-            echo "OK xnu.json"
-          elif run_one "$SIGDIR/kexts" "27.0-kexts"; then
-            echo "OK kexts"
-          else
-            echo "::error::symbolication failed all attempts"
-            echo "--- last stderr tail ---"
-            tail -30 /tmp/se.txt 2>/dev/null || true
-            exit 1
-          fi
-
-          if ! jq empty "$OUT" 2>/dev/null; then
-            echo "::error::symbols.json invalid"
-            exit 1
-          fi
-
-          CNT=$(count_entries "$OUT")
-          SZ=$(wc -c < "$OUT")
-          echo ""
-          echo "=== final: $SZ bytes, $CNT entries ==="
-          if [ "$CNT" -eq 0 ]; then
-            echo "::error::0 entries"
-            exit 1
-          fi
-
-      - name: Validate symbols.json
-        run: |
-          set -euo pipefail
-          F="$GITHUB_WORKSPACE/symbols.json"
-          test -f "$F"
-          jq empty "$F"
-          CNT=$(jq 'if type == "array" then length elif type == "object" then (keys | length) else 0 end' "$F")
-          echo "symbols entries: $CNT"
-          test "$CNT" -gt 0
-
-      - uses: actions/cache@v4
-        id: cache-project
-        with:
-          path: ${{ github.workspace }}/ghidra_project
-          key: ghidra-project-24A437-v4
-
-      - name: Run Ghidra
-        env:
-          _JAVA_OPTIONS: "-Xmx8g -Djava.awt.headless=true"
-          SYMBOLS_JSON: ${{ github.workspace }}/symbols.json
-          GITHUB_WORKSPACE: ${{ github.workspace }}
-        run: |
-          set -euo pipefail
-          echo "cache-project: ${{ steps.cache-project.outputs.cache-hit }}"
-          test -f "$SYMBOLS_JSON"
-          SZ=$(wc -c < "$SYMBOLS_JSON")
-          echo "symbols.json: $SZ bytes"
-          test "$SZ" -gt 3
-          if [ "${{ steps.cache-project.outputs.cache-hit }}" = "true" ]; then
-            echo "=== warm ==="
-            "$GHIDRA_ROOT/support/analyzeHeadless" \
-              "$GITHUB_WORKSPACE/ghidra_project" KernelProject \
-              -process "$KERNEL_NAME" -noanalysis \
-              -postScript kernel_rw.py \
-              -scriptPath "$GITHUB_WORKSPACE/scripts" \
-              2>&1 | tee kernel.log
-          else
-            echo "=== cold ==="
-            rm -rf ghidra_project
-            mkdir -p ghidra_project
-            "$GHIDRA_ROOT/support/analyzeHeadless" \
-              "$GITHUB_WORKSPACE/ghidra_project" KernelProject \
-              -import "$KERNEL" \
-              -processor "AARCH64:LE:64:AppleSilicon" \
-              -loader BinaryLoader \
-              -loader-baseAddr 0xFFFFFFF007004000 \
-              -postScript kernel_rw.py \
-              -scriptPath "$GITHUB_WORKSPACE/scripts" \
-              -analysisTimeoutPerFile 12000 \
-              -max-cpu 4 \
-              2>&1 | tee kernel.log
-          fi
-
-      - name: Validate outputs
-        run: |
-          set -euo pipefail
-          echo "=== result.txt ==="
-          test -s result.txt
-          LINES=$(wc -l < result.txt)
-          echo "lines: $LINES"
-          test "$LINES" -gt 50
-
-          echo "=== offsets.json ==="
-          test -s offsets.json
-          jq empty offsets.json
-          CNT=$(jq 'length' offsets.json)
-          echo "entries: $CNT"
-          test "$CNT" -gt 5
-
-          echo "=== kernel.log ==="
-          test -s kernel.log
-          if grep -qE "FATAL|Exception" kernel.log; then
-            grep -E "FATAL|Exception" kernel.log | head -5
-            echo "::error::errors in kernel.log"
-            exit 1
-          fi
-          echo "OK"
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: kernel-offsets-${{ github.sha }}
-          path: |
-            result.txt
-            offsets.json
-            kernel.log
-            symbols.json
-          retention-days: 30
-          overwrite: true
-          compression-level: 9
-
-      - name: Cleanup tmp only
-        if: always()
-        run: |
-          set +e
-          rm -rf "$GITHUB_WORKSPACE/ipsw"
-          rm -f /tmp/g.zip /tmp/ipsw.tar.gz /tmp/so.txt /tmp/se.txt /tmp/sym_out.txt /tmp/sym_err.txt /tmp/dl.log
-          rm -rf /tmp/sigs /tmp/sig.tar.gz
-          rm -rf "$HOME/.config/ghidra" /var/tmp/runner-ghidra
-          exit 0
+Picked up _JAVA_OPTIONS: -Xmx8g -Djava.awt.headless=true
+Picked up _JAVA_OPTIONS: -Xmx8g -Djava.awt.headless=true
+Picked up _JAVA_OPTIONS: -Xmx8g -Djava.awt.headless=true
+Picked up _JAVA_OPTIONS: -Xmx8g -Djava.awt.headless=true
+openjdk version "25.0.4.1" 2026-08-18 LTS
+OpenJDK Runtime Environment Temurin-25.0.4.1+1 (build 25.0.4.1+1-LTS)
+OpenJDK 64-Bit Server VM Temurin-25.0.4.1+1 (build 25.0.4.1+1-LTS, mixed mode)
+INFO  Using log config file: jar:file:/home/runner/work/Hu-Tao-and-natsuki-anime-music-player/Hu-Tao-and-natsuki-anime-music-player/ghidra/Ghidra/Framework/Generic/lib/Generic.jar!/generic.log4j.xml (LoggingInitialization)  
+INFO  Using log file: /home/runner/.config/ghidra/ghidra_12.1.2_PUBLIC/application.log (LoggingInitialization)  
+INFO  Loading user preferences: /home/runner/.config/ghidra/ghidra_12.1.2_PUBLIC/preferences (Preferences)  
+INFO  Searching for classes... (ClassSearcher)  
+INFO  Class search complete (1206 ms) (ClassSearcher)  
+INFO  Initializing SSL Context (DefaultSSLContextInitializer)  
+INFO  Initializing Random Number Generator... (SecureRandomFactory)  
+INFO  Random Number Generator initialization complete: NativePRNGNonBlocking (SecureRandomFactory)  
+INFO  Trust manager disabled, cacerts have not been set (DefaultTrustManagerFactory)  
+INFO  Starting cache cleanup: /var/tmp/runner-ghidra/fscache2 (FileCacheMaintenanceDaemon)  
+INFO  Finished cache cleanup, estimated storage used: 0 (FileCacheMaintenanceDaemon)  
+INFO  Headless startup complete (6607 ms) (AnalyzeHeadless)  
+INFO  Class searcher loaded 59 extension points (20 false positives) (ClassSearcher)  
+WARNING: A terminally deprecated method in sun.misc.Unsafe has been called
+WARNING: sun.misc.Unsafe::staticFieldOffset has been called by org.apache.felix.framework.util.SecureAction (file:/home/runner/work/Hu-Tao-and-natsuki-anime-music-player/Hu-Tao-and-natsuki-anime-music-player/ghidra/Ghidra/Features/Base/lib/org.apache.felix.framework-7.0.5.jar)
+WARNING: Please consider reporting this to the maintainers of class org.apache.felix.framework.util.SecureAction
+WARNING: sun.misc.Unsafe::staticFieldOffset will be removed in a future release
+INFO  HEADLESS Script Paths:
+    /home/runner/work/Hu-Tao-and-natsuki-anime-music-player/Hu-Tao-and-natsuki-anime-music-player/ghidra/Ghidra/Processors/JVM/ghidra_scripts
+    /home/runner/work/Hu-Tao-and-natsuki-anime-music-player/Hu-Tao-and-natsuki-anime-music-player/ghidra/Ghidra/Features/BytePatterns/ghidra_scripts
+    /home/runner/work/Hu-Tao-and-natsuki-anime-music-player/Hu-Tao-and-natsuki-anime-music-player/ghidra/Ghidra/Extensions/Jython/ghidra_scripts
+    /home/runner/work/Hu-Tao-and-natsuki-anime-music-player/Hu-Tao-and-natsuki-anime-music-player/ghidra/Ghidra/Features/GnuDemangler/ghidra_scripts
+    /home/runner/work/Hu-Tao-and-natsuki-anime-music-player/Hu-Tao-and-natsuki-anime-music-player/ghidra/Ghidra/Features/PyGhidra/ghidra_scripts
+    /home/runner/work/Hu-Tao-and-natsuki-anime-music-player/Hu-Tao-and-natsuki-anime-music-player/ghidra/Ghidra/Debug/Debugger-rmi-trace/ghidra_scripts
+    /home/runner/work/Hu-Tao-and-natsuki-anime-music-player/Hu-Tao-and-natsuki-anime-music-player/ghidra/Ghidra/Features/FileFormats/ghidra_scripts
+    /home/runner/work/Hu-Tao-and-natsuki-anime-music-player/Hu-Tao-and-natsuki-anime-music-player/ghidra/Ghidra/Features/FunctionID/ghidra_scripts
+    /home/runner/work/Hu-Tao-and-natsuki-anime-music-player/Hu-Tao-and-natsuki-anime-music-player/ghidra/Ghidra/Features/PDB/ghidra_scripts
+    /home/runner/work/Hu-Tao-and-natsuki-anime-music-player/Hu-Tao-and-natsuki-anime-music-player/ghidra/Ghidra/Features/SystemEmulation/ghidra_scripts
+    /home/runner/work/Hu-Tao-and-natsuki-anime-music-player/Hu-Tao-and-natsuki-anime-music-player/ghidra/Ghidra/Features/BSim/ghidra_scripts
+    /home/runner/work/Hu-Tao-and-natsuki-anime-music-player/Hu-Tao-and-natsuki-anime-music-player/ghidra/Ghidra/Processors/DATA/ghidra_scripts
+    /home/runner/work/Hu-Tao-and-natsuki-anime-music-player/Hu-Tao-and-natsuki-anime-music-player/ghidra/Ghidra/Features/SwiftDemangler/ghidra_scripts
+    /home/runner/work/Hu-Tao-and-natsuki-anime-music-player/Hu-Tao-and-natsuki-anime-music-player/ghidra/Ghidra/Processors/8051/ghidra_scripts
+    /home/runner/work/Hu-Tao-and-natsuki-anime-music-player/Hu-Tao-and-natsuki-anime-music-player/ghidra/Ghidra/Features/VersionTracking/ghidra_scripts
+    /home/runner/work/Hu-Tao-and-natsuki-anime-music-player/Hu-Tao-and-natsuki-anime-music-player/ghidra/Ghidra/Processors/PIC/ghidra_scripts
+    /home/runner/work/Hu-Tao-and-natsuki-anime-music-player/Hu-Tao-and-natsuki-anime-music-player/ghidra/Ghidra/Debug/Debugger/ghidra_scripts
+    /home/runner/work/Hu-Tao-and-natsuki-anime-music-player/Hu-Tao-and-natsuki-anime-music-player/scripts
+    /home/runner/work/Hu-Tao-and-natsuki-anime-music-player/Hu-Tao-and-natsuki-anime-music-player/ghidra/Ghidra/Features/Decompiler/ghidra_scripts
+    /home/runner/work/Hu-Tao-and-natsuki-anime-music-player/Hu-Tao-and-natsuki-anime-music-player/ghidra/Ghidra/Features/DecompilerDependent/ghidra_scripts
+    /home/runner/work/Hu-Tao-and-natsuki-anime-music-player/Hu-Tao-and-natsuki-anime-music-player/ghidra/Ghidra/Features/MicrosoftCodeAnalyzer/ghidra_scripts
+    /home/runner/work/Hu-Tao-and-natsuki-anime-music-player/Hu-Tao-and-natsuki-anime-music-player/ghidra/Ghidra/Features/Base/ghidra_scripts
+    /home/runner/work/Hu-Tao-and-natsuki-anime-music-player/Hu-Tao-and-natsuki-anime-music-player/ghidra/Ghidra/Processors/Atmel/ghidra_scripts
+    /home/runner/work/Hu-Tao-and-natsuki-anime-music-player/Hu-Tao-and-natsuki-anime-music-player/ghidra/Ghidra/Features/WildcardAssembler/ghidra_scripts (HeadlessAnalyzer)  
+INFO  HEADLESS: execution starts (HeadlessAnalyzer)  
+INFO  Opening existing project: /home/runner/work/Hu-Tao-and-natsuki-anime-music-player/Hu-Tao-and-natsuki-anime-music-player/ghidra_project/KernelProject (HeadlessAnalyzer)  
+INFO  Opening project: /home/runner/work/Hu-Tao-and-natsuki-anime-music-player/Hu-Tao-and-natsuki-anime-music-player/ghidra_project/KernelProject (HeadlessProject)  
+INFO  REPORT: Processing project file: /kernelcache.release.iPhone14,5 (HeadlessAnalyzer)  
+INFO  REPORT: Execute script: kernel_rw.py  (HeadlessAnalyzer)  
+INFO  SCRIPT: /home/runner/work/Hu-Tao-and-natsuki-anime-music-player/Hu-Tao-and-natsuki-anime-music-player/scripts/kernel_rw.py (HeadlessAnalyzer)  
+=== kernel_rw.py v20 (targets) ===
+[+] symbols: /home/runner/work/Hu-Tao-and-natsuki-anime-music-player/Hu-Tao-and-natsuki-anime-music-player/symbols.json
+[+] symbols loaded: 0
+[+] wrote /home/runner/work/Hu-Tao-and-natsuki-anime-music-player/Hu-Tao-and-natsuki-anime-music-player/result.txt
+[+] wrote /home/runner/work/Hu-Tao-and-natsuki-anime-music-player/Hu-Tao-and-natsuki-anime-music-player/offsets.json
+=== DONE ===
+INFO  REPORT: Save succeeded for processed file: /kernelcache.release.iPhone14,5 (HeadlessAnalyzer)  
