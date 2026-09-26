@@ -200,44 +200,19 @@ jobs:
           KDIR="$(dirname "$KERNEL")"
           echo "[]" > "$OUT"
 
-          echo "=== [1] ipsw kernel symbolicate (stdout redirect) ==="
-          ipsw kernel symbolicate --signatures "$SIGDIR" --json "$KERNEL" \
-            > /tmp/sym_stdout.json 2> /tmp/sym.log || true
-          echo "stdout size: $(wc -c < /tmp/sym_stdout.json 2>/dev/null || echo 0)"
-          tail -n 30 /tmp/sym.log || true
-          if [ -s /tmp/sym_stdout.json ]; then
-            cp /tmp/sym_stdout.json "$OUT"
-          fi
+          echo "=== [1] ipsw kernel symbolicate --signatures $SIG_VER --json ==="
+          ipsw kernel symbolicate --signatures "$SIGDIR" --json -v "$KERNEL" \
+            > /tmp/sym_stdout.txt 2>&1 || true
+          echo "stdout size: $(wc -c < /tmp/sym_stdout.txt 2>/dev/null || echo 0)"
+          tail -n 40 /tmp/sym_stdout.txt || true
 
-          # ищем .symbols.json, который ipsw пишет рядом с kernelcache
-          if [ ! -s "$OUT" ] || [ "$(tr -d ' \n\r\t' < "$OUT")" = "[]" ]; then
-            echo "=== [2] поиск *.symbols.json в $KDIR ==="
-            ls -la "$KDIR" || true
-            FOUND=$(find "$KDIR" -name "*.symbols.json" -type f | head -n1)
-            echo "FOUND=$FOUND"
-            if [ -n "$FOUND" ] && [ -s "$FOUND" ]; then
-              cp "$FOUND" "$OUT"
-            fi
-          fi
-
-          # fallback: --output как директория
-          if [ ! -s "$OUT" ] || [ "$(tr -d ' \n\r\t' < "$OUT")" = "[]" ]; then
-            echo "=== [3] fallback: --output $KDIR ==="
-            ipsw kernel symbolicate --signatures "$SIGDIR" --json --output "$KDIR" "$KERNEL" 2>&1 | tee /tmp/sym_fb.log || true
-            FOUND=$(find "$KDIR" -name "*.symbols.json" -type f | head -n1)
-            echo "FOUND=$FOUND"
-            if [ -n "$FOUND" ] && [ -s "$FOUND" ]; then
-              cp "$FOUND" "$OUT"
-            fi
-          fi
-
-          # fallback: без сигнатур, только встроенные таблицы
-          if [ ! -s "$OUT" ] || [ "$(tr -d ' \n\r\t' < "$OUT")" = "[]" ]; then
-            echo "=== [4] fallback: без --signatures ==="
-            ipsw kernel symbolicate --json "$KERNEL" > /tmp/sym_nosig.json 2> /tmp/sym_nosig.log || true
-            if [ -s /tmp/sym_nosig.json ]; then
-              cp /tmp/sym_nosig.json "$OUT"
-            fi
+          # ipsw пишет JSON рядом с kernelcache в файл <kernelname>.symbols.json
+          echo "=== [2] поиск *.symbols.json в $KDIR ==="
+          ls -la "$KDIR" || true
+          FOUND=$(find "$KDIR" -name "*.symbols.json" -type f | head -n1)
+          echo "FOUND=$FOUND"
+          if [ -n "$FOUND" ] && [ -s "$FOUND" ]; then
+            cp "$FOUND" "$OUT"
           fi
 
           if ! python3 -c "import json,sys; d=json.load(open('$OUT')); sys.exit(0 if d else 1)" 2>/dev/null; then
@@ -254,25 +229,25 @@ jobs:
           set -uo pipefail
           F="$GITHUB_WORKSPACE/symbols.json"
           test -f "$F" || { echo "::error::symbols.json отсутствует"; exit 1; }
-          python3 - <<'PY'
-          import json, sys
-          p = "/home/runner/work/Hu-Tao-and-natsuki-anime-music-player/Hu-Tao-and-natsuki-anime-music-player/symbols.json"
-          try:
-              d = json.load(open(p))
-          except Exception as e:
-              print(f"::error::symbols.json невалиден: {e}")
-              sys.exit(1)
-          def count(x):
-              if isinstance(x, list): return sum(count(i) for i in x) if x else 0
-              if isinstance(x, dict): return sum(count(v) for v in x.values()) if x else 0
-              return 1
-          n = count(d)
-          print(f"top-level: {type(d).__name__}, entries: {n}")
-          if isinstance(d, dict) and d:
-              print(f"keys sample: {list(d.keys())[:20]}")
-          if n == 0:
-              print("::warning::symbols.json пустой — символы не подтянутся")
-          PY
+          python3 -c "
+import json, sys
+p = '$F'
+try:
+    d = json.load(open(p))
+except Exception as e:
+    print(f'::error::symbols.json невалиден: {e}')
+    sys.exit(1)
+def count(x):
+    if isinstance(x, list): return sum(count(i) for i in x) if x else 0
+    if isinstance(x, dict): return sum(count(v) for v in x.values()) if x else 0
+    return 1
+n = count(d)
+print(f'top-level: {type(d).__name__}, entries: {n}')
+if isinstance(d, dict) and d:
+    print(f'keys sample: {list(d.keys())[:20]}')
+if n == 0:
+    print('::warning::symbols.json пустой — символы не подтянутся')
+"
 
       # ==================== GHIDRA PROJECT (warm) ====================
       - uses: actions/cache@v4
@@ -355,7 +330,7 @@ jobs:
           rm -rf "$GITHUB_WORKSPACE/symbolicator"   2>/dev/null
           rm -rf "$GITHUB_WORKSPACE/ghidra"         2>/dev/null
           rm -rf "$GITHUB_WORKSPACE/ghidra_project" 2>/dev/null
-          rm -f  /tmp/g.zip /tmp/ipsw.tar.gz /tmp/sym*.log /tmp/sym*.json /tmp/dl.log 2>/dev/null
+          rm -f  /tmp/g.zip /tmp/ipsw.tar.gz /tmp/sym*.txt /tmp/sym*.log /tmp/dl.log 2>/dev/null
           rm -rf "$HOME/.config/ghidra"             2>/dev/null
           rm -rf /var/tmp/runner-ghidra             2>/dev/null
           exit 0
