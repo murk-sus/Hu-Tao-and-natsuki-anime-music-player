@@ -1,22 +1,14 @@
 # -*- coding: utf-8 -*-
 # @runtime Jython
 #
-# kernel_rw_step2.py
-# Goal: resolve and dump the functions we couldn't see in step 1.
+# kernel_rw.py v17 — единый скрипт.
 #
-# Priority targets (hardcoded, iOS 27.0 / 24A437 / iPhone14,5):
-#   P1  FUN_fffffff00a4f26f0  copy_result_inner  (called from copy_result)
-#   P2  FUN_fffffff00a4e7158  op=0x13            (probable add_update)
-#   P3  FUN_fffffff00a4ec5d8  op=0x14
-#   P4  FUN_fffffff00a4e60dc  default handler
-#   Ref FUN_fffffff00a368ec0  copyin
-#   Ref FUN_fffffff00a369a3c  copyout
+# Добавлено относительно v16:
+#   - EXTRA TARGETS: copy_result_inner, op=0x13, op=0x14, default, copyin, copyout
+#   - для copy_result_inner и op=0x13 — дамп callee-функций с их mem-ops
+#   - STRING XREF SCAN по строкам вокруг copy_result (независимая проверка адреса)
 #
-# For each: mem-op dump (dedup by imm) + full decompile.
-# For P1 and P2 also: callee list with quick mem-op dump (top 12).
-#
-# Output:  result_step2.txt
-#          offsets_step2.json
+# Всё остальное (NECP fallback, KALLOC_TYPE_VAR, KTRR/SPTM) — как было.
 
 import os
 import json
@@ -26,18 +18,36 @@ from ghidra.app.decompiler import DecompInterface
 from ghidra.util.task import ConsoleTaskMonitor, TaskMonitor
 
 WS = os.environ.get("GITHUB_WORKSPACE", "/tmp")
-OUT = os.path.join(WS, "result_step2.txt")
-OUT_OFF = os.path.join(WS, "offsets_step2.json")
+OUT = os.path.join(WS, "result.txt")
+OUT_OFF = os.path.join(WS, "offsets.json")
+SYMBOLS_JSON = os.environ.get("SYMBOLS_JSON", os.path.join(WS, "symbols.json"))
 
-TARGETS = [
-    ("P1_copy_result_inner",  0xFFFFFFF00A4F26F0, True),
-    ("P2_op0x13_add_update",  0xFFFFFFF00A4E7158, True),
-    ("P3_op0x14_unknown",     0xFFFFFFF00A4EC5D8, False),
-    ("P4_default_handler",    0xFFFFFFF00A4E60DC, False),
-    ("REF_copyin",            0xFFFFFFF00A368EC0, False),
-    ("REF_copyout",           0xFFFFFFF00A369A3C, False),
+# ---------- N E C P   B A S E   T A R G E T S ----------
+NECP_FALLBACK = {}
+NECP_FALLBACK["necp_open"]                    = 0xFFFFFFF00A4E411C
+NECP_FALLBACK["necp_client_add_flow"]         = 0xFFFFFFF00A4E843C
+NECP_FALLBACK["necp_client_remove_flow"]      = 0xFFFFFFF00A4E93C4
+NECP_FALLBACK["necp_client_copy_interface"]   = 0xFFFFFFF00A4EAC7C
+NECP_FALLBACK["necp_client_copy_update"]      = 0xFFFFFFF00A4EC264
+NECP_FALLBACK["necp_client_action"]           = 0xFFFFFFF00A4E5C28
+NECP_FALLBACK["necp_client_copy_result"]      = 0xFFFFFFF00A4E7BE8
+NECP_FALLBACK["necp_client_remove_client"]    = 0xFFFFFFF00A4E76F4
+NECP_FALLBACK["necp_client_copy_list"]        = 0xFFFFFFF00A4E80FC
+
+NECP_TARGET_NAMES = list(NECP_FALLBACK.keys())
+
+# ---------- E X T R A   T A R G E T S  (step 2) ----------
+# name, addr, want_callees
+EXTRA_TARGETS = [
+    ("P1_copy_result_inner", 0xFFFFFFF00A4F26F0, True),
+    ("P2_op0x13_add_update", 0xFFFFFFF00A4E7158, True),
+    ("P3_op0x14_unknown",    0xFFFFFFF00A4EC5D8, False),
+    ("P4_default_handler",   0xFFFFFFF00A4E60DC, False),
+    ("REF_copyin",           0xFFFFFFF00A368EC0, False),
+    ("REF_copyout",          0xFFFFFFF00A369A3C, False),
 ]
 
+# ---------- helpers ----------
 def _u(v):
     return int(v) & 0xFFFFFFFFFFFFFFFF
 
@@ -58,6 +68,38 @@ def sa(a):
     except Exception:
         return None
 
+_blocks_cache = None
+def blocks():
+    global _blocks_cache
+    if _blocks_cache is not None:
+        return _blocks_cache
+    out = []
+    try:
+        for b in currentProgram.getMemory().getBlocks():
+            try:
+                if not b.isInitialized():
+                    continue
+                s = _u(b.getStart().getOffset())
+                e = _u(b.getEnd().getOffset())
+                n = str(b.getName())
+                x = bool(b.isExecute())
+                out.append((s, e, n, x))
+            except Exception:
+                pass
+    except Exception:
+        pass
+    _blocks_cache = out
+    return out
+
+def inblk(a):
+    if a is None:
+        return None
+    av = _u(a)
+    for s, e, n, x in blocks():
+        if s <= av < e:
+            return (s, e, n, x)
+    return None
+
 def get_func(addr):
     try:
         ga = sa(addr)
@@ -69,6 +111,51 @@ def get_func(addr):
         return getFunctionContaining(ga)
     except Exception:
         return None
+
+def load_symbols(path):
+    print("[+] symbols: %s" % path)
+    if not os.path.exists(path):
+        print("[!] symbols.json not found")
+        return {}
+    try:
+        fh = open(path)
+        data = json.load(fh)
+        fh.close()
+    except Exception as e:
+        print("[!] parse failed: %s" % e)
+        return {}
+    syms = {}
+    if isinstance(data, list):
+        for e in data:
+            if not isinstance(e, dict):
+                continue
+            if "name" not in e or "addr" not in e:
+                continue
+            try:
+                a = e["addr"]
+                if isinstance(a, str):
+                    syms[e["name"]] = int(a, 16)
+                else:
+                    syms[e["name"]] = int(a)
+            except Exception:
+                pass
+    elif isinstance(data, dict):
+        for k, v in data.items():
+            if not isinstance(v, (int, str)):
+                continue
+            try:
+                if isinstance(v, str) and v.startswith("0x"):
+                    syms[k] = int(v, 16)
+                else:
+                    syms[k] = int(v)
+            except Exception:
+                pass
+    print("[+] symbols loaded: %d" % len(syms))
+    if syms:
+        items = list(syms.items())[:5]
+        for k, v in items:
+            print("    %s = %s" % (k, fmt(v)))
+    return syms
 
 def extract_mem(raw):
     if (raw & 0xFFC00000) == 0xF9400000:
@@ -120,6 +207,21 @@ def disasm_mem_ops(f, maxn):
         cnt += 1
     return out
 
+def dump_mem(f, lines, cap=0x2000, dedup=True):
+    seen = set()
+    for pc, raw in disasm_mem_ops(f, 6000):
+        r = extract_mem(raw)
+        if r is None:
+            continue
+        kind, base, imm = r
+        if imm < 0 or imm > cap:
+            continue
+        key = (kind, base, imm)
+        if dedup and key in seen:
+            continue
+        seen.add(key)
+        lines.append("  %s  %-8s  [x%-2d, #0x%X]" % (fmt(pc), kind, base, imm))
+
 def decompile(f, timeout):
     out = []
     try:
@@ -165,25 +267,11 @@ def callees(f):
     out.sort(key=lambda x: x[0])
     return out
 
-def dump_mem(f, lines, cap=0x2000, dedup=True):
-    seen = set()
-    for pc, raw in disasm_mem_ops(f, 6000):
-        r = extract_mem(raw)
-        if r is None:
-            continue
-        kind, base, imm = r
-        if imm < 0 or imm > cap:
-            continue
-        key = (kind, base, imm)
-        if dedup and key in seen:
-            continue
-        seen.add(key)
-        lines.append("  %s  %-8s  [x%-2d, #0x%X]" % (fmt(pc), kind, base, imm))
-
+# ---------- main ----------
 def main():
     lines = []
     offsets_out = {}
-    print("=== kernel_rw_step2.py v1 ===")
+    print("=== kernel_rw.py v17 (unified, single-file) ===")
 
     lines.append("=== PROGRAM ===")
     lines.append("name = %s" % currentProgram.getName())
@@ -194,7 +282,62 @@ def main():
         pass
     lines.append("")
 
-    for label, addr, want_callees in TARGETS:
+    syms = load_symbols(SYMBOLS_JSON)
+    lines.append("=== SYMBOLS ===")
+    lines.append("loaded = %d" % len(syms))
+    if not syms:
+        lines.append("using hardcoded NECP addresses")
+    lines.append("")
+
+    # ---------- SECTION A: NECP base targets ----------
+    resolved = {}
+    lines.append("=== RESOLVED NECP TARGETS ===")
+    for name in NECP_TARGET_NAMES:
+        found = None
+        for k in syms:
+            if k.lstrip("_") == name or k == name:
+                found = syms[k]
+                break
+        if found is None and name in NECP_FALLBACK:
+            found = NECP_FALLBACK[name]
+            lines.append("  %-30s %s (FALLBACK)" % (name, fmt(found)))
+        elif found:
+            lines.append("  %-30s %s (symbol)" % (name, fmt(found)))
+        else:
+            lines.append("  %-30s NOT FOUND" % name)
+        if found:
+            resolved[name] = found
+            offsets_out[name] = fmt(found)
+    lines.append("")
+
+    lines.append("=== NECP FUNCTION DUMPS ===")
+    for name, addr in resolved.items():
+        f = get_func(addr)
+        if not f:
+            lines.append("--- %s @ %s : NO FUNCTION OBJECT ---" % (name, fmt(addr)))
+            continue
+        entry = _u(f.getEntryPoint().getOffset())
+        sz = 0
+        try:
+            sz = int(f.getBody().getNumAddresses())
+        except Exception:
+            pass
+        lines.append("--- %s @ %s  size=0x%X ---" % (name, fmt(entry), sz))
+        dump_mem(f, lines, cap=0x800, dedup=True)
+        lines.append("")
+        lines.append("--- DECOMPILE %s ---" % name)
+        for l in decompile(f, 240):
+            lines.append(l)
+        lines.append("")
+
+    # ---------- SECTION B: extra targets (step 2) ----------
+    lines.append("")
+    lines.append("#" * 68)
+    lines.append("###  EXTRA TARGETS (copy_result_inner / op13 / op14 / default / copyin / copyout)")
+    lines.append("#" * 68)
+    lines.append("")
+
+    for label, addr, want_callees in EXTRA_TARGETS:
         lines.append("=" * 68)
         lines.append("=== %s @ %s ===" % (label, fmt(addr)))
         lines.append("=" * 68)
@@ -242,8 +385,8 @@ def main():
             lines.append(l)
         lines.append("")
 
-    # Bonus: scan for string xrefs that hint at copy_result_inner
-    lines.append("=== STRING XREF SCAN ===")
+    # ---------- SECTION C: string xref scan ----------
+    lines.append("### STRING XREF SCAN (independent check for copy_result_inner) ###")
     needles = [
         "assigned results copyout error",
         "assigned results tlv_header copyout error",
@@ -294,6 +437,41 @@ def main():
             lines.append("      xref error: %s" % e)
     lines.append("")
 
+    # ---------- SECTION D: KTRR/SPTM + kalloc_type ----------
+    lines.append("=== KTRR/SPTM ===")
+    for needle in ["SPTM", "sptm", "ctrr", "KTRR"]:
+        va = None
+        try:
+            mem = currentProgram.getMemory()
+            jn = zeros(len(needle), 'b')
+            for i in range(len(needle)):
+                v = ord(needle[i])
+                if v > 127:
+                    v -= 256
+                jn[i] = v
+            h = mem.findBytes(mem.getMinAddress(), jn, None, True, TaskMonitor.DUMMY)
+            if h is not None:
+                va = _u(h.getOffset())
+        except Exception:
+            pass
+        if va:
+            lines.append("  %-8s -> %s" % (needle, fmt(va)))
+    lines.append("")
+
+    lines.append("=== KALLOC_TYPE_VAR (necp_client_flow) @ 0xFFFFFFF007C62E68 ===")
+    blk = inblk(0xFFFFFFF007C62E68)
+    if blk:
+        lines.append("  block = %s" % blk[2])
+        try:
+            ga = sa(0xFFFFFFF007C62E68)
+            for off in range(0, 0x40, 8):
+                v = int(currentProgram.getMemory().getLong(ga.add(off))) & 0xFFFFFFFFFFFFFFFF
+                lines.append("  +0x%02X: %s" % (off, fmt(v)))
+        except Exception as e:
+            lines.append("  read error: %s" % e)
+    lines.append("")
+
+    # ---------- write outputs ----------
     try:
         fh = open(OUT, "w")
         for l in lines:
