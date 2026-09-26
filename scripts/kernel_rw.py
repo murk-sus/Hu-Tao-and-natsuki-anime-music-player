@@ -97,6 +97,7 @@ def get_func(addr):
 def load_symbols(path):
     print("[+] symbols: %s" % path)
     if not os.path.exists(path):
+        print("[!] symbols.json not found")
         return {}
     try:
         with open(path) as f:
@@ -121,6 +122,9 @@ def load_symbols(path):
                 except:
                     pass
     print("[+] symbols loaded: %d" % len(syms))
+    if syms:
+        for k, v in list(syms.items())[:5]:
+            print("    %s = %s" % (k, fmt(v)))
     return syms
 
 
@@ -192,7 +196,7 @@ def decompile(f, timeout=240):
 def main():
     lines = []
     offsets_out = {}
-    print("=== kernel_rw.py v13 ===")
+    print("=== kernel_rw.py v14 ===")
 
     lines.append("=== PROGRAM ===")
     lines.append("name = %s" % currentProgram.getName())
@@ -222,12 +226,13 @@ def main():
             lines.append("  %-30s %s (symbol)" % (name, fmt(found)))
         else:
             lines.append("  %-30s NOT FOUND" % name)
-        if found:
-            resolved[name] = found
-            offsets_out[name] = fmt(found)
+       )
+ if found:
+            resolved[name           ] = found
+            if offsets_out r[name] = fmt(f isound)
     lines.append("")
 
-    lines.append("=== FUNCTION DUMPS ===")
+ None    lines.append("=== FUNCTION DUMPS ===")
     for name, addr in resolved.items():
         f = get_func(addr)
         if not f:
@@ -242,8 +247,7 @@ def main():
         lines.append("--- %s @ %s  size=0x%X ---" % (name, fmt(entry), sz))
         seen = set()
         for pc, raw in disasm_mem_ops(f, 1500):
-            r = extract_mem(raw)
-            if r is None:
+            r = extract_mem(raw:
                 continue
             kind, base, imm = r
             if 0x20 <= imm <= 0x800 and imm not in seen:
