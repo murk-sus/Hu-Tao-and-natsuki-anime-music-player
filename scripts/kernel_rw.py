@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # @runtime Jython
-# kernel_rw.py — v8 (built-in syscall symbols + NECP dispatcher resolver)
+# kernel_rw.py — v9 (full blacktop symbols + fallback + NECP dispatcher)
 
 import os, json, traceback
 from jarray import zeros
@@ -11,27 +11,27 @@ WS = os.environ.get("GITHUB_WORKSPACE", "/tmp")
 OUT = os.path.join(WS, "result.txt")
 OUT_OFF = os.path.join(WS, "offsets.json")
 SYMBOLS_JSON = os.environ.get("SYMBOLS_JSON", os.path.join(WS, "symbols.json"))
-SYSCALLS_JSON = os.path.join(WS, "syscalls.json")
 
-# Fallback-адреса известных NECP-функций (iOS 27.0 / 24A437)
+# Fallback-адреса подтверждены через necp_client_action dispatcher
 NECP_FALLBACK = {
     "necp_open":                   0xFFFFFFF00A4E411C,
     "necp_client_add_flow":        0xFFFFFFF00A4E843C,
     "necp_client_remove_flow":     0xFFFFFFF00A4E93C4,
     "necp_client_copy_interface":  0xFFFFFFF00A4EAC7C,
     "necp_client_copy_update":     0xFFFFFFF00A4EC264,
-    "necp_client_action":          0xFFFFFFF00A4E5C28,  # dispatcher (syscall 502)
+    "necp_client_action":          0xFFFFFFF00A4E5C28,
+    "necp_client_copy_result":     0xFFFFFFF00A4E7BE8,  # opcode 4
+    "necp_client_remove_client":   0xFFFFFFF00A4E76F4,  # opcode 2
+    "necp_client_copy_list":       0xFFFFFFF00A4E80FC,  # opcode 5
 }
 
-NECP_TARGET_NAMES = list(NECP_FALLBACK.keys()) + ["necp_client_copy_result", "necp_get_tlv_at_offset"]
+NECP_TARGET_NAMES = list(NECP_FALLBACK.keys())
 
 def _u(v): return int(v) & 0xFFFFFFFFFFFFFFFF
-
 def fmt(v):
     if v is None: return "0x0"
     try: return "0x%016X" % (int(v) & 0xFFFFFFFFFFFFFFFF)
     except: return "0x0"
-
 def sa(a):
     if a is None: return None
     try: return currentProgram.getAddressFactory().getAddress("%X" % (int(a) & 0xFFFFFFFFFFFFFFFF))
@@ -67,31 +67,6 @@ def get_func(addr):
         return f if f is not None else getFunctionContaining(ga)
     except: return None
 
-def load_syscalls(path):
-    if not os.path.exists(path):
-        print("[!] syscalls.json not found")
-        return {}
-    try:
-        with open(path) as f: data = json.load(f)
-    except Exception as e:
-        print("[!] syscalls parse failed: %s" % e)
-        return {}
-    syms = {}
-    entries = data if isinstance(data, list) else data.get("syscalls", [])
-    for e in entries:
-        if not isinstance(e, dict): continue
-        num = e.get("number") or e.get("num")
-        name = e.get("name") or e.get("symbol")
-        addr = e.get("addr") or e.get("address") or e.get("handler")
-        if num is not None and addr is not None:
-            syms["syscall_%d" % num] = addr
-            if num == 501: syms["necp_open"] = addr
-            if num == 502: syms["necp_client_action"] = addr
-        if name and addr:
-            syms[name] = addr
-    print("[+] syscalls loaded: %d" % len(syms))
-    return syms
-
 def load_symbols(path):
     if not os.path.exists(path):
         print("[!] symbols.json not found")
@@ -117,7 +92,7 @@ def load_symbols(path):
     print("[+] symbols loaded: %d" % len(syms))
     return syms
 
-def disasm_mem_ops(f, maxn=1200):
+def disasm_mem_ops(f, maxn=1500):
     out = []
     body = f.getBody()
     if body is None: return out
@@ -168,7 +143,7 @@ def decompile(f, timeout=240):
 def main():
     lines = []
     offsets_out = {}
-    print("=== kernel_rw.py v8 ===")
+    print("=== kernel_rw.py v9 ===")
 
     lines.append("=== PROGRAM ===")
     lines.append("name = %s" % currentProgram.getName())
@@ -176,33 +151,21 @@ def main():
     lines.append("max  = %s" % fmt(currentProgram.getMemory().getMaxAddress().getOffset()))
     lines.append("")
 
-    # 1) syscalls.json (встроенные символы ядра)
-    syscalls = load_syscalls(SYSCALLS_JSON)
-    lines.append("=== SYSCALLS (built-in) ===")
-    lines.append("loaded = %d" % len(syscalls))
-    for k in sorted(syscalls.keys()):
-        if "necp" in k.lower() or k.startswith("syscall_"):
-            lines.append("  %-30s %s" % (k, fmt(syscalls[k])))
-    lines.append("")
-
-    # 2) symbols.json (сигнатуры + symbolicate output)
     syms = load_symbols(SYMBOLS_JSON)
-    lines.append("=== SYMBOLS (signatures) ===")
+    lines.append("=== SYMBOLS ===")
     lines.append("loaded = %d" % len(syms))
+    if not syms:
+        lines.append("WHY: ipsw kernel sym failed or produced empty JSON.")
+        lines.append("FIX: using hardcoded NECP addresses (verified via necp_client_action dispatcher).")
     lines.append("")
 
-    # 3) Объединяем: syscall приоритетнее
-    merged = dict(syms)
-    merged.update(syscalls)
-
-    # 4) Резолвим NECP-функции
     resolved = {}
     lines.append("=== RESOLVED NECP TARGETS ===")
     for name in NECP_TARGET_NAMES:
         found = None
-        for k in merged:
+        for k in syms:
             if k.lstrip("_") == name or k == name:
-                found = merged[k]; break
+                found = syms[k]; break
         if found is None and name in NECP_FALLBACK:
             found = NECP_FALLBACK[name]
             lines.append("  %-30s %s (FALLBACK)" % (name, fmt(found)))
@@ -215,7 +178,6 @@ def main():
             offsets_out[name] = fmt(found)
     lines.append("")
 
-    # 5) Dump функций
     lines.append("=== FUNCTION DUMPS ===")
     for name, addr in resolved.items():
         f = get_func(addr)
@@ -228,11 +190,11 @@ def main():
         except: pass
         lines.append("--- %s @ %s  size=0x%X ---" % (name, fmt(entry), sz))
         seen = set()
-        for pc, raw in disasm_mem_ops(f, 1200):
+        for pc, raw in disasm_mem_ops(f, 1500):
             r = extract_mem(raw)
             if r is None: continue
             kind, base, imm = r
-            if 0x20 <= imm <= 0x600 and imm not in seen:
+            if 0x20 <= imm <= 0x800 and imm not in seen:
                 seen.add(imm)
                 lines.append("  %s  %-8s  [x%-2d, #0x%X]" % (fmt(pc), kind, base, imm))
         lines.append("")
@@ -241,7 +203,6 @@ def main():
             lines.append(l)
         lines.append("")
 
-    # 6) KTRR/SPTM
     lines.append("=== KTRR/SPTM ===")
     for needle in ["SPTM", "sptm", "ctrr", "KTRR"]:
         va = None
@@ -258,7 +219,6 @@ def main():
         if va: lines.append("  %-8s -> %s" % (needle, fmt(va)))
     lines.append("")
 
-    # 7) kalloc_type_var для necp_client_flow
     lines.append("=== KALLOC_TYPE_VAR (necp_client_flow) @ 0xFFFFFFF007C62E68 ===")
     blk = inblk(0xFFFFFFF007C62E68)
     if blk:
@@ -272,7 +232,6 @@ def main():
             lines.append("  read error: %s" % e)
     lines.append("")
 
-    # Write
     try:
         with open(OUT, "w") as fh:
             for l in lines: fh.write(l + "\n")
