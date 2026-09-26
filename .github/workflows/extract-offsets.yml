@@ -37,8 +37,6 @@ jobs:
         name: Install Ghidra
         run: |
           set -euo pipefail
-          echo "=== Ghidra cache MISS ==="
-          df -h /
           curl -fsSL -o /tmp/g.zip https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_12.1.2_build/ghidra_12.1.2_PUBLIC_20260605.zip
           unzip -q /tmp/g.zip -d "$GITHUB_WORKSPACE"
           mv "$GITHUB_WORKSPACE/ghidra_12.1.2_PUBLIC" "$GITHUB_WORKSPACE/ghidra"
@@ -92,13 +90,11 @@ jobs:
           test -d "$ROOT" || { echo "::error::no symbolicator"; exit 1; }
           SIGDIR=""
           for V in 27.0 27.1 27.2 27.3 26.0 26.1 26.2 26.3 25.6 25.5 25.4 25.3; do
-            if [ -d "$ROOT/$V" ]; then
-              SIGDIR="$ROOT/$V"
-              break
-            fi
+            if [ -d "$ROOT/$V" ]; then SIGDIR="$ROOT/$V"; break; fi
           done
           test -n "$SIGDIR" || { echo "::error::no version dir"; exit 1; }
           echo "SIGDIR=$SIGDIR" >> "$GITHUB_ENV"
+          echo "picked $SIGDIR"
 
       - uses: actions/cache@v4
         id: cache-kernelcache
@@ -141,7 +137,7 @@ jobs:
         id: cache-symbols
         with:
           path: ${{ github.workspace }}/symbols.json
-          key: symbols-24A437-v9
+          key: symbols-24A437-v10
 
       - name: Symbolicate
         if: steps.cache-symbols.outputs.cache-hit != 'true'
@@ -156,13 +152,14 @@ jobs:
 
           grab() {
             local f="$1"
-            if [ -s "$f" ] && jq empty "$f" 2>/dev/null; then
-              local N=$(count_entries "$f")
-              if [ "$N" -gt 100 ]; then
-                cp "$f" "$OUT"
-                echo "    GRAB $f -> $N entries"
-                return 0
-              fi
+            if [ -z "$f" ] || [ "$f" = "$OUT" ]; then return 1; fi
+            if [ ! -f "$f" ] || [ ! -s "$f" ]; then return 1; fi
+            if ! jq empty "$f" 2>/dev/null; then return 1; fi
+            local N=$(count_entries "$f")
+            if [ "$N" -ge 10 ]; then
+              cp "$f" "$OUT"
+              echo "    GRAB $f -> $N entries"
+              return 0
             fi
             return 1
           }
@@ -170,48 +167,70 @@ jobs:
           run_one() {
             local SIG="$1"
             local TAG="$2"
+            [ -e "$SIG" ] || return 1
             echo ""
-            echo "=== [$TAG] sig=$SIG ==="
-            rm -f /tmp/so.txt /tmp/se.txt
+            echo "=== [$TAG] $SIG ==="
+
+            rm -f /tmp/symbols.json
+            rm -f "$GITHUB_WORKSPACE/symbols.json.tmp"
+            rm -f "$KERNEL_DIR/symbols.json"
+            rm -f "$KERNEL_DIR/$KERNEL_NAME.json"
+
             ipsw kernel symbolicate --signatures "$SIG" --json "$KERNEL" \
               > /tmp/so.txt 2> /tmp/se.txt
-            echo "    rc=$? stdout=$(wc -c < /tmp/so.txt 2>/dev/null || echo 0)"
-            if [ -s /tmp/se.txt ]; then
-              head -5 /tmp/se.txt | sed 's/^/      /' || true
-            fi
+            local RC=$?
+            local SO=$(wc -c < /tmp/so.txt 2>/dev/null || echo 0)
+            echo "    rc=$RC stdout=$SO"
+
             if grab /tmp/so.txt; then return 0; fi
-            local REPORTED=$(grep -oE "Writing symbols as JSON to [^ ]+" /tmp/se.txt 2>/dev/null | head -1 | awk '{print $NF}')
-            if [ -n "$REPORTED" ]; then
-              echo "    reported: $REPORTED"
-              if grab "$REPORTED"; then return 0; fi
+
+            local RP=$(grep -oE "Writing symbols as JSON to .+" /tmp/se.txt 2>/dev/null | head -1 | sed 's/^.* to //' | tr -d '\r\n')
+            if [ -n "$RP" ]; then
+              echo "    reported: $RP"
+              if grab "$RP"; then return 0; fi
+              if grab "$GITHUB_WORKSPACE/$RP"; then return 0; fi
             fi
+
             for f in \
               "$KERNEL_DIR/$KERNEL_NAME.json" \
-              "$KERNEL_DIR/${KERNEL_NAME}.symbols.json" \
-              "$KERNEL_DIR/symbols.json"; do
-              if [ -f "$f" ] && [ "$f" != "$OUT" ]; then
-                if grab "$f"; then return 0; fi
-              fi
+              "$KERNEL_DIR/symbols.json" \
+              "$GITHUB_WORKSPACE/symbols.json.tmp" \
+              "/tmp/symbols.json"; do
+              if grab "$f"; then return 0; fi
             done
+
+            for f in $(find "$GITHUB_WORKSPACE/kernelcache" -maxdepth 4 -name "*.json" -type f 2>/dev/null); do
+              if grab "$f"; then return 0; fi
+            done
+
+            for f in $(find "$GITHUB_WORKSPACE" -maxdepth 5 -name "*.json" -type f -newermt "3 minutes ago" 2>/dev/null | grep -v ghidra | grep -v symbolicator | grep -v scripts); do
+              if grab "$f"; then return 0; fi
+            done
+
+            echo "    no candidate"
             return 1
           }
 
-          if run_one "$SIGDIR" "27.0-full"; then
-            echo "OK full"
-          elif run_one "$SIGDIR/xnu.json" "27.0-xnu"; then
-            echo "OK xnu"
-          elif run_one "$SIGDIR/kexts" "27.0-kexts"; then
-            echo "OK kexts"
+          if run_one "$SIGDIR" "full-27.0"; then echo "OK full"
+          elif run_one "$SIGDIR/xnu.json" "xnu"; then echo "OK xnu"
+          elif run_one "$SIGDIR/kexts" "kexts"; then echo "OK kexts"
           else
             echo "::error::symbolication failed"
-            tail -30 /tmp/se.txt 2>/dev/null || true
+            echo "--- stderr tail ---"
+            tail -20 /tmp/se.txt 2>/dev/null || true
+            echo "--- files found ---"
+            find "$GITHUB_WORKSPACE" -maxdepth 5 -name "*.json" -newermt "5 minutes ago" 2>/dev/null | grep -v ghidra | grep -v symbolicator | head -20
             exit 1
           fi
 
           jq empty "$OUT"
           CNT=$(count_entries "$OUT")
-          echo "=== symbols: $(wc -c < "$OUT") bytes, $CNT entries ==="
+          SZ=$(wc -c < "$OUT")
+          echo ""
+          echo "=== symbols.json: $SZ bytes, $CNT entries ==="
           test "$CNT" -gt 0
+          head -c 400 "$OUT"
+          echo ""
 
       - uses: actions/cache@v4
         id: cache-project
@@ -230,7 +249,7 @@ jobs:
           test -f "$SYMBOLS_JSON"
           test "$(wc -c < "$SYMBOLS_JSON")" -gt 3
           JOBS=$(nproc)
-          echo "parallel jobs: $JOBS"
+          echo "jobs: $JOBS"
           if [ "${{ steps.cache-project.outputs.cache-hit }}" = "true" ]; then
             echo "=== warm ==="
             "$GHIDRA_ROOT/support/analyzeHeadless" \
