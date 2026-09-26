@@ -15,6 +15,8 @@ SYMBOLS_JSON = os.environ.get("SYMBOLS_JSON", os.path.join(WS, "symbols.json"))
 
 COPYIN_ADDR  = 0xFFFFFFF00A368EC0
 COPYOUT_ADDR = 0xFFFFFFF00A369A3C
+KALLOC_ADDR  = 0xFFFFFFF00A200988
+KFREE_ADDR   = 0xFFFFFFF00A201000
 
 NECP_BASE = {
     "necp_open":                     0xFFFFFFF00A4E411C,
@@ -31,8 +33,8 @@ NECP_BASE = {
     "necp_get_tlv_at_offset":        0xFFFFFFF00A4C2034,
     "copyin":                        COPYIN_ADDR,
     "copyout":                       COPYOUT_ADDR,
-    "kalloc_type":                   0xFFFFFFF00A200988,
-    "kfree_type":                    0xFFFFFFF00A201000,
+    "kalloc_type":                   KALLOC_ADDR,
+    "kfree_type":                    KFREE_ADDR,
     "kalloc_type_necp_flow":         0xFFFFFFF007C62E68,
 }
 
@@ -51,6 +53,14 @@ TARGETS = [
     ("copyout_hot_1",           0xFFFFFFF00A6F18AC),
     ("copyout_hot_2",           0xFFFFFFF00A6F318C),
     ("copyin_hot_2",            0xFFFFFFF00A753850),
+]
+
+FIND_CALLERS_FOR = [
+    ("necp_flow_alloc",    0xFFFFFFF00A346E70),
+    ("necp_handler_big",   0xFFFFFFF00A3D91B4),
+    ("necp_get_tlv",       0xFFFFFFF00A4C2034),
+    ("necp_open",          0xFFFFFFF00A4E411C),
+    ("necp_client_action", 0xFFFFFFF00A4E5C28),
 ]
 
 PATTERNS = [
@@ -127,7 +137,6 @@ def load_symbols(path):
     except Exception as e:
         print("[!] parse failed: %s" % e)
         return {}
-
     syms = {}
     diag = {"dict": 0, "list": 0, "pairs": 0, "skip": 0}
 
@@ -192,33 +201,9 @@ def load_symbols(path):
                 walk(item, depth + 1)
 
     walk(data)
-
     print("[+] symbols loaded: %d" % len(syms))
     print("[+] diag: dict=%d list=%d pairs=%d skip=%d" % (
         diag["dict"], diag["list"], diag["pairs"], diag["skip"]))
-
-    if len(syms) == 0:
-        print("[!] sample keys:")
-        if isinstance(data, dict):
-            cnt = 0
-            for k in data.keys():
-                v = data[k]
-                print("    key=%r type=%s val_type=%s val=%r" % (
-                    k, type(k).__name__, type(v).__name__, str(v)[:60]))
-                cnt += 1
-                if cnt >= 5:
-                    break
-        elif isinstance(data, list):
-            print("    list len=%d" % len(data))
-            if data:
-                print("    item[0]=%r" % (data[0],))
-    else:
-        cnt = 0
-        for name in sorted(syms.keys()):
-            print("    %s = %s" % (name, fmt(syms[name])))
-            cnt += 1
-            if cnt >= 15:
-                break
     return syms
 
 
@@ -286,6 +271,53 @@ def find_string_bytes(needle):
     except Exception:
         pass
     return None
+
+
+def _sign_extend_26(x):
+    if x & 0x02000000:
+        return x - 0x04000000
+    return x
+
+
+def find_callers_by_bl(target_addr, max_hits=64):
+    hits = []
+    target_addr = _u(target_addr)
+    mem = currentProgram.getMemory()
+    for s, e, name, is_exec in blocks():
+        if not is_exec:
+            continue
+        size = e - s + 1
+        if size <= 0 or size > 0x4000000:
+            continue
+        try:
+            jbuf = zeros(size, 'b')
+            ga = sa(s)
+            if ga is None:
+                continue
+            mem.getBytes(ga, jbuf)
+        except Exception as ex:
+            print("[-] getBytes fail on %s: %s" % (name, ex))
+            continue
+        pc = s
+        i = 0
+        while i + 4 <= size:
+            b0 = int(jbuf[i]) & 0xFF
+            b1 = int(jbuf[i + 1]) & 0xFF
+            b2 = int(jbuf[i + 2]) & 0xFF
+            b3 = int(jbuf[i + 3]) & 0xFF
+            raw = b0 | (b1 << 8) | (b2 << 16) | (b3 << 24)
+            op = raw & 0xFC000000
+            if op == 0x94000000 or op == 0x14000000:
+                imm26 = raw & 0x03FFFFFF
+                imm = _sign_extend_26(imm26) << 2
+                dst = (pc + imm) & 0xFFFFFFFFFFFFFFFF
+                if dst == target_addr:
+                    hits.append((pc, "BL" if op == 0x94000000 else "B"))
+                    if len(hits) >= max_hits:
+                        return hits
+            i += 4
+            pc += 4
+    return hits
 
 
 def decompile(f, timeout=300):
@@ -448,28 +480,15 @@ def resolve_target(name, hardcoded, syms):
 def main():
     lines = []
     offsets_out = {}
-    print("=== kernel_rw.py v23 ===")
+    print("=== kernel_rw.py v24 ===")
 
     lines.append("=== PROGRAM ===")
     lines.append("name = %s" % currentProgram.getName())
-    try:
-        lines.append("min  = %s" % fmt(currentProgram.getMemory().getMinAddress().getOffset()))
-        lines.append("max  = %s" % fmt(currentProgram.getMemory().getMaxAddress().getOffset()))
-    except Exception:
-        pass
     lines.append("")
 
     syms = load_symbols(SYMBOLS_JSON)
-
     lines.append("=== SYMBOLS ===")
     lines.append("loaded = %d" % len(syms))
-    if syms:
-        cnt = 0
-        for name in sorted(syms.keys()):
-            if cnt >= 30:
-                break
-            lines.append("  %s = %s" % (name, fmt(syms[name])))
-            cnt += 1
     lines.append("")
 
     lines.append("=" * 68)
@@ -490,6 +509,29 @@ def main():
         else:
             lines.append("  %-32s %s (%s, no func)" % (name, fmt(real), src))
             offsets_out[name] = fmt(real)
+    lines.append("")
+
+    lines.append("=" * 68)
+    lines.append("### BL CALLERS (manual scan)")
+    lines.append("=" * 68)
+    for label, addr in FIND_CALLERS_FOR:
+        lines.append("")
+        lines.append("--- callers of %s @ %s ---" % (label, fmt(addr)))
+        try:
+            hits = find_callers_by_bl(addr, max_hits=64)
+        except Exception as e:
+            lines.append("  exception: %s" % e)
+            hits = []
+        if not hits:
+            lines.append("  (no BL/B found)")
+            continue
+        for pc, kind in hits:
+            f = getFunctionContaining(sa(pc))
+            nm = str(f.getName()) if f else "?"
+            fent = _u(f.getEntryPoint().getOffset()) if f else 0
+            lines.append("  %s  %-4s in %-30s @ %s" % (
+                fmt(pc), kind, nm[:30], fmt(fent)))
+            offsets_out["caller_%s_%s" % (label, fmt(fent))] = nm
     lines.append("")
 
     lines.append("=" * 68)
@@ -539,33 +581,6 @@ def main():
         for l in body:
             lines.append("  " + l)
         lines.append("")
-
-    lines.append("=" * 68)
-    lines.append("### STRING XREF")
-    lines.append("=" * 68)
-    needles = [
-        "assigned results copyout error",
-        "copy result copyout error",
-        "group members copyout error",
-        "parameters copyout error",
-        "necp_get_tlv_at_offset",
-        "sock_getsockopt",
-        "sooptcopyin",
-        "sbappendcontrol",
-    ]
-    for needle in needles:
-        found_at = find_string_bytes(needle)
-        if found_at is None:
-            lines.append("  %-45s : not found" % needle)
-            continue
-        lines.append("  %-45s : %s" % (needle, fmt(found_at)))
-        xrefs = collect_xrefs(sa(found_at), limit=8)
-        if not xrefs:
-            lines.append("      no xrefs")
-            continue
-        for ent, nm, cnt in xrefs:
-            lines.append("      %-30s @ %s (%d refs)" % (nm[:30], fmt(ent), cnt))
-    lines.append("")
 
     try:
         fh = open(OUT, "w")
