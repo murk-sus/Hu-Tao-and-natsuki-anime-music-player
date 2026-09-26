@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # @runtime Jython
-# kernel_rw.py v42 - taint by varnode key
+# kernel_rw.py v43 - parameter discovery via LocalSymbolMap
 
 import os
 import sys
@@ -74,6 +74,7 @@ SOURCES = [
 
 DEC = None
 MONITOR = ConsoleTaskMonitor()
+START_TS = time.time()
 
 
 def log(msg):
@@ -189,29 +190,47 @@ def vn_key(vn):
 
 
 def get_param_keys(hf):
+    """Use LocalSymbolMap to find real SSA varnodes for parameters."""
     result = {}
     try:
-        proto = hf.getFunctionPrototype()
-        if proto is None:
+        lsm = hf.getLocalSymbolMap()
+        if lsm is None:
             return result
-        n = proto.getNumParams()
-        for i in range(n):
+        syms = lsm.getSymbols()
+        if syms is None:
+            return result
+        count = 0
+        while syms.hasNext():
+            count += 1
+            if count > 200:
+                break
+            sym = syms.next()
             try:
-                p = proto.getParam(i)
-                if p is None:
+                if not sym.isParameter():
                     continue
-                storage = p.getStorage()
-                if storage is None:
-                    continue
-                try:
-                    for vn in storage:
-                        k = vn_key(vn)
-                        if k is not None:
-                            result.setdefault(i, set()).add(k)
-                except Exception:
-                    k = vn_key(storage)
+            except Exception:
+                continue
+            try:
+                cat = sym.getCategoryIndex()
+            except Exception:
+                cat = 0
+            try:
+                hv = sym.getHighVariable()
+            except Exception:
+                hv = None
+            if hv is None:
+                continue
+            try:
+                insts = hv.getInstances()
+            except Exception:
+                insts = None
+            if insts is None:
+                continue
+            try:
+                for vn in insts:
+                    k = vn_key(vn)
                     if k is not None:
-                        result.setdefault(i, set()).add(k)
+                        result.setdefault(cat, set()).add(k)
             except Exception:
                 pass
     except Exception:
@@ -219,21 +238,32 @@ def get_param_keys(hf):
     return result
 
 
-def propagate_taint(hf, tainted_param_idx):
+def propagate_taint(hf, tainted_param_idx, diag):
     param_map = get_param_keys(hf)
+    diag["params_found"] = sum(len(v) for v in param_map.values())
+    diag["param_cats"] = sorted(param_map.keys())
+
     tainted = set()
     for i in tainted_param_idx:
         for k in param_map.get(i, set()):
             tainted.add(k)
+
     if not tainted:
+        diag["seed_empty"] = True
         return tainted
+
+    diag["seed_count"] = len(tainted)
+
     try:
         all_ops = list(hf.getPcodeOps())
     except Exception:
         return tainted
+
+    diag["op_count"] = len(all_ops)
+
     changed = True
     iters = 0
-    while changed and iters < 100:
+    while changed and iters < 200:
         changed = False
         iters += 1
         for op in all_ops:
@@ -259,6 +289,7 @@ def propagate_taint(hf, tainted_param_idx):
                     changed = True
             except Exception:
                 pass
+    diag["prop_iters"] = iters
     return tainted
 
 
@@ -274,9 +305,6 @@ def resolve_call_target(op):
     return None
 
 
-START_TS = time.time()
-
-
 def analyze_source(start_addr, start_name, L, seen_states):
     worklist = [(start_addr, frozenset([0, 1, 2, 3, 4, 5, 6, 7]), 0)]
     findings = []
@@ -284,10 +312,10 @@ def analyze_source(start_addr, start_name, L, seen_states):
 
     while worklist:
         if len(local_analyzed) >= MAX_ANALYZED:
+            L.append("    analyzed limit reached")
             break
         if time.time() - START_TS > TOTAL_BUDGET_SEC:
-            L.append("")
-            L.append("  budget exceeded, stopping")
+            L.append("    budget exceeded, stopping")
             break
 
         addr, tainted_idx, depth = worklist.pop(0)
@@ -301,23 +329,34 @@ def analyze_source(start_addr, start_name, L, seen_states):
         if f is None:
             f = ensure_function(addr)
         if f is None:
+            L.append("    [%s @ %s d=%d] no function" % (start_name, fmt(addr), depth))
             continue
 
         hf = decompile(f)
         if hf is None:
+            L.append("    [%s @ %s d=%d] no highfunction" % (start_name, fmt(addr), depth))
             continue
 
-        tainted = propagate_taint(hf, tainted_idx)
+        diag = {}
+        tainted = propagate_taint(hf, tainted_idx, diag)
+
         try:
             fname = str(f.getName())
         except Exception:
             fname = "?"
 
-        if not tainted:
-            L.append("  [%s @ %s d=%d] no taint propagated" % (fname, fmt(addr), depth))
-            continue
+        L.append("    [%s @ %s d=%d] params_found=%s cats=%s ops=%s seed=%s tainted=%d iters=%s" % (
+            fname, fmt(addr), depth,
+            diag.get("params_found", "?"),
+            diag.get("param_cats", "?"),
+            diag.get("op_count", "?"),
+            diag.get("seed_count", 0),
+            len(tainted),
+            diag.get("prop_iters", "?"),
+        ))
 
-        L.append("  [%s @ %s d=%d] tainted_keys=%d" % (fname, fmt(addr), depth, len(tainted)))
+        if not tainted:
+            continue
 
         try:
             all_ops = list(hf.getPcodeOps())
@@ -370,9 +409,11 @@ def analyze_source(start_addr, start_name, L, seen_states):
             except Exception:
                 pass
             if new_tainted and depth < MAX_DEPTH:
-                if get_func(target) is not None:
+                callee = get_func(target)
+                if callee is not None:
                     worklist.append((target, frozenset(new_tainted), depth + 1))
                     if len(worklist) > MAX_WORKLIST:
+                        L.append("    worklist limit reached")
                         break
 
     return findings
@@ -386,7 +427,7 @@ def main():
     def w(s):
         L.append(s)
 
-    log("=== kernel_rw.py v42 ===")
+    log("=== kernel_rw.py v43 ===")
     log("program: %s" % currentProgram.getName())
     log("disasm=%s create=%s" % (HAS_DISASM, HAS_CREATE))
 
@@ -395,6 +436,7 @@ def main():
     w("has_disasm=%s has_create=%s" % (HAS_DISASM, HAS_CREATE))
     w("SOURCES: %d" % len(SOURCES))
     w("SINKS: %s" % ",".join([s[0] for s in SINKS]))
+    w("MAX_DEPTH=%d MAX_ANALYZED=%d BUDGET=%ds" % (MAX_DEPTH, MAX_ANALYZED, TOTAL_BUDGET_SEC))
     w("")
 
     all_findings = []
@@ -419,16 +461,17 @@ def main():
             w("  exception %s" % ex)
             continue
 
+        w("")
+        w(SEP)
+        w("### SOURCE %s @ %s" % (name, fmt(addr)))
+        w(SEP)
+
         try:
             findings = analyze_source(addr, name, L, seen_states)
         except Exception as ex:
             findings = []
             L.append("  exception %s" % ex)
 
-        w("")
-        w(SEP)
-        w("### SOURCE %s @ %s" % (name, fmt(addr)))
-        w(SEP)
         if not findings:
             w("  no tainted sinks reached")
         else:
