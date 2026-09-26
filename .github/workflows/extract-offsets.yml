@@ -22,6 +22,7 @@ jobs:
           java-version: "25"
           distribution: temurin
 
+      # ---------- Ghidra ----------
       - name: Cache Ghidra
         id: cache-ghidra
         uses: actions/cache@v4
@@ -46,6 +47,7 @@ jobs:
         shell: bash
         run: echo "GHIDRA_ROOT=$GITHUB_WORKSPACE/ghidra" >> "$GITHUB_ENV"
 
+      # ---------- ipsw ----------
       - name: Cache ipsw
         id: cache-ipsw
         uses: actions/cache@v4
@@ -62,6 +64,7 @@ jobs:
           tar -C /usr/local/bin -xzf /tmp/ipsw.tar.gz ipsw
           ipsw version
 
+      # ---------- symbolicator (только для подписи, если понадобится) ----------
       - name: Cache symbolicator
         id: cache-symbolicator
         uses: actions/cache@v4
@@ -75,9 +78,9 @@ jobs:
         run: |
           set -euo pipefail
           git clone --depth 1 "https://github.com/blacktop/symbolicator.git" "$GITHUB_WORKSPACE/symbolicator"
-          echo "=== symbolicator/kernel contents ==="
           ls -la "$GITHUB_WORKSPACE/symbolicator/kernel" | head -20
 
+      # ---------- kernelcache ----------
       - name: Cache kernelcache
         id: cache-kernelcache
         uses: actions/cache@v4
@@ -113,16 +116,15 @@ jobs:
           set -euo pipefail
           KERNEL=$(find "$GITHUB_WORKSPACE/kernelcache" -type f -name "kernelcache*" | head -n1)
           if [ -z "$KERNEL" ]; then
-            echo "FATAL: kernelcache not found after cleanup"
-            ls -la "$GITHUB_WORKSPACE/kernelcache"
+            echo "FATAL: kernelcache not found"
             exit 1
           fi
           echo "KERNEL=$KERNEL" >> "$GITHUB_ENV"
           echo "KERNEL_NAME=$(basename "$KERNEL")" >> "$GITHUB_ENV"
-          echo "=== File type check ==="
           file "$KERNEL"
           ls -lh "$KERNEL"
 
+      # ---------- символикация (полный цикл) ----------
       - name: Cache symbols
         id: cache-symbols
         uses: actions/cache@v4
@@ -130,46 +132,96 @@ jobs:
           path: ${{ github.workspace }}/symbols.json
           key: symbols-${{ hashFiles('kernelcache/**') }}
 
-      - name: Symbolicate kernel (signatures + built-in tables)
+      - name: Full symbolication (signatures + built-in tables + C++)
         if: steps.cache-symbols.outputs.cache-hit != 'true'
         shell: bash
         run: |
           set -uo pipefail
           SIGDIR="$GITHUB_WORKSPACE/symbolicator/kernel"
-          echo "=== Signatures dir: $SIGDIR ==="
-          ls -la "$SIGDIR" | head -10
 
           echo "=== Step 1: Signature-based symbolication ==="
-          ipsw kernel symbolicate --signatures "$SIGDIR" --json "$KERNEL" 2>&1 | tee /tmp/sym1.log || true
+          ipsw kernel symbolicate --signatures "$SIGDIR" --json "$KERNEL" > /tmp/sym_sig.json 2>&1 || true
+          echo "Signature engine output size: $(wc -c < /tmp/sym_sig.json 2>/dev/null || echo 0) bytes"
 
-          echo "=== Step 2: Built-in symbol extraction (syscalls, mach traps, MIG) ==="
-          ipsw kernel syscall "$KERNEL" --json > /tmp/syscalls.json 2>&1 || true
-          ipsw kernel macho "$KERNEL" --json > /tmp/machtraps.json 2>&1 || true
-          ipsw kernel mig "$KERNEL" --json > /tmp/mig.json 2>&1 || true
+          echo "=== Step 2: Built-in syscall table ==="
+          ipsw kernel syscall "$KERNEL" --json > /tmp/sym_syscall.json 2>&1 || true
+          echo "Syscall table output size: $(wc -c < /tmp/sym_syscall.json 2>/dev/null || echo 0) bytes"
 
-          echo "=== Step 3: Direct lookup of NECP functions by known addresses ==="
-          # necp_open @ 0xFFFFFFF00A4E411C, necp_client_action @ 0xFFFFFFF00A4E5C28
-          for addr in 0xFFFFFFF00A4E411C 0xFFFFFFF00A4E5C28 0xFFFFFFF00A4E843C 0xFFFFFFF00A4E93C4; do
-            echo "--- lookup $addr ---"
-            ipsw kernel symbolicate --lookup "$addr" "$KERNEL" 2>&1 | tee -a /tmp/lookup.log || true
-          done
+          echo "=== Step 3: Built-in mach trap table ==="
+          ipsw kernel mach "$KERNEL" --json > /tmp/sym_mach.json 2>&1 || true
+          echo "Mach trap table output size: $(wc -c < /tmp/sym_mach.json 2>/dev/null || echo 0) bytes"
 
-          echo "=== Collecting JSON outputs ==="
-          find . -type f -name "*symbols*.json" | head -20
-          SRC=$(find . -type f -name "*symbols*.json" | head -n1)
-          if [ -z "$SRC" ] || [ ! -f "$SRC" ]; then
-            echo "No symbols JSON from signature engine"
-            if [ -s /tmp/syscalls.json ]; then
-              echo "Using syscalls.json as fallback"
-              cp /tmp/syscalls.json "$GITHUB_WORKSPACE/symbols.json"
-            else
-              echo "[]" > "$GITHUB_WORKSPACE/symbols.json"
-            fi
-          else
-            cp "$SRC" "$GITHUB_WORKSPACE/symbols.json"
-          fi
+          echo "=== Step 4: Built-in MIG subsystem ==="
+          ipsw kernel mig "$KERNEL" --json > /tmp/sym_mig.json 2>&1 || true
+          echo "MIG output size: $(wc -c < /tmp/sym_mig.json 2>/dev/null || echo 0) bytes"
+
+          echo "=== Step 5: C++ runtime recovery ==="
+          ipsw kernel cpp "$KERNEL" --json > /tmp/sym_cpp.json 2>&1 || true
+          echo "C++ output size: $(wc -c < /tmp/sym_cpp.json 2>/dev/null || echo 0) bytes"
+
+          echo "=== Merging all symbol sources ==="
+          python3 - <<'PYEOF'
+          import json, os, sys
+
+          sources = [
+              "/tmp/sym_sig.json",
+              "/tmp/sym_syscall.json",
+              "/tmp/sym_mach.json",
+              "/tmp/sym_mig.json",
+              "/tmp/sym_cpp.json",
+          ]
+
+          merged = {}
+
+          def add(entry):
+              if not isinstance(entry, dict): return
+              name = entry.get("name") or entry.get("symbol") or entry.get("n")
+              addr = entry.get("addr") or entry.get("address") or entry.get("a")
+              if not name or addr is None: return
+              try:
+                  if isinstance(addr, str):
+                      addr = int(addr, 16) if addr.startswith("0x") else int(addr)
+                  merged[name] = addr
+              except: pass
+
+          for path in sources:
+              if not os.path.exists(path): continue
+              size = os.path.getsize(path)
+              if size < 10: continue
+              try:
+                  with open(path) as f: data = json.load(f)
+              except Exception as e:
+                  print("[-] parse %s failed: %s" % (path, e))
+                  continue
+
+              if isinstance(data, list):
+                  for e in data: add(e)
+              elif isinstance(data, dict):
+                  # syscall/mach/mig формат: {"syscalls": [...]} или {"name": addr}
+                  for key in ("syscalls", "traps", "mig", "symbols", "cpp"):
+                      if key in data and isinstance(data[key], list):
+                          for e in data[key]: add(e)
+                  for k, v in data.items():
+                      if isinstance(v, (int, str)):
+                          try:
+                              merged[k] = int(v, 16) if isinstance(v, str) and v.startswith("0x") else int(v)
+                          except: pass
+
+          print("[+] Total symbols merged: %d" % len(merged))
+          # Специально проверяем NECP
+          for name in ["necp_open", "necp_client_action", "necp_client_add_flow", "necp_client_remove_flow", "necp_client_copy_result"]:
+              if name in merged:
+                  print("[+]   %s = 0x%016X" % (name, merged[name]))
+              else:
+                  print("[!]   %s NOT FOUND" % name)
+
+          with open(os.path.join(os.environ.get("GITHUB_WORKSPACE", "/tmp"), "symbols.json"), "w") as f:
+              json.dump(merged, f, indent=2, sort_keys=True)
+          PYEOF
+
           echo "symbols.json size: $(wc -c < "$GITHUB_WORKSPACE/symbols.json") bytes"
 
+      # ---------- Ghidra ----------
       - name: Cache ghidra project
         id: cache-project
         uses: actions/cache@v4
@@ -235,7 +287,6 @@ jobs:
             offsets.json
             kernel.log
             symbols.json
-            syscalls.json
           retention-days: 30
           if-no-files-found: warn
           overwrite: true
