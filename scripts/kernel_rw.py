@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # @runtime Jython
-# final_recon.py — fast version (single pass over __text)
+# final_recon.py — v2 (two-pass os_log descriptor resolver)
 
 import os
 import json
@@ -36,6 +36,11 @@ TARGET_STRINGS = {
     "copy_interface_copyout":   "necp_client_copy_interface copyout error",
     "copy_update_copyout":      "Copy client update copyout error",
 }
+
+# Строки, которые точно принадлежат copy_result — по ним ищем кандидата
+COPY_RESULT_NEEDLES = {"assigned_results_copyout", "assigned_tlv_header",
+                       "result_copyout", "group_members_copyout",
+                       "params_copyout", "flow_divert_tlv_copyout"}
 
 IFNET_ARRAY_GLOBALS = [
     ("ifnet_array_base",  0xFFFFFFF00AD75720),
@@ -248,12 +253,55 @@ def load_text_to_memory():
     return buffers
 
 
+def find_oslog_descriptors(string_vas):
+    """
+    Second hop: scan __const/__data for 8-byte pointers equal to string VAs.
+    Those pointers live inside os_log descriptor structs.
+    Return dict: string_va -> descriptor_va
+    """
+    desc_map = {}
+    scanned = set()
+    for s, e, n, is_exec in blocks():
+        if is_exec:
+            continue
+        if n not in ("__const", "__data", "__data_const", "__common", "__bss"):
+            # os_log descriptors usually live in __const; be permissive
+            if "__const" not in n and "__data" not in n:
+                continue
+        if n in scanned:
+            continue
+        scanned.add(n)
+        sz = e - s
+        if sz <= 8 or sz > 32 * 1024 * 1024:
+            continue
+        try:
+            ga = sa(s)
+            jbuf = zeros(sz, 'b')
+            currentProgram.getMemory().getBytes(ga, jbuf)
+            # quick scan step 8 bytes at a time
+            i = 0
+            while i + 8 <= sz:
+                v = (int(jbuf[i]) & 0xFF) | \
+                    ((int(jbuf[i+1]) & 0xFF) << 8) | \
+                    ((int(jbuf[i+2]) & 0xFF) << 16) | \
+                    ((int(jbuf[i+3]) & 0xFF) << 24) | \
+                    ((int(jbuf[i+4]) & 0xFF) << 32) | \
+                    ((int(jbuf[i+5]) & 0xFF) << 40) | \
+                    ((int(jbuf[i+6]) & 0xFF) << 48) | \
+                    ((int(jbuf[i+7]) & 0xFF) << 56)
+                if v in string_vas:
+                    desc_map[v] = s + i
+                i += 8
+        except Exception as ex:
+            print("[-] scan desc block %s failed: %s" % (n, str(ex)))
+    return desc_map
+
+
 def find_all_xrefs_to_targets(target_set, buffers):
     """Single pass over all exec blocks. Collect ADRP+ADD refs to any target."""
     results = {}
     for s, sz, buf, name in buffers:
         addr = s
-        end = s + sz
         i = 0
         while i + 8 <= sz:
             b0 = buf[i] | (buf[i+1] << 8) | (buf[i+2] << 16) | (buf[i+3] << 24)
@@ -344,7 +392,7 @@ def extract_mem(raw):
 
 
 def main():
-    print("=== final_recon.py (fast) ===")
+    print("=== final_recon.py v2 (os_log descriptor resolver) ===")
     lines = []
 
     lines.append("=== PROGRAM ===")
@@ -357,13 +405,23 @@ def main():
     print("[+] locating strings...")
     str_hits = find_string_occurrences()
     lines.append("=== STRING HITS ===")
-    target_set = set()
+    string_vas = set()
     for key, hits in str_hits.items():
         lines.append("--- %s ---" % key)
         for a in hits:
             blk = inblk(a)
             lines.append("  str @ %s  [%s]" % (fmt(a), blk[2] if blk else "?"))
-            target_set.add(_u(a))
+            string_vas.add(_u(a))
+    lines.append("")
+
+    # 1b. Descriptor hop
+    print("[+] resolving os_log descriptors in __const...")
+    desc_map = find_oslog_descriptors(string_vas)
+    lines.append("=== OS_LOG DESCRIPTORS ===")
+    lines.append("resolved = %d / %d" % (len(desc_map), len(string_vas)))
+    for sva, dva in desc_map.items():
+        blk = inblk(dva)
+        lines.append("  str %s -> desc %s  [%s]" % (fmt(sva), fmt(dva), blk[2] if blk else "?"))
     lines.append("")
 
     # 2. Load text once
@@ -375,19 +433,24 @@ def main():
     lines.append("blocks = %d, total = %.1f MB" % (len(buffers), total_mb))
     lines.append("")
 
-    # 3. Single pass
+    # 3. Single pass — targets = strings + descriptors
+    target_set = set(string_vas) | set(desc_map.values())
     print("[+] single-pass xref scan over %d targets..." % len(target_set))
     xref_map = find_all_xrefs_to_targets(target_set, buffers)
     print("[+] found refs to %d targets" % len(xref_map))
 
-    lines.append("=== XREFS (single-pass) ===")
+    lines.append("=== XREFS (single-pass, str + desc) ===")
     func_candidates = {}
     for key, hits in str_hits.items():
         lines.append("--- %s ---" % key)
         for str_addr in hits:
-            key_refs = xref_map.get(_u(str_addr), [])
-            lines.append("  str %s -> %d refs" % (fmt(str_addr), len(key_refs)))
-            for pc in key_refs[:8]:
+            # xref may come via string VA or via descriptor VA
+            refs = list(xref_map.get(_u(str_addr), []))
+            dva = desc_map.get(_u(str_addr))
+            if dva is not None:
+                refs.extend(xref_map.get(_u(dva), []))
+            lines.append("  str %s -> %d refs" % (fmt(str_addr), len(refs)))
+            for pc in refs[:8]:
                 blk = inblk(pc)
                 f = find_func_by_addr(pc)
                 fn = str(f.getName()) if f is not None else "?"
@@ -412,31 +475,58 @@ def main():
             fmt(fe), nm, sz, ",".join(sorted(keys))))
     lines.append("")
 
-    # 5. Top candidate dump
-    if ranked:
-        top_fe = ranked[0][0]
-        lines.append("=== TOP CANDIDATE @ %s ===" % fmt(top_fe))
+    # 5. Top candidate(s) dump — prefer ones matching COPY_RESULT_NEEDLES
+    def rank_score(item):
+        fe, keys = item
+        return (len(keys & COPY_RESULT_NEEDLES), len(keys))
+
+    ranked_by_copyresult = sorted(func_candidates.items(), key=rank_score, reverse=True)
+
+    for rank_i, (top_fe, top_keys) in enumerate(ranked_by_copyresult[:3]):
+        lines.append("=== CANDIDATE #%d @ %s (needles=%s) ===" % (
+            rank_i + 1, fmt(top_fe), ",".join(sorted(top_keys))))
         f = find_func_by_addr(top_fe)
-        if f is not None:
-            try:
-                sz = int(f.getBody().getNumAddresses())
-            except Exception:
-                sz = 0
-            lines.append("size = 0x%X" % sz)
+        if f is None:
+            lines.append("(function not found)")
+            continue
+        try:
+            sz = int(f.getBody().getNumAddresses())
+        except Exception:
+            sz = 0
+        lines.append("size = 0x%X" % sz)
 
-            lines.append("--- DISASM (ldr/str 0x20..0x400) ---")
-            for pc, raw, txt in disasm_func(f, 500):
-                r = extract_mem(raw)
-                if r is None:
-                    continue
-                kind, base, imm = r
-                if 0x20 <= imm <= 0x400:
-                    lines.append("  %s  %-8s  [x%-2d, #0x%X]" % (fmt(pc), kind, base, imm))
+        # per-function string xref map (all strings referenced inside)
+        lines.append("--- INTERNAL STRING REFS ---")
+        fn_hits = {}
+        for key, hits in str_hits.items():
+            for sva in hits:
+                refs = list(xref_map.get(_u(sva), []))
+                dva = desc_map.get(_u(sva))
+                if dva is not None:
+                    refs.extend(xref_map.get(_u(dva), []))
+                for pc in refs:
+                    f2 = find_func_by_addr(pc)
+                    if f2 is None:
+                        continue
+                    if _u(f2.getEntryPoint().getOffset()) == top_fe:
+                        fn_hits.setdefault(key, []).append(pc)
+        for key in sorted(fn_hits.keys()):
+            lines.append("  %s  (%d refs)" % (key, len(fn_hits[key])))
 
-            lines.append("")
-            lines.append("--- DECOMPILE ---")
-            for l in decompile(f, 120):
-                lines.append(l)
+        lines.append("")
+        lines.append("--- DISASM (ldr/str 0x20..0x400) ---")
+        for pc, raw, txt in disasm_func(f, 800):
+            r = extract_mem(raw)
+            if r is None:
+                continue
+            kind, base, imm = r
+            if 0x20 <= imm <= 0x400:
+                lines.append("  %s  %-8s  [x%-2d, #0x%X]" % (fmt(pc), kind, base, imm))
+
+        lines.append("")
+        lines.append("--- DECOMPILE ---")
+        for l in decompile(f, 180):
+            lines.append(l)
         lines.append("")
 
     # 6. kalloc_type_var
@@ -472,7 +562,7 @@ def main():
             sz = 0
         lines.append("--- %s @ %s  size=0x%X ---" % (name, fmt(entry), sz))
         seen = set()
-        for pc, raw, txt in disasm_func(f, 500):
+        for pc, raw, txt in disasm_func(f, 800):
             r = extract_mem(raw)
             if r is None:
                 continue
@@ -528,8 +618,9 @@ def main():
 
     try:
         out_json = {
+            "descriptors_resolved": len(desc_map),
             "candidate_funcs": [{"addr": fmt(fe), "needles": sorted(list(k))}
-                                for fe, k in ranked[:12]],
+                                for fe, k in ranked_by_copyresult[:12]],
             "valid_kptr_count": ok,
         }
         with open(OUT_JSON, "w") as fh:
