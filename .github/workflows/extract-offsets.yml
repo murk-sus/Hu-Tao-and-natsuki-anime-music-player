@@ -21,7 +21,6 @@ jobs:
           java-version: "25"
           distribution: temurin
 
-      # ==================== GHIDRA ====================
       - uses: actions/cache@v4
         id: cache-ghidra
         with:
@@ -57,7 +56,6 @@ jobs:
           ls -la "$GHIDRA_ROOT/Ghidra/Extensions/Jython" | head -5
           echo "Ghidra OK"
 
-      # ==================== IPSW ====================
       - uses: actions/cache@v4
         id: cache-ipsw
         with:
@@ -80,7 +78,6 @@ jobs:
           /usr/local/bin/ipsw version
           echo "ipsw OK"
 
-      # ==================== SYMBOLICATOR ====================
       - uses: actions/cache@v4
         id: cache-symbolicator
         with:
@@ -100,19 +97,15 @@ jobs:
           set -euo pipefail
           ROOT="$GITHUB_WORKSPACE/symbolicator/kernel"
           test -d "$ROOT"
-          echo "=== доступные версии сигнатур ==="
+          echo "=== versions ==="
           ls -1 "$ROOT"
-          echo "=== количество файлов в каждой версии ==="
           for d in "$ROOT"/*/; do
             echo "  $d: $(find "$d" -type f | wc -l) files"
           done
-          echo "=== структура одной версии (27.0) ==="
           ls -la "$ROOT/27.0" || true
-          echo "--- kexts sample ---"
           find "$ROOT/27.0/kexts" -maxdepth 1 -type f -name "*.json" 2>/dev/null | sort > /tmp/files.txt || true
           head -n 20 /tmp/files.txt || true
           echo "kexts total: $(wc -l < /tmp/files.txt 2>/dev/null || echo 0)"
-          echo "=== validate finished ==="
 
       - id: sigs
         name: Pick signature dir
@@ -133,40 +126,30 @@ jobs:
             if [ -n "$LATEST" ]; then
               SIGDIR="$ROOT/$LATEST"
               SIG_VER="$LATEST"
-              echo "::warning::27.x нет, использую $LATEST"
+              echo "::warning::27.x missing, using $LATEST"
             fi
           fi
           if [ -z "$SIGDIR" ]; then
-            echo "::error::Ни одной папки сигнатур не найдено"
+            echo "::error::no sigs"
             exit 1
           fi
-          ls -la "$SIGDIR" || true
-
           SIG_KEXTS="$SIGDIR/kexts"
           if [ -d "$SIG_KEXTS" ]; then
             JCOUNT=$(find "$SIG_KEXTS" -maxdepth 1 -type f -name "*.json" | wc -l)
             echo "kexts dir: $SIG_KEXTS (json=$JCOUNT)"
-            if [ "$JCOUNT" -eq 0 ]; then
-              echo "::error::В $SIG_KEXTS нет .json сигнатур"
-              exit 1
-            fi
+            test "$JCOUNT" -gt 0 || { echo "::error::empty kexts"; exit 1; }
             SIG_PATH="$SIG_KEXTS"
           else
             JCOUNT=$(find "$SIGDIR" -maxdepth 1 -type f -name "*.json" | wc -l)
-            echo "flat layout: $SIGDIR (json=$JCOUNT)"
-            if [ "$JCOUNT" -eq 0 ]; then
-              echo "::error::Не нашёл ни kexts/, ни плоских .json в $SIGDIR"
-              exit 1
-            fi
+            echo "flat: $SIGDIR (json=$JCOUNT)"
+            test "$JCOUNT" -gt 0 || { echo "::error::no json"; exit 1; }
             SIG_PATH="$SIGDIR"
           fi
-
           echo "SIGDIR=$SIGDIR"     >> "$GITHUB_ENV"
           echo "SIG_VER=$SIG_VER"   >> "$GITHUB_ENV"
           echo "SIG_PATH=$SIG_PATH" >> "$GITHUB_ENV"
-          echo "selected: ver=$SIG_VER path=$SIG_PATH"
+          echo "selected: ver=$SIG_VER"
 
-      # ==================== KERNELCACHE ====================
       - uses: actions/cache@v4
         id: cache-kernelcache
         with:
@@ -197,7 +180,7 @@ jobs:
           echo "KERNEL=$KERNEL"
           test -n "$KERNEL"
           test -s "$KERNEL"
-          file "$KERNEL" | grep -qi "Mach-O" || (echo "::error::не Mach-O"; exit 1)
+          file "$KERNEL" | grep -qi "Mach-O" || (echo "::error::not Mach-O"; exit 1)
           ls -la "$KERNEL"
           echo "KERNEL=$KERNEL" >> "$GITHUB_ENV"
           echo "KERNEL_NAME=$(basename "$KERNEL")" >> "$GITHUB_ENV"
@@ -209,7 +192,6 @@ jobs:
           python3 -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "$GITHUB_WORKSPACE/scripts/kernel_rw.py"
           echo "kernel_rw.py OK"
 
-      # ==================== SYMBOLICATE ====================
       - uses: actions/cache@v4
         id: cache-symbols
         with:
@@ -234,7 +216,7 @@ jobs:
             if [ -z "$SIG" ] || [ ! -e "$SIG" ]; then
               return 1
             fi
-            echo "--- try [$TAG] signatures=$SIG ---"
+            echo "--- try [$TAG] $SIG ---"
             ipsw kernel symbolicate --signatures "$SIG" --json "$KERNEL" \
               > /tmp/sym_out.txt 2>/tmp/sym_err.txt || true
             echo "stdout bytes: $(wc -c < /tmp/sym_out.txt 2>/dev/null || echo 0)"
@@ -254,99 +236,21 @@ jobs:
           try_sign "$SIG_PATH" "primary" || true
 
           if [ "$(count_entries "$OUT")" = "0" ]; then
-            echo "=== [2] fallback: version dir / kexts / nested ==="
-            for S in "$SIGDIR" "$SIGDIR/kexts" "$SIGDIR/$SIG_VER" "$SIGDIR/$SIG_VER/kexts" "$SIGDIR/24A437" "$SIGDIR/iPhone14,5"; do
-              if try_sign "$S" "fb:$S"; then
-                break
-              fi
+            for S in "$SIGDIR" "$SIGDIR/kexts" "$SIGDIR/$SIG_VER" "$SIGDIR/$SIG_VER/kexts"; do
+              if try_sign "$S" "fb:$S"; then break; fi
             done
-          fi
-
-          if [ "$(count_entries "$OUT")" = "0" ]; then
-            echo "=== [3] search *.symbols.json ==="
-            ls -la "$KDIR" || true
-            FOUND=$(find "$KDIR" "$GITHUB_WORKSPACE" -maxdepth 2 -name "*.symbols.json" -type f 2>/dev/null | head -n1 || true)
-            echo "FOUND=$FOUND"
-            if [ -n "$FOUND" ] && [ -s "$FOUND" ]; then
-              cp "$FOUND" "$OUT"
-              echo "OK: copied $FOUND (entries=$(count_entries "$OUT"))"
-            fi
-          fi
-
-          if [ "$(count_entries "$OUT")" = "0" ]; then
-            echo "=== [4] internet fallback: blacktop/symbolicator ==="
-            rm -rf /tmp/sigs /tmp/sig.tar.gz
-            mkdir -p /tmp/sigs
-            DL_OK=0
-            for URL in \
-              "https://codeload.github.com/blacktop/symbolicator/tar.gz/refs/heads/master" \
-              "https://codeload.github.com/blacktop/symbolicator/tar.gz/refs/heads/main"
-            do
-              echo "try $URL"
-              if curl -fsSL -o /tmp/sig.tar.gz "$URL"; then
-                tar -xzf /tmp/sig.tar.gz -C /tmp/sigs && DL_OK=1 && break
-              fi
-            done
-            echo "DL_OK=$DL_OK"
-            if [ "$DL_OK" = "1" ]; then
-              NEWROOT=$(find /tmp/sigs -maxdepth 3 -type d -name kernel 2>/dev/null | head -n1 || true)
-              echo "NEWROOT=$NEWROOT"
-              if [ -n "$NEWROOT" ]; then
-                DONE=0
-                for V in 27.0 27.1 27.2 27.3 26.0 26.1 26.2 26.3 25.6 25.5 25.4; do
-                  for S in "$NEWROOT/$V/kexts" "$NEWROOT/$V"; do
-                    if [ -e "$S" ]; then
-                      if try_sign "$S" "net:$S"; then
-                        DONE=1
-                        break
-                      fi
-                    fi
-                  done
-                  if [ "$DONE" = "1" ]; then
-                    break
-                  fi
-                done
-              fi
-            fi
           fi
 
           if ! jq empty "$OUT" 2>/dev/null; then
-            echo "::warning::symbols.json невалиден, сбрасываю"
             echo "[]" > "$OUT"
           fi
-          SZ=$(wc -c < "$OUT" 2>/dev/null || echo 0)
-          CNT=$(count_entries "$OUT")
-          echo "=== final symbols.json: $SZ bytes, entries=$CNT ==="
-          head -c 800 "$OUT" || true
-          echo
+          echo "final symbols.json: bytes=$(wc -c < "$OUT") entries=$(count_entries "$OUT")"
 
-      - name: Validate symbols.json
-        if: always()
-        continue-on-error: true
-        run: |
-          set -uo pipefail
-          F="$GITHUB_WORKSPACE/symbols.json"
-          if [ ! -f "$F" ]; then
-            echo "::error::symbols.json отсутствует"
-            exit 1
-          fi
-          if ! jq empty "$F" 2>/dev/null; then
-            echo "::error::symbols.json невалиден"
-            exit 1
-          fi
-          TYPE=$(jq -r 'type' "$F")
-          CNT=$(jq 'if type == "array" then length elif type == "object" then (keys | length) else 0 end' "$F")
-          echo "top-level: $TYPE, entries: $CNT"
-          if [ "$CNT" = "0" ]; then
-            echo "::warning::symbols.json пустой — символы не подтянутся"
-          fi
-
-      # ==================== GHIDRA PROJECT (warm) ====================
       - uses: actions/cache@v4
         id: cache-project
         with:
           path: ${{ github.workspace }}/ghidra_project
-          key: ghidra-project-24A437-v4
+          key: ghidra-project-24A437-v6
 
       - name: Run Ghidra
         continue-on-error: true
@@ -356,8 +260,6 @@ jobs:
           GITHUB_WORKSPACE: ${{ github.workspace }}
         run: |
           echo "cache-project hit: ${{ steps.cache-project.outputs.cache-hit }}"
-          SZ=$(wc -c < "$SYMBOLS_JSON" 2>/dev/null || echo 0)
-          echo "symbols.json size: $SZ"
           if [ "${{ steps.cache-project.outputs.cache-hit }}" = "true" ]; then
             echo "=== warm ==="
             "$GHIDRA_ROOT/support/analyzeHeadless" \
@@ -391,19 +293,18 @@ jobs:
           echo "=== result.txt ==="
           if [ -s result.txt ]; then
             wc -l result.txt
-            head -20 result.txt
+            head -40 result.txt
           else
-            echo "::warning::result.txt пуст"
+            echo "::warning::result.txt empty"
           fi
           echo "=== offsets.json ==="
           if [ -s offsets.json ] && jq empty offsets.json 2>/dev/null; then
             echo "offsets.json valid, bytes=$(wc -c < offsets.json)"
-            jq 'if type == "object" then keys else length end' offsets.json | head -20
           else
-            echo "::error::offsets.json пуст или невалиден"
+            echo "::warning::offsets.json empty"
           fi
           echo "=== kernel.log tail ==="
-          tail -n 40 kernel.log 2>/dev/null || echo "(no kernel.log)"
+          tail -n 40 kernel.log 2>/dev/null || echo "(no log)"
 
       - uses: actions/upload-artifact@v4
         if: always()
