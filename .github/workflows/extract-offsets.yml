@@ -31,7 +31,6 @@ jobs:
         name: Install Ghidra
         run: |
           set -e
-          df -h /
           curl -fsSL -o /tmp/g.zip https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_12.1.2_build/ghidra_12.1.2_PUBLIC_20260605.zip
           unzip -q /tmp/g.zip -d "$GITHUB_WORKSPACE"
           mv "$GITHUB_WORKSPACE/ghidra_12.1.2_PUBLIC" "$GITHUB_WORKSPACE/ghidra"
@@ -107,6 +106,7 @@ jobs:
           file "$KERNEL" | grep -qi "Mach-O"
           echo "KERNEL=$KERNEL" >> "$GITHUB_ENV"
           echo "KERNEL_NAME=$(basename "$KERNEL")" >> "$GITHUB_ENV"
+          echo "KERNEL_DIR=$(dirname "$KERNEL")" >> "$GITHUB_ENV"
 
       - name: Validate scripts
         run: |
@@ -118,7 +118,22 @@ jobs:
         id: cache-symbols
         with:
           path: ${{ github.workspace }}/symbols.json
-          key: symbols-24A437-v11
+          key: symbols-24A437-v12
+
+      - name: Diagnose ipsw symbolicate
+        run: |
+          echo "=== ipsw version ==="
+          ipsw version || true
+          echo ""
+          echo "=== ipsw kernel symbolicate --help ==="
+          ipsw kernel symbolicate --help 2>&1 || true
+          echo ""
+          echo "=== ipsw kernel sym --help ==="
+          ipsw kernel sym --help 2>&1 || true
+          echo ""
+          echo "=== ipsw kernel --help ==="
+          ipsw kernel --help 2>&1 || true
+          exit 0
 
       - name: Symbolicate
         if: steps.cache-symbols.outputs.cache-hit != 'true'
@@ -132,130 +147,90 @@ jobs:
             jq 'if type=="array" then length elif type=="object" then (keys|length) else 0 end' "$1" 2>/dev/null || echo 0
           }
 
-          extract_json() {
-            local dst="$1"
-            if [ -s "$dst" ]; then
-              if jq empty "$dst" 2>/dev/null; then
+          check_json_file() {
+            local f="$1"
+            [ -s "$f" ] && jq empty "$f" 2>/dev/null
+          }
+
+          try_one() {
+            local desc="$1"; shift
+            local OUTJSON="/tmp/sym_cand.json"
+            rm -f "$OUTJSON"
+            echo "  [$desc]"
+            echo "    cmd: $*"
+            "$@" > /tmp/sym_run.log 2>&1 || true
+            echo "    exit=$?"
+            if [ -s /tmp/sym_run.log ]; then
+              echo "    log head:"; head -3 /tmp/sym_run.log | sed 's/^/      /'
+            fi
+            if check_json_file "$OUTJSON"; then
+              local N=$(entries_of "$OUTJSON")
+              echo "    -> $OUTJSON entries=$N"
+              if [ "$N" -gt 0 ]; then
+                cp "$OUTJSON" "$OUT"
                 return 0
               fi
             fi
             return 1
           }
 
-          try_variant() {
+          try_side_effect() {
+            echo "    checking side-effect files near kernel"
+            local KDIR="$(dirname "$KERNEL")"
+            find "$KDIR" -maxdepth 1 -type f -name "*.json" 2>/dev/null | while read f; do
+              if check_json_file "$f"; then
+                local N=$(entries_of "$f")
+                echo "    side file: $f entries=$N"
+                if [ "$N" -gt 0 ]; then
+                  cp "$f" "$OUT"
+                  echo "FOUND_SIDE_EFFECT=1" > /tmp/side_effect
+                fi
+              fi
+            done
+            [ -f /tmp/side_effect ]
+          }
+
+          run_variants() {
             local SIG="$1"
             local TAG="$2"
-            local OUTJSON="/tmp/sym_candidate.json"
-            rm -f "$OUTJSON"
+            echo ""
+            echo "=== [$TAG] sig=$SIG ==="
 
-            echo "  [$TAG] variant A: --signatures SIG -o OUT KERNEL"
-            ipsw kernel symbolicate --signatures "$SIG" -o "$OUTJSON" "$KERNEL" > /tmp/sym_a.log 2>&1 || true
-            if extract_json "$OUTJSON"; then
-              local N=$(entries_of "$OUTJSON")
-              if [ "$N" -gt 0 ]; then
-                echo "    variant A OK: $N entries"
-                cp "$OUTJSON" "$OUT"
-                return 0
-              fi
-            fi
-
-            echo "  [$TAG] variant B: --signatures SIG KERNEL -o OUT"
-            rm -f "$OUTJSON"
-            ipsw kernel symbolicate --signatures "$SIG" "$KERNEL" -o "$OUTJSON" > /tmp/sym_b.log 2>&1 || true
-            if extract_json "$OUTJSON"; then
-              local N=$(entries_of "$OUTJSON")
-              if [ "$N" -gt 0 ]; then
-                echo "    variant B OK: $N entries"
-                cp "$OUTJSON" "$OUT"
-                return 0
-              fi
-            fi
-
-            echo "  [$TAG] variant C: --signatures SIG --json -o OUT KERNEL"
-            rm -f "$OUTJSON"
-            ipsw kernel symbolicate --signatures "$SIG" --json -o "$OUTJSON" "$KERNEL" > /tmp/sym_c.log 2>&1 || true
-            if extract_json "$OUTJSON"; then
-              local N=$(entries_of "$OUTJSON")
-              if [ "$N" -gt 0 ]; then
-                echo "    variant C OK: $N entries"
-                cp "$OUTJSON" "$OUT"
-                return 0
-              fi
-            fi
-
-            echo "  [$TAG] variant D: --signatures SIG KERNEL > OUT"
-            rm -f "$OUTJSON"
-            ipsw kernel symbolicate --signatures "$SIG" "$KERNEL" > "$OUTJSON" 2>/dev/null || true
-            if extract_json "$OUTJSON"; then
-              local N=$(entries_of "$OUTJSON")
-              if [ "$N" -gt 0 ]; then
-                echo "    variant D OK: $N entries"
-                cp "$OUTJSON" "$OUT"
-                return 0
-              fi
-            fi
-
-            echo "  [$TAG] variant E: kernel sym --signatures SIG KERNEL > OUT"
-            rm -f "$OUTJSON"
-            ipsw kernel sym --signatures "$SIG" "$KERNEL" > "$OUTJSON" 2>/dev/null || true
-            if extract_json "$OUTJSON"; then
-              local N=$(entries_of "$OUTJSON")
-              if [ "$N" -gt 0 ]; then
-                echo "    variant E OK: $N entries"
-                cp "$OUTJSON" "$OUT"
-                return 0
-              fi
-            fi
-
-            echo "  [$TAG] variant F: --signatures SIG --json KERNEL > OUT"
-            rm -f "$OUTJSON"
-            ipsw kernel symbolicate --signatures "$SIG" --json "$KERNEL" > "$OUTJSON" 2>/dev/null || true
-            if extract_json "$OUTJSON"; then
-              local N=$(entries_of "$OUTJSON")
-              if [ "$N" -gt 0 ]; then
-                echo "    variant F OK: $N entries"
-                cp "$OUTJSON" "$OUT"
-                return 0
-              fi
-            fi
-
+            try_one "$TAG-A stdout --json" \
+              ipsw kernel symbolicate --signatures "$SIG" --json "$KERNEL" && return 0
+            try_one "$TAG-B kernel first --json file" \
+              ipsw kernel symbolicate "$KERNEL" --signatures "$SIG" --json /tmp/sym_cand.json && return 0
+            try_one "$TAG-C kernel first --json stdout" \
+              ipsw kernel symbolicate "$KERNEL" --signatures "$SIG" --json && return 0
+            try_one "$TAG-D kernel first only" \
+              ipsw kernel symbolicate "$KERNEL" --signatures "$SIG" && return 0
+            try_one "$TAG-E kernel first --output" \
+              ipsw kernel symbolicate "$KERNEL" --signatures "$SIG" --output /tmp/sym_cand.json && return 0
+            try_one "$TAG-F kernel first -o" \
+              ipsw kernel symbolicate "$KERNEL" --signatures "$SIG" -o /tmp/sym_cand.json && return 0
+            try_one "$TAG-G sym first" \
+              ipsw kernel sym "$KERNEL" --signatures "$SIG" --json /tmp/sym_cand.json && return 0
+            try_one "$TAG-H sym kernel first no flags" \
+              ipsw kernel sym "$KERNEL" --signatures "$SIG" && return 0
+            try_one "$TAG-I positional sig first" \
+              ipsw kernel symbolicate "$SIG" "$KERNEL" --json /tmp/sym_cand.json && return 0
+            try_side_effect && return 0
             return 1
           }
 
-          echo "=== target: $SIG_ROOT ==="
-          ls -la "$SIG_ROOT"
-          echo ""
-          echo "=== attempt 1: full 27.0 dir ==="
-          try_variant "$SIG_ROOT" "27.0-full"
-          echo ""
-          echo "=== attempt 2: 27.0/kexts ==="
-          try_variant "$SIG_ROOT/kexts" "27.0-kexts"
-          echo ""
-          echo "=== attempt 3: 27.0/xnu.json ==="
-          try_variant "$SIG_ROOT/xnu.json" "27.0-xnu"
-
-          if [ ! -s "$OUT" ]; then
-            echo "::error::symbolication failed - no symbols.json produced"
-            echo "--- variant A log ---"
-            cat /tmp/sym_a.log 2>/dev/null || true
-            echo "--- variant B log ---"
-            cat /tmp/sym_b.log 2>/dev/null || true
-            echo "--- variant C log ---"
-            cat /tmp/sym_c.log 2>/dev/null || true
-            exit 1
-          fi
-
-          N=$(entries_of "$OUT")
-          if [ "$N" -eq 0 ]; then
-            echo "::error::symbols.json exists but has 0 entries"
-            head -c 500 "$OUT" || true
-            exit 1
-          fi
+          run_variants "$SIG_ROOT" "27.0-full" && { echo "OK full"; exit 0; }
+          run_variants "$SIG_ROOT/kexts" "27.0-kexts" && { echo "OK kexts"; exit 0; }
+          run_variants "$SIG_ROOT/xnu.json" "27.0-xnu" && { echo "OK xnu"; exit 0; }
 
           echo ""
-          echo "=== SUCCESS: $N entries ==="
-          head -c 400 "$OUT" || true
-          echo ""
+          echo "::error::all variants failed - dumping available logs"
+          for f in /tmp/sym_run.log /tmp/sym_a.log /tmp/sym_b.log /tmp/sym_c.log; do
+            if [ -f "$f" ]; then
+              echo "--- $f ---"
+              tail -30 "$f"
+            fi
+          done
+          exit 1
 
       - uses: actions/cache@v4
         id: cache-project
@@ -325,6 +300,7 @@ jobs:
           rm -rf "$GITHUB_WORKSPACE/ipsw" "$GITHUB_WORKSPACE/kernelcache" \
                  "$GITHUB_WORKSPACE/symbolicator" "$GITHUB_WORKSPACE/ghidra" \
                  "$GITHUB_WORKSPACE/ghidra_project"
-          rm -f /tmp/g.zip /tmp/ipsw.tar.gz /tmp/sym_*.log /tmp/sym_candidate.json /tmp/dl.log
+          rm -f /tmp/g.zip /tmp/ipsw.tar.gz /tmp/sym_run.log /tmp/sym_cand.json \
+                /tmp/sym_a.log /tmp/sym_b.log /tmp/sym_c.log /tmp/dl.log /tmp/side_effect
           rm -rf "$HOME/.config/ghidra" /var/tmp/runner-ghidra
           exit 0
