@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # @runtime Jython
-# kernel_rw.py v47 - compact, safe dict access
+# kernel_rw.py v48 - no literal 0x at tuple start
 
 import os
 import sys
@@ -34,48 +34,108 @@ MAX_WORKLIST = 50000
 MAX_DEPTH = 12
 MAX_DECOMPILE_SEC = 45
 
+A_KALLOC   = int("FFFFFFF00A200988", 16)
+A_KALLOC_Z = int("FFFFFFF00A20141C", 16)
+A_COPYIN   = int("FFFFFFF00A368EC0", 16)
+A_COPYOUT  = int("FFFFFFF00A369A3C", 16)
+A_MEMMOVE  = int("FFFFFFF00AA40D30", 16)
+A_MEMSET   = int("FFFFFFF00AA40EE0", 16)
+
+A_ACTION       = int("FFFFFFF00A4E5C28", 16)
+A_ADD_FLOW     = int("FFFFFFF00A4E843C", 16)
+A_ADD_CLIENT   = int("FFFFFFF00A4E60DC", 16)
+A_RM_FLOW      = int("FFFFFFF00A4E93C4", 16)
+A_RM_CLIENT    = int("FFFFFFF00A4E76F4", 16)
+A_COPY_RESULT  = int("FFFFFFF00A4E7BE8", 16)
+A_COPY_LIST    = int("FFFFFFF00A4E80FC", 16)
+A_COPY_IFACE   = int("FFFFFFF00A4EAC7C", 16)
+A_ARENA        = int("FFFFFFF00A4EB704", 16)
+A_UPD_CACHE    = int("FFFFFFF00A4EBD58", 16)
+A_COPY_UPDATE  = int("FFFFFFF00A4EC264", 16)
+A_REQ_NEXUS    = int("FFFFFFF00A4E9904", 16)
+A_AGENT_ACT    = int("FFFFFFF00A4EA0B4", 16)
+A_COPY_AGENT   = int("FFFFFFF00A4EA778", 16)
+A_COPY_ROUTE   = int("FFFFFFF00A4EBA0C", 16)
+A_COPY_PARAM   = int("FFFFFFF00A4EA8A0", 16)
+A_CLAIM        = int("FFFFFFF00A4E7158", 16)
+A_SIGN         = int("FFFFFFF00A4EC5D8", 16)
+A_GET_IFACE    = int("FFFFFFF00A4EB2B4", 16)
+A_COPY_AG_ALT  = int("FFFFFFF00A4EAB50", 16)
+A_VALIDATE     = int("FFFFFFF00A4EC9EC", 16)
+A_GET_SIGNED   = int("FFFFFFF00A4ECC4C", 16)
+A_SET_SIGNED   = int("FFFFFFF00A4ECE88", 16)
+A_FLOW_STATS   = int("FFFFFFF00A4ED170", 16)
+
+SINK_KALLOC    = (0, "kalloc_type", A_KALLOC, 1)
+SINK_KALLOC_Z  = (1, "kalloc_zone", A_KALLOC_Z, 1)
+SINK_COPYIN    = (2, "copyin", A_COPYIN, 3)
+SINK_COPYOUT   = (3, "copyout", A_COPYOUT, 3)
+SINK_MEMMOVE   = (4, "memmove", A_MEMMOVE, 3)
+SINK_MEMSET    = (5, "memset", A_MEMSET, 3)
+
 SINK_LIST = [
-    ("kalloc_type", 0xFFFFFFF00A200988, 1),
-    ("kalloc_zone", 0xFFFFFFF00A20141C, 1),
-    ("copyin",      0xFFFFFFF00A368EC0, 3),
-    ("copyout",     0xFFFFFFF00A369A3C, 3),
-    ("memmove",     0xFFFFFFF00AA40D30, 3),
-    ("memset",      0xFFFFFFF00AA40EE0, 3),
+    SINK_KALLOC,
+    SINK_KALLOC_Z,
+    SINK_COPYIN,
+    SINK_COPYOUT,
+    SINK_MEMMOVE,
+    SINK_MEMSET,
 ]
-SINK_BY_ADDR = {}
-for entry in SINK_LIST:
-    SINK_BY_ADDR[entry[0]] = 0
 
 SINK_MAP = {}
-for entry in SINK_LIST:
-    addr = entry[1]
-    SINK_MAP[addr] = (entry[0], entry[2])
+for sk in SINK_LIST:
+    SINK_MAP[sk[2]] = (sk[1], sk[3])
+
+SRC_ACTION     = (A_ACTION, "necp_client_action")
+SRC_ADD_FLOW   = (A_ADD_FLOW, "necp_client_add_flow")
+SRC_ADD_CLIENT = (A_ADD_CLIENT, "necp_client_add_client")
+SRC_RM_FLOW    = (A_RM_FLOW, "necp_client_remove_flow")
+SRC_RM_CLIENT  = (A_RM_CLIENT, "necp_client_remove_client")
+SRC_COPY_RES   = (A_COPY_RESULT, "necp_client_copy_result")
+SRC_COPY_LST   = (A_COPY_LIST, "necp_client_copy_list")
+SRC_COPY_IFACE = (A_COPY_IFACE, "necp_client_copy_interface")
+SRC_ARENA      = (A_ARENA, "necp_client_sysctl_arena")
+SRC_UPD_CACHE  = (A_UPD_CACHE, "necp_client_update_cache")
+SRC_COPY_UPD   = (A_COPY_UPDATE, "necp_client_copy_update")
+SRC_REQ_NEXUS  = (A_REQ_NEXUS, "necp_client_request_nexus")
+SRC_AGENT_ACT  = (A_AGENT_ACT, "necp_client_agent_action")
+SRC_COPY_AGENT = (A_COPY_AGENT, "necp_client_copy_agent")
+SRC_COPY_RT    = (A_COPY_ROUTE, "necp_client_copy_route_stats")
+SRC_COPY_PRM   = (A_COPY_PARAM, "necp_client_copy_parameters")
+SRC_CLAIM      = (A_CLAIM, "necp_client_claim")
+SRC_SIGN       = (A_SIGN, "necp_client_sign")
+SRC_GET_IFACE  = (A_GET_IFACE, "necp_client_get_iface_addr")
+SRC_COPY_AGALT = (A_COPY_AG_ALT, "necp_client_copy_agent_alt")
+SRC_VALIDATE   = (A_VALIDATE, "necp_client_validate")
+SRC_GET_SIGNED = (A_GET_SIGNED, "necp_client_get_signed_id")
+SRC_SET_SIGNED = (A_SET_SIGNED, "necp_client_set_signed_id")
+SRC_FLOW_STATS = (A_FLOW_STATS, "necp_client_get_flow_stats")
 
 SOURCES = [
-    (0xFFFFFFF00A4E5C28, "necp_client_action"),
-    (0xFFFFFFF00A4E843C, "necp_client_add_flow"),
-    ( "0xFFFFFFF00A4E60DC, "necp_client_add_client"),
-    (0xFFFFFFF00A4E93C4, "necp_client_remove_flow"),
-    (0xFFFFFFF00A4E76F4,necp_client_remove_client"),
-    (0xFFFFFFF00A4E7BE8, "necp_client_copy_result"),
-    (0xFFFFFFF00A4E80FC, "necp_client_copy_list"),
-    (0xFFFFFFF00A4EAC7C, "necp_client_copy_interface"),
-    (0xFFFFFFF00A4EB704, "necp_client_sysctl_arena"),
-    (0xFFFFFFF00A4EBD58, "necp_client_update_cache"),
-    (0xFFFFFFF00A4EC264, "necp_client_copy_update"),
-    (0xFFFFFFF00A4E9904, "necp_client_request_nexus"),
-    (0xFFFFFFF00A4EA0B4, "necp_client_agent_action"),
-    (0xFFFFFFF00A4EA778, "necp_client_copy_agent"),
-    (0xFFFFFFF00A4EBA0C, "necp_client_copy_route_stats"),
-    (0xFFFFFFF00A4EA8A0, "necp_client_copy_parameters"),
-    (0xFFFFFFF00A4E7158, "necp_client_claim"),
-    (0xFFFFFFF00A4EC5D8, "necp_client_sign"),
-    (0xFFFFFFF00A4EB2B4, "necp_client_get_iface_addr"),
-    (0xFFFFFFF00A4EAB50, "necp_client_copy_agent_alt"),
-    (0xFFFFFFF00A4EC9EC, "necp_client_validate"),
-    (0xFFFFFFF00A4ECC4C, "necp_client_get_signed_id"),
-    (0xFFFFFFF00A4ECE88, "necp_client_set_signed_id"),
-    (0xFFFFFFF00A4ED170, "necp_client_get_flow_stats"),
+    SRC_ACTION,
+    SRC_ADD_FLOW,
+    SRC_ADD_CLIENT,
+    SRC_RM_FLOW,
+    SRC_RM_CLIENT,
+    SRC_COPY_RES,
+    SRC_COPY_LST,
+    SRC_COPY_IFACE,
+    SRC_ARENA,
+    SRC_UPD_CACHE,
+    SRC_COPY_UPD,
+    SRC_REQ_NEXUS,
+    SRC_AGENT_ACT,
+    SRC_COPY_AGENT,
+    SRC_COPY_RT,
+    SRC_COPY_PRM,
+    SRC_CLAIM,
+    SRC_SIGN,
+    SRC_GET_IFACE,
+    SRC_COPY_AGALT,
+    SRC_VALIDATE,
+    SRC_GET_SIGNED,
+    SRC_SET_SIGNED,
+    SRC_FLOW_STATS,
 ]
 
 DEC = None
@@ -106,8 +166,8 @@ def fmt(v):
 
 def sa(a):
     try:
-        return currentProgram.getAddressFactory().getAddress(
-            "%X" % (int(a) & 0xFFFFFFFFFFFFFFFF))
+        s = "%X" % (int(a) & 0xFFFFFFFFFFFFFFFF)
+        return currentProgram.getAddressFactory().getAddress(s)
     except Exception:
         return None
 
@@ -277,11 +337,8 @@ def get_param_keys(hf):
     return result
 
 
-def propagate(hf, tainted_idx, diag):
+def propagate(hf, tainted_idx):
     pm = get_param_keys(hf)
-    diag["params"] = 0
-    for v in pm.values():
-        diag["params"] += len(v)
     tainted = set()
     for i in tainted_idx:
         cur = pm.get(i)
@@ -290,14 +347,11 @@ def propagate(hf, tainted_idx, diag):
         for k in cur:
             tainted.add(k)
     if not tainted:
-        diag["seed"] = 0
         return tainted
-    diag["seed"] = len(tainted)
     try:
         all_ops = list(hf.getPcodeOps())
     except Exception:
         return tainted
-    diag["ops"] = len(all_ops)
     changed = True
     iters = 0
     while changed and iters < 300:
@@ -329,7 +383,6 @@ def propagate(hf, tainted_idx, diag):
                     changed = True
             except Exception:
                 pass
-    diag["iters"] = iters
     return tainted
 
 
@@ -354,7 +407,10 @@ def analyze_source(start_addr, start_name):
             break
         if time.time() - START_TS > TAINT_SEC:
             break
-        addr, tidx, depth = worklist.pop(0)
+        entry = worklist.pop(0)
+        addr = entry[0]
+        tidx = entry[1]
+        depth = entry[2]
         key = (addr, tidx)
         if key in local:
             continue
@@ -367,8 +423,7 @@ def analyze_source(start_addr, start_name):
         hf = decompile_hf(f)
         if hf is None:
             continue
-        diag = {}
-        tainted = propagate(hf, tidx, diag)
+        tainted = propagate(hf, tidx)
         if not tainted:
             continue
         fname = "?"
@@ -499,19 +554,14 @@ def bl_callers(target, max_hits=20, budget=40):
             b3 = int(jbuf[i + 3]) & 0xFF
             raw = b0 | (b1 << 8) | (b2 << 16) | (b3 << 24)
             op = raw & 0xFC000000
-            if op == 0x94000000:
+            if op == 0x94000000 or op == 0x14000000:
                 imm = sign26(raw & 0x03FFFFFF) << 2
                 dst = (pc + imm) & 0xFFFFFFFFFFFFFFFF
                 if dst == target:
-                    hits.append((pc, "BL"))
-                    if len(hits) >= max_hits:
-                        del jbuf
-                        return hits
-            elif op == 0x14000000:
-                imm = sign26(raw & 0x03FFFFFF) << 2
-                dst = (pc + imm) & 0xFFFFFFFFFFFFFFFF
-                if dst == target:
-                    hits.append((pc, "B"))
+                    kind = "BL"
+                    if op == 0x14000000:
+                        kind = "B"
+                    hits.append((pc, kind))
                     if len(hits) >= max_hits:
                         del jbuf
                         return hits
@@ -546,7 +596,8 @@ def pick_dump_targets(findings):
         if a in seen:
             continue
         seen.add(a)
-        picks.append((a, fd.get("in_func"), "kalloc_type d=%d" % fd.get("depth", 0)))
+        note = "kalloc_type d=%d" % fd.get("depth", 0)
+        picks.append((a, fd.get("in_func"), note))
     cin = []
     for fd in findings:
         if fd.get("sink") != "copyin":
@@ -559,7 +610,8 @@ def pick_dump_targets(findings):
         if a in seen:
             continue
         seen.add(a)
-        picks.append((a, fd.get("in_func"), "copyin d=%d" % fd.get("depth", 0)))
+        note = "copyin d=%d" % fd.get("depth", 0)
+        picks.append((a, fd.get("in_func"), note))
     return picks[:16]
 
 
@@ -567,9 +619,9 @@ def main():
     global START_TS
     START_TS = time.time()
 
-    log("=== kernel_rw.py v47 ===")
+    log("=== kernel_rw.py v48 ===")
 
-    w("natsuk1 taint scan v47")
+    w("natsuk1 taint scan v48")
     w("sources=%d sinks=%d depth=%d budget=%ds" % (
         len(SOURCES), len(SINK_LIST), MAX_DEPTH, TAINT_SEC))
     w("")
@@ -630,8 +682,8 @@ def main():
             cur.append(fd.get("depth"))
         w("  %s:" % sk)
         items = sorted(uniq.items(), key=lambda x: min(x[1]))
-        for (k, depths) in items[:20]:
-            w("    %s  d=%s" % (k, sorted(set(depths))))
+        for pair in items[:20]:
+            w("    %s  d=%s" % (pair[0], sorted(set(pair[1]))))
 
     START_TS = time.time()
     picks = pick_dump_targets(all_findings)
