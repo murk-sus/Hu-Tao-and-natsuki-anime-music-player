@@ -3,8 +3,14 @@
 
 import os, re, json, traceback, time
 
+from jarray import zeros
+from ghidra.util.task import TaskMonitor
+try:
+    from ghidra.program.model.address import Address
+except:
+    Address = None
+
 WS = os.environ.get("GITHUB_WORKSPACE", "/tmp")
-SYM = os.environ.get("SYMBOLS_JSON", os.path.join(WS, "symbols.json"))
 OUT = os.path.join(WS, "result.txt")
 OUT_JSON = os.path.join(WS, "offsets.json")
 
@@ -12,6 +18,7 @@ NEEDLE = b"necp_client_copy_result"
 MAX_HITS = 60
 MAX_FUNCS = 6
 MAX_DISASM = 500
+HINT_ADDR = 0xFFFFFFF0070D2AC8  # where we saw the string last run
 
 def _u(v): return int(v) & 0xFFFFFFFFFFFFFFFF
 def fmt(v):
@@ -46,46 +53,34 @@ def inblk(a):
         if s <= a < e: return (s, e, n, x)
     return None
 
-# ---------- find string occurrences ----------
+# ---------- find string via native findBytes ----------
 def find_string_occurrences():
     hits = []
-    for s, e, name, is_exec, blk in blocks():
-        try:
-            size = e - s
-            if size <= 0 or size > 32 * 1024 * 1024:
-                # chunk big blocks
-                if size > 32 * 1024 * 1024:
-                    step = 16 * 1024 * 1024
-                    off = s
-                    while off < e:
-                        chunk = min(step, e - off)
-                        try:
-                            buf = bytearray(chunk)
-                            ga = sa(off)
-                            blk.getBytes(ga, buf)
-                            _scan_buf(bytes(buf), off, hits)
-                        except: pass
-                        off += chunk - len(NEEDLE)
-                        if len(hits) >= MAX_HITS: return hits
-                continue
-            buf = bytearray(size)
-            ga = sa(s)
-            blk.getBytes(ga, buf)
-            _scan_buf(bytes(buf), s, hits)
-            if len(hits) >= MAX_HITS: break
-        except Exception as ex:
-            print("[-] scan %s: %s" % (name, str(ex)))
-    return hits
+    mem = currentProgram.getMemory()
 
-def _scan_buf(data, base, hits):
-    pos = 0
-    n = len(NEEDLE)
+    # convert Python bytes to Java byte[] (signed)
+    jneedle = zeros(len(NEEDLE), 'b')
+    for i, c in enumerate(NEEDLE):
+        jneedle[i] = c if c < 128 else c - 256
+
+    start = mem.getMinAddress()
+    if start is None:
+        return hits
+    monitor = TaskMonitor.DUMMY
+    addr = start
     while True:
-        i = data.find(NEEDLE, pos)
-        if i < 0: break
-        hits.append(base + i)
-        pos = i + 1
-        if len(hits) >= MAX_HITS: return
+        try:
+            hit = mem.findBytes(addr, jneedle, None, True, monitor)
+        except Exception as ex:
+            print("[-] findBytes err: %s" % str(ex))
+            break
+        if hit is None: break
+        hits.append(_u(hit.getOffset()))
+        if len(hits) >= MAX_HITS: break
+        nxt = hit.add(1)
+        if nxt is None: break
+        addr = nxt
+    return hits
 
 # ---------- decoder ----------
 def dec(b, pc):
@@ -286,7 +281,6 @@ def extract_call(body):
     m = re.search(r"->\s*0x([0-9A-F]+)", body)
     return int(m.group(1), 16) if m else None
 
-# ---------- xrefs & func ----------
 def get_refs_to(a):
     out = []
     try:
@@ -307,67 +301,90 @@ def func_containing(a):
         return _u(f.getEntryPoint().getOffset())
     except: return None
 
-# ---------- main ----------
+def dump_bytes(a, n=64):
+    out = []
+    blk = inblk(a)
+    if blk is None: return ["(not in block)"]
+    ga = sa(a)
+    if ga is None: return ["(no addr)"]
+    mem = currentProgram.getMemory()
+    try:
+        jbuf = zeros(n, 'b')
+        mem.getBytes(ga, jbuf)
+        s = ""
+        for i in range(n):
+            c = (jbuf[i] + 256) & 0xFF
+            s += chr(c) if 0x20 <= c < 0x7F else "."
+        return [s]
+    except Exception as e:
+        return ["(err: %s)" % str(e)]
+
 def main():
-    print("=== necp_client_copy_result string-search ===")
+    print("=== necp_client_copy_result native findBytes ===")
     t0 = time.time()
 
     lines = []
     lines.append("=== SCAN ===")
     lines.append("needle: %s" % NEEDLE)
-    lines.append("total blocks: %d" % len(blocks()))
-    n_exec = sum(1 for _,_,_,x,_ in blocks() if x)
-    lines.append("exec blocks:  %d" % n_exec)
+    lines.append("blocks: %d" % len(blocks()))
     try:
-        ks = currentProgram.getMemory().getMinAddress().getOffset()
-        ke = currentProgram.getMemory().getMaxAddress().getOffset()
-        lines.append("memory range: %s - %s" % (fmt(ks), fmt(ke)))
+        mem = currentProgram.getMemory()
+        lines.append("mem range: %s - %s" % (
+            fmt(mem.getMinAddress().getOffset()),
+            fmt(mem.getMaxAddress().getOffset())))
     except: pass
     lines.append("")
 
-    print("[+] scanning memory for string...")
+    # sanity: dump bytes at HINT to confirm string is present
+    lines.append("=== HINT DUMP (0x%X) ===" % HINT_ADDR)
+    for l in dump_bytes(HINT_ADDR, 64):
+        lines.append("  " + l)
+    lines.append("")
+
+    print("[+] findBytes scan...")
     hits = find_string_occurrences()
-    print("[+] string hits: %d (%.1fs)" % (len(hits), time.time() - t0))
-    lines.append("string hits: %d" % len(hits))
+    print("[+] hits: %d (%.1fs)" % (len(hits), time.time() - t0))
+    lines.append("=== HITS ===")
+    lines.append("count: %d" % len(hits))
     for h in hits[:20]:
         blk = inblk(h)
         lines.append("  %s  [%s]" % (fmt(h), blk[2] if blk else "?"))
     lines.append("")
 
     if not hits:
-        lines.append("VERDICT: string 'necp_client_copy_result' not found in memory.")
-        lines.append("    Kernel.raw may have strings in a separate segment not loaded.")
+        lines.append("VERDICT: findBytes found nothing. String may be in")
+        lines.append("    a compressed/uninitialized segment, OR split across blocks.")
         write(lines, {})
         return
 
-    # collect functions via xrefs
-    print("[+] resolving xrefs -> functions...")
+    # xrefs
+    print("[+] resolving xrefs...")
     func_set = {}
     for h in hits:
-        refs = get_refs_to(h)
-        if refs:
-            for r in refs:
-                f = func_containing(r)
-                if f:
-                    func_set[f] = func_set.get(f, 0) + 1
-    print("[+] unique functions: %d" % len(func_set))
-
+        for r in get_refs_to(h):
+            f = func_containing(r)
+            if f:
+                func_set[f] = func_set.get(f, 0) + 1
     lines.append("=== REFS -> FUNCS ===")
+    lines.append("unique funcs: %d" % len(func_set))
     for f in sorted(func_set.keys()):
         blk = inblk(f)
-        lines.append("  func %s  hits=%d  [%s]" % (fmt(f), func_set[f],
-                                                    blk[2] if blk else "?"))
+        lines.append("  func %s  hits=%d  [%s]" % (fmt(f), func_set[f], blk[2] if blk else "?"))
     lines.append("")
 
     if not func_set:
-        lines.append("VERDICT: string found but no xrefs -> no containing funcs.")
-        lines.append("    Analysis may not have created functions for this code.")
+        lines.append("VERDICT: no funcs found via xrefs. Dumping raw xrefs:")
+        for h in hits[:4]:
+            refs = get_refs_to(h)
+            lines.append("  str %s xrefs=%d" % (fmt(h), len(refs)))
+            for r in refs[:8]:
+                f = func_containing(r)
+                lines.append("    ref %s -> func %s" % (fmt(r), fmt(f) if f else "?"))
         write(lines, {})
         return
 
-    # disasm each function
     top = sorted(func_set.items(), key=lambda kv: -kv[1])[:MAX_FUNCS]
-    print("[+] disassembling top %d candidates" % len(top))
+    print("[+] disassembling %d funcs" % len(top))
     seq_all = []
     for f, cnt in top:
         lines.append("=== FUNC %s (hits=%d) ===" % (fmt(f), cnt))
@@ -385,7 +402,6 @@ def main():
             if mn in ("b", "bl"):
                 t = extract_call(body)
                 if t: calls.append((pc, mn, t))
-        # candidate offsets
         flowregs = ("x19","x20","x21","x22","x23","x24")
         cand = []
         for (b, i), ent in ldr.items():
@@ -397,35 +413,31 @@ def main():
         for pc, b, i, body in cand[:20]:
             lines.append("    %016X  %s" % (pc, body))
             seq_all.append((f, pc, b, i, body))
-        # all ldr offsets
         lines.append("  all LDR offsets:")
         seen = set()
         for (b, i), ent in sorted(ldr.items(), key=lambda kv: kv[0][1]):
             if i in seen: continue
             seen.add(i)
-            lines.append("    +0x%03X bases=%s n=%d" % (
-                i, ",".join(sorted(set(x for x,_ in ent))), len(ent)))
-        lines.append("")
-        lines.append("  calls (b/bl):")
+            lines.append("    +0x%03X bases=%s n=%d" % (i, ",".join(sorted(set(x for x,_ in ent))), len(ent)))
+        lines.append("  calls (b/bl) unique:")
         seen_t = set()
         for pc, mn, t in calls:
             if t in seen_t: continue
             seen_t.add(t)
             lines.append("    %s -> %s" % (mn, fmt(t)))
-        lines.append("")
-        lines.append("  --- disasm (first 80) ---")
-        for l in dis[:80]:
+        lines.append("  --- disasm (first 100) ---")
+        for l in dis[:100]:
             lines.append("  " + l)
         lines.append("")
 
     lines.append("=== VERDICT ===")
     if seq_all:
-        lines.append("flow-reg LDRs found in %d funcs" % len(top))
-        lines.append("Most likely candidate pair:")
-        for f, pc, b, i, body in seq_all[:4]:
+        lines.append("flow-reg LDRs found (candidates for NCF_ASSIGNED_OFF):")
+        for f, pc, b, i, body in seq_all[:8]:
             lines.append("  func=%s  %s" % (fmt(f), body))
     else:
-        lines.append("No flow-reg LDRs. copy_result likely does not read")
+        lines.append("No flow-reg LDRs in top funcs.")
+        lines.append("Likely necp_client_copy_result does not read")
         lines.append("flow->assigned_results directly.")
 
     jout = {
