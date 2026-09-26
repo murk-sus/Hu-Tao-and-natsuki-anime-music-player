@@ -1,431 +1,278 @@
-# -*- coding: utf-8 -*-
-# @runtime Jython
-# kernel_rw.py v29 - hang-proof, result.txt only
+name: Extract Offsets
 
-import os
-import sys
-import time
-import traceback
-from jarray import zeros
-from ghidra.app.decompiler import DecompInterface
-from ghidra.util.task import ConsoleTaskMonitor
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
 
-WS = os.environ.get("GITHUB_WORKSPACE", "/tmp")
-OUT = os.path.join(WS, "result.txt")
+permissions:
+  contents: read
 
-SEP = "=" * 72
-MAX_DECOMPILE_SEC = 45
-MAX_BLOCK_SIZE = 0x1000000
-GLOBAL_SCAN_BUDGET_SEC = 120
+jobs:
+  offsets:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
 
-COPYIN = 0xFFFFFFF00A368EC0
-COPYOUT = 0xFFFFFFF00A369A3C
-KALLOC = 0xFFFFFFF00A200988
-KFREE = 0xFFFFFFF00A201000
+    steps:
+      - uses: actions/checkout@v4
 
-SINKS = [
-    (COPYIN, "copyin"),
-    (COPYOUT, "copyout"),
-    (KALLOC, "kalloc_type"),
-    (KFREE, "kfree_type"),
-]
+      - name: Clean stale outputs
+        run: |
+          rm -f result.txt offsets.json kernel.log symbols.json
+          rm -f /tmp/so.txt /tmp/se.txt /tmp/sym_out.txt /tmp/sym_err.txt /tmp/dl.log
+          rm -rf /tmp/sigs /tmp/sig.tar.gz
 
-TARGETS = [
-    ("necp_client_action",        0xFFFFFFF00A4E5C28),
-    ("necp_client_add_flow",      0xFFFFFFF00A4E843C),
-    ("necp_client_add_client",    0xFFFFFFF00A4E60DC),
-    ("necp_client_remove_flow",   0xFFFFFFF00A4E93C4),
-    ("necp_client_remove_client", 0xFFFFFFF00A4E76F4),
-    ("necp_client_copy_result",   0xFFFFFFF00A4E7BE8),
-    ("necp_client_copy_list",     0xFFFFFFF00A4E80FC),
-    ("necp_client_copy_interface",0xFFFFFFF00A4EAC7C),
-    ("necp_client_sysctl_arena",  0xFFFFFFF00A4EB704),
-    ("necp_client_update_cache",  0xFFFFFFF00A4EBD58),
-    ("necp_client_copy_update",   0xFFFFFFF00A4EC264),
-    ("necp_get_tlv_at_offset",    0xFFFFFFF00A4C2034),
-    ("necp_flow_alloc",           0xFFFFFFF00A346E70),
-    ("necp_handler_big",          0xFFFFFFF00A3D91B4),
-    ("necp_per_flow_copy",        0xFFFFFFF00A4F2E70),
-    ("necp_copy_result_inner",    0xFFFFFFF00A4F26F0),
-]
+      - uses: actions/setup-java@v4
+        with:
+          java-version: "25"
+          distribution: temurin
 
-GLOBAL_CALLERS = [
-    ("necp_client_action",   0xFFFFFFF00A4E5C28),
-    ("necp_client_add_flow", 0xFFFFFFF00A4E843C),
-    ("necp_flow_alloc",      0xFFFFFFF00A346E70),
-    ("necp_get_tlv",         0xFFFFFFF00A4C2034),
-]
+      - uses: actions/cache@v4
+        id: cache-ghidra
+        with:
+          path: ${{ github.workspace }}/ghidra
+          key: ghidra-12.1.2-jython-v4
 
-DEC = None
+      - if: steps.cache-ghidra.outputs.cache-hit != 'true'
+        name: Install Ghidra
+        run: |
+          set -euo pipefail
+          curl -fsSL -o /tmp/g.zip https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_12.1.2_build/ghidra_12.1.2_PUBLIC_20260605.zip
+          unzip -q /tmp/g.zip -d "$GITHUB_WORKSPACE"
+          mv "$GITHUB_WORKSPACE/ghidra_12.1.2_PUBLIC" "$GITHUB_WORKSPACE/ghidra"
+          JYTHON_ZIP=$(find "$GITHUB_WORKSPACE/ghidra/Extensions/Ghidra" -maxdepth 1 -name "*Jython*.zip" | head -n1)
+          test -n "$JYTHON_ZIP"
+          mkdir -p "$GITHUB_WORKSPACE/ghidra/Ghidra/Extensions"
+          unzip -q "$JYTHON_ZIP" -d "$GITHUB_WORKSPACE/ghidra/Ghidra/Extensions"
+          rm -f /tmp/g.zip
 
+      - name: Set GHIDRA_ROOT
+        run: echo "GHIDRA_ROOT=$GITHUB_WORKSPACE/ghidra" >> "$GITHUB_ENV"
 
-def log(msg):
-    print(msg)
-    sys.stdout.flush()
+      - name: Validate Ghidra
+        run: |
+          set -euo pipefail
+          test -x "$GHIDRA_ROOT/support/analyzeHeadless"
+          test -d "$GHIDRA_ROOT/Ghidra/Extensions/Jython"
 
+      - uses: actions/cache@v4
+        id: cache-ipsw
+        with:
+          path: /usr/local/bin/ipsw
+          key: ipsw-3.1.716-v4
 
-def _u(v):
-    return int(v) & 0xFFFFFFFFFFFFFFFF
+      - if: steps.cache-ipsw.outputs.cache-hit != 'true'
+        name: Install ipsw
+        run: |
+          set -euo pipefail
+          curl -fsSL -o /tmp/ipsw.tar.gz https://github.com/blacktop/ipsw/releases/download/v3.1.716/ipsw_3.1.716_linux_x86_64.tar.gz
+          tar -C /usr/local/bin -xzf /tmp/ipsw.tar.gz ipsw
+          rm -f /tmp/ipsw.tar.gz
 
+      - uses: actions/cache@v4
+        id: cache-symbolicator
+        with:
+          path: ${{ github.workspace }}/symbolicator
+          key: symbolicator-v6
 
-def fmt(v):
-    try:
-        return "0x%016X" % (int(v) & 0xFFFFFFFFFFFFFFFF)
-    except Exception:
-        return "0x0"
+      - if: steps.cache-symbolicator.outputs.cache-hit != 'true'
+        name: Clone symbolicator
+        run: |
+          set -euo pipefail
+          rm -rf "$GITHUB_WORKSPACE/symbolicator"
+          git clone --depth 1 https://github.com/blacktop/symbolicator.git "$GITHUB_WORKSPACE/symbolicator"
 
+      - id: sigs
+        name: Pick signature dir
+        run: |
+          set -uo pipefail
+          ROOT="$GITHUB_WORKSPACE/symbolicator/kernel"
+          test -d "$ROOT" || { echo "::error::no symbolicator"; exit 1; }
+          SIGDIR=""
+          for V in 27.0 27.1 27.2 27.3 26.0 26.1 26.2 26.3 25.6 25.5 25.4 25.3; do
+            if [ -d "$ROOT/$V" ]; then SIGDIR="$ROOT/$V"; break; fi
+          done
+          test -n "$SIGDIR" || { echo "::error::no version dir"; exit 1; }
+          echo "SIGDIR=$SIGDIR" >> "$GITHUB_ENV"
+          echo "picked $SIGDIR"
 
-def sa(a):
-    try:
-        return currentProgram.getAddressFactory().getAddress(
-            "%X" % (int(a) & 0xFFFFFFFFFFFFFFFF))
-    except Exception:
-        return None
+      - uses: actions/cache@v4
+        id: cache-kernelcache
+        with:
+          path: ${{ github.workspace }}/kernelcache
+          key: kernelcache-iPhone14_5-24A437-v4
 
+      - if: steps.cache-kernelcache.outputs.cache-hit != 'true'
+        name: Download and extract kernelcache
+        run: |
+          set -euo pipefail
+          mkdir -p ipsw kernelcache
+          ipsw download ipsw --device iPhone14,5 --build 24A437 --output ipsw 2>&1 | tee /tmp/dl.log || true
+          IPSW=$(find ipsw -name "*.ipsw" -type f | head -n1)
+          test -n "$IPSW"
+          test -s "$IPSW"
+          ipsw extract --kernel "$IPSW" --output kernelcache
+          find kernelcache -type f ! -name "kernelcache*" -delete
+          find kernelcache -type d -empty -delete
+          rm -rf ipsw
 
-def get_func(addr):
-    try:
-        ga = sa(addr)
-        if ga is None:
-            return None
-        f = getFunctionAt(ga)
-        if f is not None:
-            return f
-        return getFunctionContaining(ga)
-    except Exception:
-        return None
+      - id: kernel
+        name: Locate kernel
+        run: |
+          set -euo pipefail
+          KERNEL=$(find "$GITHUB_WORKSPACE/kernelcache" -type f -name "kernelcache*" | head -n1)
+          test -n "$KERNEL"
+          file "$KERNEL" | grep -qi "Mach-O"
+          echo "KERNEL=$KERNEL" >> "$GITHUB_ENV"
+          echo "KERNEL_DIR=$(dirname "$KERNEL")" >> "$GITHUB_ENV"
+          echo "KERNEL_NAME=$(basename "$KERNEL")" >> "$GITHUB_ENV"
 
+      - name: Validate scripts
+        run: |
+          set -euo pipefail
+          test -f "$GITHUB_WORKSPACE/scripts/kernel_rw.py"
+          python3 -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "$GITHUB_WORKSPACE/scripts/kernel_rw.py"
 
-_blocks = None
+      - name: Symbolicate
+        run: |
+          set -uo pipefail
+          OUT="$GITHUB_WORKSPACE/symbols.json"
+          rm -f "$OUT"
+          count_entries() {
+            jq 'if type=="array" then length elif type=="object" then (keys|length) else 0 end' "$1" 2>/dev/null || echo 0
+          }
+          grab() {
+            local f="$1"
+            if [ -z "$f" ] || [ "$f" = "$OUT" ]; then return 1; fi
+            if [ ! -f "$f" ] || [ ! -s "$f" ]; then return 1; fi
+            if ! jq empty "$f" 2>/dev/null; then return 1; fi
+            local N=$(count_entries "$f")
+            if [ "$N" -ge 10 ]; then
+              cp "$f" "$OUT"
+              echo "    GRAB $f -> $N entries"
+              return 0
+            fi
+            return 1
+          }
+          run_one() {
+            local SIG="$1"
+            local TAG="$2"
+            [ -e "$SIG" ] || return 1
+            echo ""
+            echo "=== [$TAG] $SIG ==="
+            rm -f /tmp/symbols.json
+            rm -f "$GITHUB_WORKSPACE/symbols.json.tmp"
+            rm -f "$KERNEL_DIR/symbols.json"
+            rm -f "$KERNEL_DIR/$KERNEL_NAME.json"
+            ipsw kernel symbolicate --signatures "$SIG" --json "$KERNEL" \
+              > /tmp/so.txt 2> /tmp/se.txt
+            local RC=$?
+            local SO=$(wc -c < /tmp/so.txt 2>/dev/null || echo 0)
+            echo "    rc=$RC stdout=$SO"
+            if grab /tmp/so.txt; then return 0; fi
+            local RP=$(grep -oE "Writing symbols as JSON to .+" /tmp/se.txt 2>/dev/null | head -1 | sed 's/^.* to //' | tr -d '\r\n')
+            if [ -n "$RP" ]; then
+              echo "    reported: $RP"
+              if grab "$RP"; then return 0; fi
+              if grab "$GITHUB_WORKSPACE/$RP"; then return 0; fi
+            fi
+            for f in \
+              "$KERNEL_DIR/$KERNEL_NAME.json" \
+              "$KERNEL_DIR/symbols.json" \
+              "$GITHUB_WORKSPACE/symbols.json.tmp" \
+              "/tmp/symbols.json"; do
+              if grab "$f"; then return 0; fi
+            done
+            for f in $(find "$GITHUB_WORKSPACE" -maxdepth 5 -name "*.json" -type f -newermt "3 minutes ago" 2>/dev/null | grep -v ghidra | grep -v symbolicator | grep -v scripts); do
+              if grab "$f"; then return 0; fi
+            done
+            echo "    no candidate"
+            return 1
+          }
+          if run_one "$SIGDIR" "full-27.0"; then echo "OK full"
+          elif run_one "$SIGDIR/xnu.json" "xnu"; then echo "OK xnu"
+          elif run_one "$SIGDIR/kexts" "kexts"; then echo "OK kexts"
+          else
+            echo "::error::symbolication failed"
+            tail -20 /tmp/se.txt 2>/dev/null || true
+            exit 1
+          fi
+          test -f "$OUT"
+          jq empty "$OUT"
+          CNT=$(count_entries "$OUT")
+          SZ=$(wc -c < "$OUT")
+          echo ""
+          echo "=== symbols.json: $SZ bytes, $CNT entries ==="
+          test "$CNT" -gt 0
 
+      - uses: actions/cache@v4
+        id: cache-project
+        with:
+          path: ${{ github.workspace }}/ghidra_project
+          key: ghidra-project-24A437-v4
 
-def blocks():
-    global _blocks
-    if _blocks is not None:
-        return _blocks
-    out = []
-    try:
-        for b in currentProgram.getMemory().getBlocks():
-            try:
-                if not b.isInitialized():
-                    continue
-                if not b.isExecute():
-                    continue
-                s = _u(b.getStart().getOffset())
-                e = _u(b.getEnd().getOffset())
-                out.append((s, e, str(b.getName())))
-            except Exception:
-                pass
-    except Exception:
-        pass
-    _blocks = out
-    return out
+      - name: Run Ghidra
+        env:
+          _JAVA_OPTIONS: "-Xmx12g -Djava.awt.headless=true"
+          SYMBOLS_JSON: ${{ github.workspace }}/symbols.json
+          GITHUB_WORKSPACE: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          echo "cache-project: ${{ steps.cache-project.outputs.cache-hit }}"
+          test -f "$SYMBOLS_JSON"
+          test "$(wc -c < "$SYMBOLS_JSON")" -gt 10
+          JOBS=$(nproc)
+          if [ "${{ steps.cache-project.outputs.cache-hit }}" = "true" ]; then
+            echo "=== warm ==="
+            "$GHIDRA_ROOT/support/analyzeHeadless" \
+              "$GITHUB_WORKSPACE/ghidra_project" KernelProject \
+              -process "$KERNEL_NAME" -noanalysis \
+              -postScript kernel_rw.py \
+              -scriptPath "$GITHUB_WORKSPACE/scripts" \
+              2>&1 | tee kernel.log
+          else
+            echo "=== cold ==="
+            rm -rf ghidra_project
+            mkdir -p ghidra_project
+            "$GHIDRA_ROOT/support/analyzeHeadless" \
+              "$GITHUB_WORKSPACE/ghidra_project" KernelProject \
+              -import "$KERNEL" \
+              -processor "AARCH64:LE:64:AppleSilicon" \
+              -loader BinaryLoader \
+              -loader-baseAddr 0xFFFFFFF007004000 \
+              -postScript kernel_rw.py \
+              -scriptPath "$GITHUB_WORKSPACE/scripts" \
+              -analysisTimeoutPerFile 3600 \
+              -max-cpu "$JOBS" \
+              2>&1 | tee kernel.log
+          fi
 
+      - name: Validate outputs
+        run: |
+          set -euo pipefail
+          test -s result.txt
+          echo "result.txt: $(wc -l < result.txt) lines"
+          test -s offsets.json
+          jq empty offsets.json
 
-def sign26(x):
-    if x & 0x02000000:
-        return x - 0x04000000
-    return x
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kernel-offsets-${{ github.sha }}
+          path: |
+            result.txt
+            offsets.json
+            kernel.log
+            symbols.json
+          retention-days: 30
+          overwrite: true
+          compression-level: 9
 
-
-def get_decompiler():
-    global DEC
-    if DEC is not None:
-        return DEC
-    d = DecompInterface()
-    d.openProgram(currentProgram)
-    DEC = d
-    return DEC
-
-
-def decompile(f, seconds=MAX_DECOMPILE_SEC):
-    try:
-        d = get_decompiler()
-        r = d.decompileFunction(f, seconds, ConsoleTaskMonitor())
-        if r is None:
-            return ["(no result)"]
-        if not r.decompileCompleted():
-            return ["(failed timeout or error)"]
-        c = r.getDecompiledFunction()
-        if c is None:
-            return ["(empty)"]
-        return [line.rstrip() for line in c.getC().split("\n")]
-    except Exception as e:
-        return ["(exception " + str(e) + ")"]
-
-
-def callees(f, maxn=80):
-    try:
-        cf = f.getCalledFunctions(ConsoleTaskMonitor())
-    except Exception:
-        return []
-    if not cf:
-        return []
-    out = []
-    for c in cf:
-        try:
-            e = _u(c.getEntryPoint().getOffset())
-            n = str(c.getName())
-            try:
-                sz = int(c.getBody().getNumAddresses())
-            except Exception:
-                sz = 0
-            out.append((e, n, sz))
-        except Exception:
-            pass
-    out.sort(key=lambda x: x[0])
-    return out[:maxn]
-
-
-def bl_to(f, target):
-    hits = []
-    try:
-        body = f.getBody()
-        if body is None:
-            return hits
-        it = body.getAddresses(True)
-    except Exception:
-        return hits
-    cnt = 0
-    while it.hasNext() and cnt < 80000:
-        try:
-            a = it.next()
-            pc = _u(a.getOffset())
-            raw = int(currentProgram.getMemory().getInt(a)) & 0xFFFFFFFF
-        except Exception:
-            cnt += 1
-            continue
-        cnt += 1
-        if (raw & 0xFC000000) == 0x94000000:
-            imm = sign26(raw & 0x03FFFFFF) << 2
-            dst = (pc + imm) & 0xFFFFFFFFFFFFFFFF
-            if dst == target:
-                hits.append(pc)
-    return hits
-
-
-def mem_ops(f):
-    out = []
-    try:
-        body = f.getBody()
-        if body is None:
-            return out
-        it = body.getAddresses(True)
-    except Exception:
-        return out
-    cnt = 0
-    while it.hasNext() and cnt < 80000:
-        try:
-            a = it.next()
-            pc = _u(a.getOffset())
-            raw = int(currentProgram.getMemory().getInt(a)) & 0xFFFFFFFF
-        except Exception:
-            cnt += 1
-            continue
-        cnt += 1
-        kind = None
-        base = 0
-        imm = 0
-        if (raw & 0xFFC00000) == 0xF9400000:
-            kind, base, imm = "ldr_x", (raw >> 5) & 0x1F, ((raw >> 10) & 0xFFF) * 8
-        elif (raw & 0xFFC00000) == 0xB9400000:
-            kind, base, imm = "ldr_w", (raw >> 5) & 0x1F, ((raw >> 10) & 0xFFF) * 4
-        elif (raw & 0xFFC00000) == 0xF9000000:
-            kind, base, imm = "str_x", (raw >> 5) & 0x1F, ((raw >> 10) & 0xFFF) * 8
-        elif (raw & 0xFFC00000) == 0xB9000000:
-            kind, base, imm = "str_w", (raw >> 5) & 0x1F, ((raw >> 10) & 0xFFF) * 4
-        elif (raw & 0xFFE00000) == 0x39400000:
-            kind, base, imm = "ldrb", (raw >> 5) & 0x1F, (raw >> 10) & 0xFFF
-        elif (raw & 0xFFE00000) == 0x39000000:
-            kind, base, imm = "strb", (raw >> 5) & 0x1F, (raw >> 10) & 0xFFF
-        elif (raw & 0xFFE00000) == 0x79400000:
-            kind, base, imm = "ldrh", (raw >> 5) & 0x1F, ((raw >> 10) & 0xFFF) * 2
-        elif (raw & 0xFFE00000) == 0x79000000:
-            kind, base, imm = "strh", (raw >> 5) & 0x1F, ((raw >> 10) & 0xFFF) * 2
-        else:
-            continue
-        if base in (19, 20, 21, 22, 23, 24, 25, 26, 27, 28) and imm > 0x100:
-            out.append((fmt(pc), kind, base, imm))
-        elif imm > 0x800:
-            out.append((fmt(pc), kind, base, imm))
-    return out
-
-
-def global_bl_callers(target, max_hits=100, budget=GLOBAL_SCAN_BUDGET_SEC):
-    hits = []
-    mem = currentProgram.getMemory()
-    start_ts = time.time()
-    for s, e, name in blocks():
-        if time.time() - start_ts > budget:
-            log("    (global scan budget exceeded, stopping)")
-            break
-        size = e - s + 1
-        if size <= 0 or size > MAX_BLOCK_SIZE:
-            continue
-        try:
-            jbuf = zeros(size, 'b')
-            ga = sa(s)
-            if ga is None:
-                continue
-            mem.getBytes(ga, jbuf)
-        except Exception:
-            continue
-        pc = s
-        i = 0
-        while i + 4 <= size:
-            raw = (int(jbuf[i]) & 0xFF) | ((int(jbuf[i+1]) & 0xFF) << 8) | \
-                  ((int(jbuf[i+2]) & 0xFF) << 16) | ((int(jbuf[i+3]) & 0xFF) << 24)
-            op = raw & 0xFC000000
-            if op == 0x94000000 or op == 0x14000000:
-                imm = sign26(raw & 0x03FFFFFF) << 2
-                dst = (pc + imm) & 0xFFFFFFFFFFFFFFFF
-                if dst == target:
-                    hits.append((pc, "BL" if op == 0x94000000 else "B"))
-                    if len(hits) >= max_hits:
-                        return hits
-            i += 4
-            pc += 4
-        del jbuf
-    return hits
-
-
-def main():
-    L = []
-
-    def w(s):
-        L.append(s)
-
-    log("=== kernel_rw.py v29 ===")
-    log("program: " + currentProgram.getName())
-
-    w("=== PROGRAM ===")
-    w("name = " + currentProgram.getName())
-    w("")
-
-    log("[1/3] NECP sanity")
-    w(SEP)
-    w("### NECP SANITY")
-    w(SEP)
-    for name, addr in TARGETS:
-        try:
-            f = get_func(addr)
-            if f:
-                ent = _u(f.getEntryPoint().getOffset())
-                try:
-                    sz = int(f.getBody().getNumAddresses())
-                except Exception:
-                    sz = 0
-                w("  %-32s %s size=0x%X OK" % (name, fmt(ent), sz))
-            else:
-                w("  %-32s %s no func" % (name, fmt(addr)))
-        except Exception as ex:
-            w("  %-32s EXCEPTION %s" % (name, str(ex)))
-    w("")
-
-    log("[2/3] per-function analysis")
-    total = len(TARGETS)
-    for idx, (name, addr) in enumerate(TARGETS):
-        log("  [" + str(idx + 1) + "/" + str(total) + "] " + name)
-        try:
-            f = get_func(addr)
-            if not f:
-                continue
-            ent = _u(f.getEntryPoint().getOffset())
-            try:
-                sz = int(f.getBody().getNumAddresses())
-            except Exception:
-                sz = 0
-            w("")
-            w(SEP)
-            w("### " + name + "  entry=" + fmt(ent) + "  size=0x%X" % sz)
-            w(SEP)
-
-            try:
-                w("CALLEES:")
-                for e, n, s2 in callees(f, 80):
-                    mark = ""
-                    for sa2, sn in SINKS:
-                        if e == sa2:
-                            mark = "  <== " + sn
-                            break
-                    w("  %s  %-40s size=0x%X%s" % (fmt(e), n[:40], s2, mark))
-                w("")
-            except Exception as ex:
-                w("CALLEES EXCEPTION " + str(ex))
-
-            try:
-                w("BL CALLS IN BODY:")
-                any_hit = False
-                for sa2, sn in SINKS:
-                    hits = bl_to(f, sa2)
-                    if hits:
-                        any_hit = True
-                        w("  " + sn + " x" + str(len(hits)) + ":")
-                        for pc in hits:
-                            w("    " + fmt(pc))
-                if not any_hit:
-                    w("  (none)")
-                w("")
-            except Exception as ex:
-                w("BL CALLS EXCEPTION " + str(ex))
-
-            try:
-                susp = mem_ops(f)
-                if susp:
-                    w("SUSPICIOUS MEM OPS:")
-                    for pc, kind, base, imm in susp[:80]:
-                        w("    %s  %-8s  [x%-2d, #0x%X]" % (pc, kind, base, imm))
-                    w("")
-            except Exception as ex:
-                w("MEM OPS EXCEPTION " + str(ex))
-
-            try:
-                w("DECOMPILE:")
-                for l in decompile(f):
-                    w("  " + l)
-                w("")
-            except Exception as ex:
-                w("DECOMPILE EXCEPTION " + str(ex))
-        except Exception as ex:
-            w("FUNC EXCEPTION " + name + " " + str(ex))
-            continue
-
-    log("[3/3] global BL callers")
-    w(SEP)
-    w("### GLOBAL BL CALLERS")
-    w(SEP)
-    for name, addr in GLOBAL_CALLERS:
-        log("  " + name)
-        w("")
-        w("--- callers of " + name + " @ " + fmt(addr))
-        try:
-            hits = global_bl_callers(addr, 100)
-        except Exception as ex:
-            w("  exception " + str(ex))
-            continue
-        if not hits:
-            w("  (none)")
-            continue
-        for pc, kind in hits:
-            f = getFunctionContaining(sa(pc))
-            nm = str(f.getName()) if f else "?"
-            fent = _u(f.getEntryPoint().getOffset()) if f else 0
-            w("  %s  %-4s in %-30s @ %s" % (fmt(pc), kind, nm[:30], fmt(fent)))
-
-    try:
-        fh = open(OUT, "w")
-        for l in L:
-            fh.write(l + "\n")
-        fh.close()
-        log("[+] wrote " + OUT)
-    except Exception as e:
-        log("[-] " + str(e))
-
-    log("=== DONE ===")
-
-
-try:
-    main()
-except Exception as e:
-    log("[-] FATAL " + str(e))
-    traceback.print_exc()
+      - name: Cleanup tmp only
+        if: always()
+        run: |
+          set +e
+          rm -rf "$GITHUB_WORKSPACE/ipsw"
+          rm -f /tmp/g.zip /tmp/ipsw.tar.gz /tmp/so.txt /tmp/se.txt /tmp/sym_out.txt /tmp/sym_err.txt /tmp/dl.log
+          rm -rf /tmp/sigs /tmp/sig.tar.gz
+          rm -rf "$HOME/.config/ghidra" /var/tmp/runner-ghidra
+          exit 0
