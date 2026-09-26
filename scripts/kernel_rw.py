@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # @runtime Jython
-# kernel_rw.py v36 - deep TLV post-processing chain
+# kernel_rw.py v37 - pcode taint trace for user-size sinks
 
 import os
 import sys
@@ -9,70 +9,47 @@ import traceback
 from jarray import zeros
 from ghidra.app.decompiler import DecompInterface
 from ghidra.util.task import ConsoleTaskMonitor
+from ghidra.program.model.pcode import PcodeOp
 
 WS = os.environ.get("GITHUB_WORKSPACE", "/tmp")
 OUT = os.path.join(WS, "result.txt")
-
 SEP = "=" * 72
-MAX_DECOMPILE_SEC = 90
-MAX_BLOCK_SIZE = 0x1000000
-GLOBAL_SCAN_BUDGET_SEC = 180
 
-SYSENT_BASE = 0xFFFFFFF007C192A0
-SYSENT_STRIDE = 24
-KERNEL_BASE = 0xFFFFFFF007004000
+SCAN_RANGES = [
+    (0xFFFFFFF00A300000, 0xFFFFFFF00A520000),
+    (0xFFFFFFF00A6C0000, 0xFFFFFFF00A780000),
+    (0xFFFFFFF00A780000, 0xFFFFFFF00A800000),
+]
 
-COPYIN = 0xFFFFFFF00A368EC0
-COPYOUT = 0xFFFFFFF00A369A3C
-KALLOC = 0xFFFFFFF00A200988
-KFREE = 0xFFFFFFF00A201000
+KALLOC     = 0xFFFFFFF00A200988
+KALLOC_Z   = 0xFFFFFFF00A20141C
+COPYIN     = 0xFFFFFFF00A368EC0
+COPYOUT    = 0xFFFFFFF00A369A3C
 
 SINKS = [
-    (COPYIN, "copyin"),
-    (COPYOUT, "copyout"),
-    (KALLOC, "kalloc_type"),
-    (KFREE, "kfree_type"),
+    ("kalloc_type", KALLOC, 1),
+    ("kalloc_zone", KALLOC_Z, 1),
+    ("copyin",      COPYIN, 2),
+    ("copyout",     COPYOUT, 2),
 ]
 
-TARGETS = [
-    ("fun_4c2cc0",               0xFFFFFFF00A4C2CC0),
-    ("fun_494808",               0xFFFFFFF00A494808),
-    ("fun_495c54",               0xFFFFFFF00A495C54),
-    ("fun_4db9f0",               0xFFFFFFF00A4DB9F0),
-    ("fun_4ee24c",               0xFFFFFFF00A4EE24C),
-    ("fun_501454",               0xFFFFFFF00A501454),
-    ("fun_4dd4cc",               0xFFFFFFF00A4DD4CC),
-    ("fun_4ed8bc",               0xFFFFFFF00A4ED8BC),
-    ("fun_aa40d30",              0xFFFFFFF00AA40D30),
-    ("necp_client_action",       0xFFFFFFF00A4E5C28),
-    ("necp_client_add_client",   0xFFFFFFF00A4E60DC),
-    ("necp_client_add_flow",     0xFFFFFFF00A4E843C),
-]
+ARITH = set()
+for nm in ["INT_ADD","INT_SUB","INT_MULT","INT_DIV","INT_REM",
+           "INT_LEFT","INT_RIGHT","INT_AND","INT_OR","INT_XOR",
+           "INT_ZEXT","INT_SEXT","INT_2COMP"]:
+    v = getattr(PcodeOp, nm, None)
+    if v is not None:
+        ARITH.add(v)
 
-GLOBAL_CALLERS = [
-    ("fun_4c2cc0",           0xFFFFFFF00A4C2CC0),
-    ("fun_494808",           0xFFFFFFF00A494808),
-    ("fun_495c54",           0xFFFFFFF00A495C54),
-    ("fun_501454",           0xFFFFFFF00A501454),
-    ("fun_4ee24c",           0xFFFFFFF00A4EE24C),
-    ("fun_4dd4cc",           0xFFFFFFF00A4DD4CC),
-]
+CMP = set()
+for nm in ["INT_LESS","INT_LESSEQUAL","INT_SLESS","INT_SLESSEQUAL",
+           "INT_EQUAL","INT_NOTEQUAL","INT_CARRY","INT_SCARRY"]:
+    v = getattr(PcodeOp, nm, None)
+    if v is not None:
+        CMP.add(v)
 
 DEC = None
-HAS_DISASM = False
-HAS_CREATE = False
-
-try:
-    from ghidra.app.cmd.disassemble import DisassembleCommand as _DC
-    HAS_DISASM = True
-except Exception:
-    HAS_DISASM = False
-
-try:
-    from ghidra.app.cmd.function import CreateFunctionCmd as _CFC
-    HAS_CREATE = True
-except Exception:
-    HAS_CREATE = False
+MONITOR = ConsoleTaskMonitor()
 
 
 def log(msg):
@@ -99,22 +76,6 @@ def sa(a):
         return None
 
 
-def read_u64(addr):
-    try:
-        ga = sa(addr)
-        if ga is None:
-            return None
-        b = getBytes(ga, 8)
-        if b is None:
-            return None
-        r = 0
-        for i in range(8):
-            r = r | ((b[i] & 0xFF) << (i * 8))
-        return r
-    except Exception:
-        return None
-
-
 def get_func(addr):
     try:
         ga = sa(addr)
@@ -128,83 +89,13 @@ def get_func(addr):
         return None
 
 
-def disassemble(addr):
-    if not HAS_DISASM:
-        return
-    try:
-        ga = sa(addr)
-        if ga is None:
-            return
-        cmd = _DC(ga, None, True)
-        cmd.applyTo(currentProgram)
-    except Exception as e:
-        log("  disasm fail %s" % e)
-
-
-def ensure_function(addr):
-    try:
-        ga = sa(addr)
-        if ga is None:
-            return None
-        f = getFunctionAt(ga)
-        if f is not None:
-            return f
-        f = getFunctionContaining(ga)
-        if f is not None:
-            return f
-        disassemble(ga)
-        if HAS_CREATE:
-            try:
-                ccmd = _CFC(ga)
-                ccmd.applyTo(currentProgram)
-            except Exception as e:
-                log("  createFunctionCmd fail %s" % e)
-        try:
-            fm = currentProgram.getFunctionManager()
-            f = fm.createFunction(ga, "nk_%X" % addr)
-            if f is not None:
-                return f
-        except Exception as e:
-            log("  fm.createFunction fail %s" % e)
-        return getFunctionAt(ga) or getFunctionContaining(ga)
-    except Exception as e:
-        log("  ensure_function fail %s err=%s" % (fmt(addr), e))
-        return None
-
-
-_blocks = None
-
-
-def blocks():
-    global _blocks
-    if _blocks is not None:
-        return _blocks
-    out = []
-    try:
-        for b in currentProgram.getMemory().getBlocks():
-            try:
-                if not b.isInitialized():
-                    continue
-                if not b.isExecute():
-                    continue
-                s = _u(b.getStart().getOffset())
-                e = _u(b.getEnd().getOffset())
-                out.append((s, e, str(b.getName())))
-            except Exception:
-                pass
-    except Exception:
-        pass
-    _blocks = out
-    return out
-
-
 def sign26(x):
     if x & 0x02000000:
         return x - 0x04000000
     return x
 
 
-def get_decompiler():
+def get_dec():
     global DEC
     if DEC is not None:
         return DEC
@@ -214,76 +105,23 @@ def get_decompiler():
     return DEC
 
 
-def decompile(f, seconds=MAX_DECOMPILE_SEC):
+def in_ranges(addr):
+    a = _u(addr)
+    for lo, hi in SCAN_RANGES:
+        if lo <= a < hi:
+            return True
+    return False
+
+
+def bl_scan_func(func):
+    found = set()
     try:
-        d = get_decompiler()
-        r = d.decompileFunction(f, seconds, ConsoleTaskMonitor())
-        if r is None:
-            return ["(no result)"]
-        if not r.decompileCompleted():
-            return ["(failed timeout or error)"]
-        c = r.getDecompiledFunction()
-        if c is None:
-            return ["(empty)"]
-        return [line.rstrip() for line in c.getC().split("\n")]
-    except Exception as e:
-        return ["(exception %s)" % e]
-
-
-def raw_disasm(addr, max_insn=400):
-    out = []
-    try:
-        ga = sa(addr)
-        if ga is None:
-            return out
-        listing = currentProgram.getListing()
-        if listing is None:
-            return out
-        insn = listing.getInstructionAt(ga)
-        if insn is None:
-            return out
-        cnt = 0
-        while insn is not None and cnt < max_insn:
-            out.append("  %s  %s" % (insn.getAddress(), insn))
-            insn = insn.getNext()
-            cnt += 1
-    except Exception as e:
-        out.append("(raw_disasm exception %s)" % e)
-    return out
-
-
-def callees(f, maxn=100):
-    try:
-        cf = f.getCalledFunctions(ConsoleTaskMonitor())
-    except Exception:
-        return []
-    if not cf:
-        return []
-    out = []
-    for c in cf:
-        try:
-            e = _u(c.getEntryPoint().getOffset())
-            n = str(c.getName())
-            try:
-                sz = int(c.getBody().getNumAddresses())
-            except Exception:
-                sz = 0
-            out.append((e, n, sz))
-        except Exception:
-            pass
-    out.sort(key=lambda x: x[0])
-    return out[:maxn]
-
-
-def bl_to(f, target):
-    hits = []
-    try:
-        body = f.getBody()
+        body = func.getBody()
         if body is None:
-            return hits
+            return found
         it = body.getAddresses(True)
     except Exception:
-        return hits
+        return found
     cnt = 0
     while it.hasNext() and cnt < 100000:
         try:
@@ -297,176 +135,295 @@ def bl_to(f, target):
         if (raw & 0xFC000000) == 0x94000000:
             imm = sign26(raw & 0x03FFFFFF) << 2
             dst = (pc + imm) & 0xFFFFFFFFFFFFFFFF
-            if dst == target:
-                hits.append(pc)
-    return hits
+            for nm, addr, arg in SINKS:
+                if dst == addr:
+                    found.add(nm)
+    return found
 
 
-def global_bl_callers(target, max_hits=100, budget=GLOBAL_SCAN_BUDGET_SEC):
-    hits = []
-    mem = currentProgram.getMemory()
-    start_ts = time.time()
-    for s, e, name in blocks():
-        if time.time() - start_ts > budget:
-            log("    global scan budget exceeded, stopping")
-            break
-        size = e - s + 1
-        if size <= 0 or size > MAX_BLOCK_SIZE:
-            continue
+def classify(vn, depth, seen):
+    if depth > 12:
+        return ("depth", None)
+    try:
+        key = "%s_%d" % (vn.getAddress().toString(), vn.getSize())
+    except Exception:
+        key = "?"
+    if key in seen:
+        return ("cycle", None)
+    seen2 = set(seen)
+    seen2.add(key)
+
+    try:
+        if vn.isConstant():
+            return ("const", vn.getOffset())
+        if vn.isInput():
+            return ("param", vn.getAddress().toString())
+    except Exception:
+        pass
+
+    try:
+        defop = vn.getDef()
+    except Exception:
+        defop = None
+    if defop is None:
+        return ("undef", None)
+
+    try:
+        oc = defop.getOpcode()
+    except Exception:
+        return ("op_err", None)
+
+    if oc in ARITH:
+        parts = []
+        for i in range(defop.getNumInputs()):
+            sub = classify(defop.getInput(i), depth + 1, seen2)
+            parts.append(sub)
+        return ("arith", (defop.getMnemonic(), parts))
+
+    if oc == PcodeOp.LOAD:
         try:
-            jbuf = zeros(size, 'b')
-            ga = sa(s)
-            if ga is None:
-                continue
-            mem.getBytes(ga, jbuf)
+            off = defop.getInput(1)
+            if off.isConstant():
+                return ("load_off", off.getOffset())
+        except Exception:
+            pass
+        return ("load_dyn", None)
+
+    if oc == PcodeOp.CALL:
+        try:
+            return ("call_ret", defop.getInput(0).toString())
+        except Exception:
+            return ("call_ret", None)
+
+    if oc == PcodeOp.MULTIEQUAL:
+        parts = []
+        for i in range(defop.getNumInputs()):
+            parts.append(classify(defop.getInput(i), depth + 1, seen2))
+        return ("phi", parts)
+
+    return ("other", defop.getMnemonic())
+
+
+def collect_tags(node, out_tags, out_arith, out_params):
+    tag, val = node
+    out_tags.add(tag)
+    if tag == "arith":
+        mn, parts = val
+        out_arith.add(mn)
+        for p in parts:
+            collect_tags(p, out_tags, out_arith, out_params)
+    elif tag == "phi":
+        for p in val:
+            collect_tags(p, out_tags, out_arith, out_params)
+    elif tag == "param":
+        out_params.append(val)
+    elif tag == "load_off":
+        out_arith.add("LOAD@%s" % val)
+
+
+def has_bounds_check(func, size_vn):
+    try:
+        hf_ops = []
+        it = func.getBody().getAddresses(True)
+        # scan instruction pcode for comparisons involving similar register
+        # simplified: check any CBRANCH in function references the size_vn's
+        # underlying register
+        reg_name = None
+        try:
+            reg_name = size_vn.getAddress().toString()
+        except Exception:
+            pass
+        cnt = 0
+        while it.hasNext() and cnt < 100000:
+            a = it.next()
+            cnt += 1
+            try:
+                insn = currentProgram.getListing().getInstructionAt(a)
+                if insn is None:
+                    continue
+                ops = insn.getPcode()
+                if ops is None:
+                    continue
+                for p in ops:
+                    if p.getOpcode() not in CMP:
+                        continue
+                    for i in range(p.getNumInputs()):
+                        try:
+                            rn = p.getInput(i).getAddress().toString()
+                            if reg_name is not None and rn == reg_name:
+                                return True
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+        return False
+    except Exception:
+        return False
+
+
+def analyze_func(func, w):
+    name = str(func.getName())
+    ent = _u(func.getEntryPoint().getOffset())
+    try:
+        sz = int(func.getBody().getNumAddresses())
+    except Exception:
+        sz = 0
+    w("")
+    w(SEP)
+    w("### %s  entry=%s  size=0x%X" % (name, fmt(ent), sz))
+    w(SEP)
+
+    try:
+        res = get_dec().decompileFunction(func, 90, MONITOR)
+        if res is None or not res.decompileCompleted():
+            w("  (decompile failed)")
+            return 0
+        hf = res.getHighFunction()
+        if hf is None:
+            w("  (no high function)")
+            return 0
+    except Exception as e:
+        w("  (decompile exception %s)" % e)
+        return 0
+
+    found_sinks = 0
+    try:
+        ops = hf.getPcodeOps()
+    except Exception as e:
+        w("  (no pcode ops: %s)" % e)
+        return 0
+
+    while ops.hasNext():
+        op = ops.next()
+        try:
+            oc = op.getOpcode()
         except Exception:
             continue
-        pc = s
-        i = 0
-        while i + 4 <= size:
-            raw = (int(jbuf[i]) & 0xFF) | ((int(jbuf[i+1]) & 0xFF) << 8) | \
-                  ((int(jbuf[i+2]) & 0xFF) << 16) | ((int(jbuf[i+3]) & 0xFF) << 24)
-            op = raw & 0xFC000000
-            if op == 0x94000000 or op == 0x14000000:
-                imm = sign26(raw & 0x03FFFFFF) << 2
-                dst = (pc + imm) & 0xFFFFFFFFFFFFFFFF
-                if dst == target:
-                    hits.append((pc, "BL" if op == 0x94000000 else "B"))
-                    if len(hits) >= max_hits:
-                        return hits
-            i += 4
-            pc += 4
-        del jbuf
-    return hits
+        if oc != PcodeOp.CALL:
+            continue
+        try:
+            target = op.getInput(0)
+        except Exception:
+            continue
+        tgt_addr = None
+        if target.isAddress():
+            tgt_addr = _u(target.getAddress().getOffset())
+        elif target.isConstant():
+            tgt_addr = _u(target.getOffset())
+        else:
+            continue
+
+        for sink_name, sink_addr, size_idx in SINKS:
+            if tgt_addr != sink_addr:
+                continue
+            found_sinks += 1
+            if size_idx >= op.getNumInputs() - 1:
+                continue
+            try:
+                size_vn = op.getInput(1 + size_idx)
+            except Exception:
+                continue
+            tags = set()
+            arith = set()
+            params = []
+            node = classify(size_vn, 0, set())
+            collect_tags(node, tags, arith, params)
+
+            pc = _u(op.getAddress().getOffset())
+            verdict = "unknown"
+            if "const" in tags and not arith and not params:
+                verdict = "SAFE_const"
+            elif "param" in tags:
+                verdict = "PARAM_SIZE"
+            elif any(m in arith for m in ("INT_MULT", "INT_LEFT", "INT_ADD", "INT_SUB")):
+                verdict = "ARITH_SIZE"
+            elif "load_off" in tags or "load_dyn" in tags:
+                verdict = "FIELD_SIZE"
+            elif "call_ret" in tags:
+                verdict = "CALL_RET_SIZE"
+            elif "phi" in tags:
+                verdict = "PHI_SIZE"
+
+            bounded = has_bounds_check(func, size_vn)
+
+            w("  CALL %s @ %s" % (sink_name, fmt(pc)))
+            w("    size_arg: %s" % size_vn.toString())
+            w("    trace: %s" % repr(node))
+            w("    tags: %s" % ",".join(sorted(tags)))
+            if arith:
+                w("    arith: %s" % ",".join(sorted(arith)))
+            if params:
+                w("    params: %s" % ",".join(params))
+            w("    bounds_seen: %s" % bounded)
+            w("    verdict: %s" % verdict)
+            w("")
+
+    return found_sinks
 
 
 def main():
     L = []
-
     def w(s):
         L.append(s)
 
-    log("=== kernel_rw.py v36 ===")
+    log("=== kernel_rw.py v37 ===")
     log("program: %s" % currentProgram.getName())
+    log("ranges: %s" % repr(SCAN_RANGES))
 
     w("=== PROGRAM ===")
     w("name = %s" % currentProgram.getName())
-    w("has_disasm=%s has_create=%s" % (HAS_DISASM, HAS_CREATE))
+    w("")
+    w("SCAN_RANGES:")
+    for lo, hi in SCAN_RANGES:
+        w("  %s - %s" % (fmt(lo), fmt(hi)))
     w("")
 
-    log("[1/3] sanity")
-    w(SEP)
-    w("### SANITY")
-    w(SEP)
-    for name, addr in TARGETS:
+    fm = currentProgram.getFunctionManager()
+    all_funcs = list(fm.getFunctions(True))
+    log("total functions: %d" % len(all_funcs))
+
+    candidates = []
+    for f in all_funcs:
         try:
-            f = get_func(addr)
-            if f is None:
-                f = ensure_function(addr)
-            if f:
-                ent = _u(f.getEntryPoint().getOffset())
-                try:
-                    sz = int(f.getBody().getNumAddresses())
-                except Exception:
-                    sz = 0
-                w("  %-32s %s size=0x%X OK" % (name, fmt(ent), sz))
-            else:
-                w("  %-32s %s no func" % (name, fmt(addr)))
-        except Exception as ex:
-            w("  %-32s EXCEPTION %s" % (name, str(ex)))
+            ent = _u(f.getEntryPoint().getOffset())
+        except Exception:
+            continue
+        if not in_ranges(ent):
+            continue
+        found = bl_scan_func(f)
+        if not found:
+            continue
+        # need at least one alloc AND (copyin or copyout) to be interesting
+        has_alloc = ("kalloc_type" in found) or ("kalloc_zone" in found)
+        has_copy = ("copyin" in found) or ("copyout" in found)
+        if has_alloc and has_copy:
+            candidates.append((f, found))
+
+    log("candidates (alloc+copy): %d" % len(candidates))
+
+    w(SEP)
+    w("### CANDIDATES")
+    w(SEP)
+    for f, found in candidates:
+        try:
+            ent = _u(f.getEntryPoint().getOffset())
+            w("  %s  %s  %s" % (fmt(ent), str(f.getName()), ",".join(sorted(found))))
+        except Exception:
+            pass
     w("")
 
-    log("[2/3] per-function")
-    total = len(TARGETS)
-    for idx, (name, addr) in enumerate(TARGETS):
-        log("  [%d/%d] %s" % (idx + 1, total, name))
+    log("[*] analyzing")
+    total = len(candidates)
+    for idx, (f, found) in enumerate(candidates):
         try:
-            f = get_func(addr)
-            if f is None:
-                f = ensure_function(addr)
-            ent = _u(f.getEntryPoint().getOffset()) if f else addr
-            try:
-                sz = int(f.getBody().getNumAddresses()) if f else 0
-            except Exception:
-                sz = 0
-            w("")
-            w(SEP)
-            w("### %s  entry=%s  size=0x%X" % (name, fmt(ent), sz))
-            w(SEP)
-            if not f:
-                w("NO FUNCTION, raw disasm:")
-                for l in raw_disasm(addr, 200):
-                    w(l)
-                w("")
-                continue
-
-            try:
-                w("CALLEES:")
-                for e, n, s2 in callees(f, 100):
-                    mark = ""
-                    for sa2, sn in SINKS:
-                        if e == sa2:
-                            mark = "  <== %s" % sn
-                            break
-                    w("  %s  %-40s size=0x%X%s" % (fmt(e), n[:40], s2, mark))
-                w("")
-            except Exception as ex:
-                w("CALLEES EXCEPTION %s" % ex)
-
-            try:
-                w("BL CALLS IN BODY:")
-                any_hit = False
-                for sa2, sn in SINKS:
-                    hits = bl_to(f, sa2)
-                    if hits:
-                        any_hit = True
-                        w("  %s x%d:" % (sn, len(hits)))
-                        for pc in hits:
-                            w("    %s" % fmt(pc))
-                if not any_hit:
-                    w("  (none)")
-                w("")
-            except Exception as ex:
-                w("BL CALLS EXCEPTION %s" % ex)
-
-            try:
-                w("DECOMPILE:")
-                body = decompile(f)
-                for l in body:
-                    w("  %s" % l)
-                w("")
-                if len(body) <= 1 and body[0].startswith("(failed"):
-                    w("RAW DISASM FALLBACK:")
-                    for l in raw_disasm(ent, 300):
-                        w(l)
-                    w("")
-            except Exception as ex:
-                w("DECOMPILE EXCEPTION %s" % ex)
-        except Exception as ex:
-            w("FUNC EXCEPTION %s %s" % (name, ex))
-            continue
-
-    log("[3/3] global callers")
-    w(SEP)
-    w("### GLOBAL BL CALLERS")
-    w(SEP)
-    for name, addr in GLOBAL_CALLERS:
-        log("  %s" % name)
-        w("")
-        w("--- callers of %s @ %s" % (name, fmt(addr)))
+            ent = _u(f.getEntryPoint().getOffset())
+            log("  [%d/%d] %s" % (idx + 1, total, f.getName()))
+        except Exception:
+            pass
         try:
-            hits = global_bl_callers(addr, 100)
-        except Exception as ex:
-            w("  exception %s" % ex)
-            continue
-        if not hits:
-            w("  (none)")
-            continue
-        for pc, kind in hits:
-            f = getFunctionContaining(sa(pc))
-            nm = str(f.getName()) if f else "?"
-            fent = _u(f.getEntryPoint().getOffset()) if f else 0
-            w("  %s  %-4s in %-30s @ %s" % (fmt(pc), kind, nm[:30], fmt(fent)))
+            analyze_func(f, w)
+        except Exception as e:
+            w("  ANALYSIS EXCEPTION: %s" % e)
 
     try:
         fh = open(OUT, "w")
