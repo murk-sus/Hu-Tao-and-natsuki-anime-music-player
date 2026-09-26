@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
 # @runtime Jython
+#
+# FIX v2: O(1) dedup, external symbols.json FIRST, capped Ghidra table.
 
-import os, re, json, traceback
+import os, re, json, traceback, time
 
 WS = os.environ.get("GITHUB_WORKSPACE", "/tmp")
 SYM = os.environ.get("SYMBOLS_JSON", os.path.join(WS, "symbols.json"))
@@ -13,6 +15,8 @@ HINT = 0xFFFFFFF0070D61C6
 MASK48 = 0x0000FFFFFFFFFFFF
 KTEXT_LO = 0xFFF007004000
 KTEXT_HI = 0xFFF200000000
+MAX_GHIDRA_SYMS = 60000
+MAX_XREFS = 40
 
 def _u(v): return int(v) & 0xFFFFFFFFFFFFFFFF
 def fmt(v):
@@ -57,66 +61,21 @@ def is_ktext(p):
 
 # ---------- symbols ----------
 _symidx = None
+_symset = None
 
 def _add(a, n):
-    global _symidx
-    if _symidx is None: _symidx = []
-    for aa, nn in _symidx:
-        if aa == a and nn == n: return
-    _symidx.append((_u(a), n))
-
-def build_idx():
-    global _symidx
-    if _symidx is not None: return
-    _symidx = []
+    """O(1) dedup via set."""
+    global _symidx, _symset
+    if _symidx is None:
+        _symidx = []
+        _symset = set()
     try:
-        for sym in currentProgram.getSymbolTable().getAllSymbols(True):
-            try: _add(sym.getAddress().getOffset(), sym.getName())
-            except: pass
+        av = _u(a)
+        key = (av, n)
+        if key in _symset: return
+        _symset.add(key)
+        _symidx.append(key)
     except: pass
-    # external symbols.json — try many formats
-    if not os.path.exists(SYM): return
-    try:
-        with open(SYM) as fh: raw = fh.read()
-        if not raw: return
-        data = json.loads(raw)
-    except: return
-    n_before = len(_symidx)
-    try:
-        if isinstance(data, dict):
-            for k, v in data.items():
-                # { "0xADDR": "name" }
-                try:
-                    a = int(k, 0)
-                    if isinstance(v, str) and a >= 0xFFFF000000000000:
-                        _add(a, v); continue
-                except: pass
-                # { "name": "0xADDR" }
-                try:
-                    a = int(v, 0) if isinstance(v, str) else int(v)
-                    if a >= 0xFFFF000000000000:
-                        _add(a, k); continue
-                except: pass
-                # { "0xADDR": {"name": ...} }
-                if isinstance(v, dict):
-                    nn = v.get("name") or v.get("symbol")
-                    if nn:
-                        try:
-                            a = int(k, 0)
-                            if a >= 0xFFFF000000000000:
-                                _add(a, nn)
-                        except: pass
-            # nested lists/dicts
-            for key in ("symbols", "addrs", "entries", "items", "data"):
-                v = data.get(key)
-                if isinstance(v, list):
-                    for it in v: _walk_entry(it)
-                elif isinstance(v, dict):
-                    for k, it in v.items(): _walk_entry(it, fallback_addr=k)
-        elif isinstance(data, list):
-            for it in data: _walk_entry(it)
-    except: pass
-    print("[+] sym idx: internal+external=%d (json added %d)" % (len(_symidx), len(_symidx) - n_before))
 
 def _walk_entry(it, fallback_addr=None):
     if isinstance(it, dict):
@@ -133,6 +92,82 @@ def _walk_entry(it, fallback_addr=None):
             n = it[1]
             if a >= 0xFFFF000000000000 and isinstance(n, str): _add(a, n)
         except: pass
+
+def build_idx():
+    global _symidx, _symset
+    if _symidx is not None: return
+    _symidx = []
+    _symset = set()
+
+    # ---------- 1. external symbols.json (fast, first) ----------
+    if os.path.exists(SYM):
+        print("[+] loading %s" % SYM)
+        t0 = time.time()
+        try:
+            with open(SYM) as fh: raw = fh.read()
+            print("[+] raw size: %d bytes" % len(raw))
+            data = json.loads(raw)
+            print("[+] parsed: %s" % type(data).__name__)
+            n_before = 0
+            if isinstance(data, dict):
+                n_items = len(data)
+                print("[+] dict keys: %d" % n_items)
+                for k, v in data.items():
+                    # format A: { "0xADDR": "name" }
+                    try:
+                        a = int(k, 0)
+                        if isinstance(v, str) and a >= 0xFFFF000000000000:
+                            _add(a, v); continue
+                    except: pass
+                    # format B: { "name": "0xADDR" or int }
+                    try:
+                        a = int(v, 0) if isinstance(v, str) else int(v)
+                        if a >= 0xFFFF000000000000:
+                            _add(a, k); continue
+                    except: pass
+                    # format C: { "0xADDR": {"name": ...} }
+                    if isinstance(v, dict):
+                        nn = v.get("name") or v.get("symbol")
+                        if nn:
+                            try:
+                                a = int(k, 0)
+                                if a >= 0xFFFF000000000000: _add(a, nn)
+                            except: pass
+                for key in ("symbols", "addrs", "entries", "items", "data"):
+                    v = data.get(key)
+                    if isinstance(v, list):
+                        for it in v: _walk_entry(it)
+                    elif isinstance(v, dict):
+                        for k2, it in v.items(): _walk_entry(it, fallback_addr=k2)
+            elif isinstance(data, list):
+                print("[+] list len: %d" % len(data))
+                for it in data: _walk_entry(it)
+            print("[+] external added: %d (%.1fs)" % (len(_symidx), time.time() - t0))
+        except Exception as e:
+            print("[-] external err: %s" % str(e))
+
+    # ---------- 2. Ghidra symbol table (fallback, capped) ----------
+    n_ext = len(_symidx)
+    if n_ext < 1000:
+        print("[+] external small (%d), falling back to Ghidra table" % n_ext)
+        t0 = time.time()
+        try:
+            count = 0
+            for sym in currentProgram.getSymbolTable().getAllSymbols(False):
+                try:
+                    _add(sym.getAddress().getOffset(), sym.getName())
+                    count += 1
+                    if count % 10000 == 0:
+                        print("[+]   ghidra syms: %d" % count)
+                    if count >= MAX_GHIDRA_SYMS: break
+                except: pass
+            print("[+] ghidra added: %d (%.1fs)" % (count, time.time() - t0))
+        except Exception as e:
+            print("[-] ghidra err: %s" % str(e))
+    else:
+        print("[+] external sufficient (%d), skipping Ghidra table" % n_ext)
+
+    print("[+] total symbols: %d" % len(_symidx))
 
 def names_match(substr, exec_only=None):
     build_idx()
@@ -171,13 +206,17 @@ def xrefs_to(a):
     try:
         ga = sa(a)
         if ga is None: return out
+        cnt = 0
         for ref in getReferencesTo(ga):
-            try: out.append(_u(ref.getFromAddress().getOffset()))
+            try:
+                out.append(_u(ref.getFromAddress().getOffset()))
+                cnt += 1
+                if cnt >= MAX_XREFS: break
             except: pass
     except: pass
     return out
 
-# ---------- decoder (compact) ----------
+# ---------- decoder ----------
 def dec(b, pc):
     if b == 0xD503237F: return "pacibsp"
     if b == 0xD50323FF: return "autibsp"
@@ -378,56 +417,47 @@ def extract_call(body):
     m = re.search(r"->\s*0x([0-9A-F]+)", body)
     return int(m.group(1), 16) if m else None
 
-# ---------- resolve target ----------
+# ---------- resolve ----------
 def resolve_target():
-    """Returns (addr, how) or (None, why)."""
-    # 1. exec symbol
     hits = names_match(NAME, exec_only=True)
     if hits:
         a, n, blk, _ = hits[0]
         return a, "exec symbol '%s' @ %s [%s]" % (n, fmt(a), blk)
-
-    # 2. hint if in exec block
     blk = inblk(HINT)
     if blk and blk[3]:
         return HINT, "hint %s (exec %s)" % (fmt(HINT), blk[2])
-
-    # 3. non-exec symbol (string) + xrefs -> function
     hits_ne = names_match(NAME, exec_only=False)
     for a, n, blkname, _ in hits_ne[:6]:
         refs = xrefs_to(a)
         for r in refs:
             f = func_containing(r)
             if f:
-                return f, "func of xref to string '%s' @ %s (ref@%s)" % (n, fmt(a), fmt(r))
+                return f, "func of xref to str '%s' @ %s (ref@%s)" % (n, fmt(a), fmt(r))
+    return None, "no exec symbol, hint not exec, no xrefs to strings"
 
-    # 4. dump what we found for user
-    return None, "no exec symbol, hint not in exec block, no xrefs to string symbols"
-    
 # ---------- main ----------
 def main():
     print("=== necp_client_copy_result focused ===")
+    t0 = time.time()
     build_idx()
-    print("[+] total symbols: %d" % len(_symidx or []))
+    print("[+] idx built in %.1fs" % (time.time() - t0))
 
     lines = []
     lines.append("=== SYMBOL DIAG ===")
     lines.append("total symbols: %d" % len(_symidx or []))
     lines.append("symbols.json: %s (%s)" % (SYM, "exists" if os.path.exists(SYM) else "MISSING"))
     try:
-        if os.path.exists(SYM):
-            lines.append("size: %d bytes" % os.path.getsize(SYM))
+        if os.path.exists(SYM): lines.append("size: %d" % os.path.getsize(SYM))
     except: pass
     lines.append("")
 
-    # all matches
     all_exec = names_match(NAME, exec_only=True)
     all_none = names_match(NAME, exec_only=False)
     lines.append("=== MATCHES ===")
-    lines.append("exec matches (%d):" % len(all_exec))
+    lines.append("exec (%d):" % len(all_exec))
     for a, n, blk, _ in all_exec[:20]:
         lines.append("  %s  %-40s  [%s]" % (fmt(a), n, blk))
-    lines.append("non-exec matches (%d):" % len(all_none))
+    lines.append("non-exec (%d):" % len(all_none))
     for a, n, blk, _ in all_none[:20]:
         lines.append("  %s  %-40s  [%s]" % (fmt(a), n, blk))
     lines.append("")
@@ -437,16 +467,15 @@ def main():
     if target is None:
         lines.append("FAIL: %s" % how)
         lines.append("")
-        lines.append("Full xrefs dump:")
+        lines.append("xref dump:")
         for a, n, blkname, _ in all_none[:4]:
-            lines.append("  string @ %s  '%s'  [%s]" % (fmt(a), n, blkname))
+            lines.append("  str @ %s  '%s'  [%s]" % (fmt(a), n, blkname))
             refs = xrefs_to(a)
             lines.append("    xrefs: %d" % len(refs))
             for r in refs[:8]:
                 f = func_containing(r)
                 lines.append("      %s -> func %s" % (fmt(r), fmt(f) if f else "?"))
-        final = lines
-        write(final, {})
+        write(lines, {})
         return
 
     lines.append("target = %s" % fmt(target))
@@ -455,7 +484,6 @@ def main():
     lines.append("block  = %s (exec=%s)" % (blk[2], blk[3]))
     lines.append("")
 
-    # disasm
     lines.append("=== DISASM ===")
     dis = disasm(target, 400)
     for l in dis:
@@ -471,7 +499,6 @@ def main():
         lines.append("  " + l + note)
     lines.append("")
 
-    # collect offsets
     ldr = {}
     strm = {}
     calls = []
@@ -509,7 +536,6 @@ def main():
         lines.append("  %s -> %s  %s" % (mn, fmt(t), nn))
     lines.append("")
 
-    # verdict: flow-reg
     flowregs = ("x19","x20","x21","x22","x23","x24")
     lines.append("=== FLOW-REG LDRs (x19..x24, imm 0x40..0x300) ===")
     seq = []
@@ -524,11 +550,10 @@ def main():
 
     lines.append("=== VERDICT ===")
     if seq:
-        lines.append("Flow-reg LDRs found:")
-        lines.append("  Most likely pair (assigned_results, length):")
+        lines.append("flow-reg LDRs found:")
+        lines.append("  candidate pair (assigned_results, length):")
         lines.append("    %s" % seq[0][3])
-        if len(seq) > 1:
-            lines.append("    %s" % seq[1][3])
+        if len(seq) > 1: lines.append("    %s" % seq[1][3])
     else:
         lines.append("NO flow-reg LDRs. necp_client_copy_result does NOT")
         lines.append("read flow->assigned_results on this build.")
