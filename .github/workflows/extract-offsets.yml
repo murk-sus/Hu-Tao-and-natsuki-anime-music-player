@@ -23,6 +23,7 @@ jobs:
           java-version: "25"
           distribution: temurin
 
+      # ---------- Ghidra ----------
       - name: Cache Ghidra
         id: cache-ghidra
         uses: actions/cache@v4
@@ -48,6 +49,7 @@ jobs:
         shell: bash
         run: echo "GHIDRA_ROOT=$GITHUB_WORKSPACE/ghidra" >> "$GITHUB_ENV"
 
+      # ---------- ipsw ----------
       - name: Cache ipsw
         id: cache-ipsw
         uses: actions/cache@v4
@@ -64,6 +66,7 @@ jobs:
           tar -C /usr/local/bin -xzf /tmp/ipsw.tar.gz ipsw
           ipsw version
 
+      # ---------- symbolicator ----------
       - name: Cache symbolicator
         id: cache-symbolicator
         uses: actions/cache@v4
@@ -77,6 +80,8 @@ jobs:
         run: |
           set -euo pipefail
           git clone --depth 1 "https://github.com/blacktop/symbolicator.git" "$GITHUB_WORKSPACE/symbolicator"
+          echo "=== symbolicator/kernel ==="
+          ls -1 "$GITHUB_WORKSPACE/symbolicator/kernel" | head -40
 
       - name: Resolve signatures dir for iOS 27.0
         id: sigs
@@ -85,33 +90,29 @@ jobs:
           set -uo pipefail
           ROOT="$GITHUB_WORKSPACE/symbolicator/kernel"
 
-          echo "=== Available iOS version dirs ==="
+          echo "=== Available version dirs in $ROOT ==="
           ls -1 "$ROOT" || true
 
-          # Приоритет: 27.0 → 27.2 → последняя существующая
+          # Приоритет: 27.0 → 27.2 → любая 27.x
           for VER in "27.0" "27.2" "27.1" "27.3"; do
             if [ -d "$ROOT/$VER" ]; then
               echo "=== Selected signatures version: $VER ==="
               ls -la "$ROOT/$VER" | head -20
+              JSON_COUNT=$(find "$ROOT/$VER" -name "*.json" | wc -l)
+              echo "JSON files in $VER: $JSON_COUNT"
               echo "SIGDIR=$ROOT/$VER" >> "$GITHUB_ENV"
               echo "SIG_VER=$VER" >> "$GITHUB_ENV"
               exit 0
             fi
           done
 
-          # Fallback: любая 27.x или самая свежая
-          LATEST=$(ls -1 "$ROOT" 2>/dev/null | sort -V | tail -n1)
-          if [ -n "$LATEST" ] && [ -d "$ROOT/$LATEST" ]; then
-            echo "=== Fallback: using latest available version: $LATEST ==="
-            ls -la "$ROOT/$LATEST" | head -20
-            echo "SIGDIR=$ROOT/$LATEST" >> "$GITHUB_ENV"
-            echo "SIG_VER=$LATEST" >> "$GITHUB_ENV"
-            exit 0
-          fi
+          # Fallback: корень symbolicator/kernel (если ipsw умеет рекурсивно)
+          echo "=== No version-specific dir found — using root $ROOT ==="
+          find "$ROOT" -name "*.json" | head -20
+          echo "SIGDIR=$ROOT" >> "$GITHUB_ENV"
+          echo "SIG_VER=root" >> "$GITHUB_ENV"
 
-          echo "FATAL: no signature version dirs found"
-          exit 1
-
+      # ---------- kernelcache ----------
       - name: Cache kernelcache
         id: cache-kernelcache
         uses: actions/cache@v4
@@ -158,6 +159,40 @@ jobs:
           echo "KERNEL=$KERNEL" >> "$GITHUB_ENV"
           echo "KERNEL_NAME=$(basename "$KERNEL")" >> "$GITHUB_ENV"
 
+      # ---------- декомпрессия (только если сжат) ----------
+      - name: Decompress kernelcache (only if compressed)
+        shell: bash
+        run: |
+          set -uo pipefail
+          FTYPE=$(file "$KERNEL")
+          echo "file output: $FTYPE"
+
+          if echo "$FTYPE" | grep -q "Mach-O"; then
+            echo "=== kernelcache is already decompressed Mach-O — skipping ==="
+            exit 0
+          fi
+
+          echo "=== kernelcache appears compressed — decompressing ==="
+          OUTDIR="$GITHUB_WORKSPACE/kernelcache_decompressed"
+          mkdir -p "$OUTDIR"
+          OUTNAME="$OUTDIR/$(basename "$KERNEL")"
+
+          # -o = output FILE (не директория!)
+          ipsw kernel dec "$KERNEL" -o "$OUTNAME" 2>&1 | tee /tmp/dec.log || true
+
+          if [ ! -s "$OUTNAME" ]; then
+            echo "WARNING: decompression failed, using original kernelcache"
+            cat /tmp/dec.log || true
+            exit 0
+          fi
+
+          echo "=== Decompressed ==="
+          file "$OUTNAME"
+          ls -lh "$OUTNAME"
+          echo "KERNEL=$OUTNAME" >> "$GITHUB_ENV"
+          echo "KERNEL_NAME=$(basename "$OUTNAME")" >> "$GITHUB_ENV"
+
+      # ---------- символикация ----------
       - name: Cache symbols
         id: cache-symbols
         uses: actions/cache@v4
@@ -165,7 +200,7 @@ jobs:
           path: ${{ github.workspace }}/symbols.json
           key: symbols-${{ hashFiles('kernelcache/**') }}
 
-      - name: Symbolicate kernel (blacktop signatures + built-in tables)
+      - name: Symbolicate kernel (blacktop signatures)
         if: steps.cache-symbols.outputs.cache-hit != 'true'
         shell: bash
         run: |
@@ -187,20 +222,20 @@ jobs:
             2>&1 | tee /tmp/sym_full.log || true
 
           echo ""
-          echo "=== Tail of symbolicate log (50 lines) ==="
-          tail -n 50 /tmp/sym_full.log || true
+          echo "=== Tail of symbolicate log (last 40 lines) ==="
+          tail -n 40 /tmp/sym_full.log || true
 
           echo ""
-          echo "=== Built-in table markers in log ==="
-          grep -iE "bsd_syscall_table|mach_trap_table|mig_kern_subsystem|found .* table|signatures" \
-            /tmp/sym_full.log || echo "(no markers)"
+          echo "=== Built-in table markers ==="
+          grep -iE "bsd_syscall_table|mach_trap_table|mig_kern_subsystem|Found .* table" \
+            /tmp/sym_full.log || echo "(no markers — symbolicate did not find built-in tables)"
 
           echo ""
           echo "=== Found addresses in log (count) ==="
           grep -cE "0x[0-9A-Fa-f]{10,}" /tmp/sym_full.log || echo "0"
 
           echo ""
-          echo "=== Searching for *.symbols.json files ==="
+          echo "=== Searching for symbols JSON outputs ==="
           find . -type f -name "*.symbols.json" 2>/dev/null | head -5 || true
           find . -type f -name "*symbols*.json" 2>/dev/null | head -5 || true
 
@@ -213,26 +248,17 @@ jobs:
             cp "$SRC" "$GITHUB_WORKSPACE/symbols.json"
             echo "=== copied $SRC -> symbols.json ==="
           else
-            echo "=== No *.symbols.json found — trying --output ==="
-            ipsw kernel symbolicate \
-              --signatures "$SIGDIR" \
-              --json \
-              -v \
-              --output "$GITHUB_WORKSPACE/symbols.json" \
-              "$KERNEL" \
-              2>&1 | tee /tmp/sym_fallback.log || true
-            if [ ! -s "$GITHUB_WORKSPACE/symbols.json" ]; then
-              echo "=== Fallback produced nothing — writing [] ==="
-              echo "[]" > "$GITHUB_WORKSPACE/symbols.json"
-            fi
+            echo "=== No *.symbols.json found ==="
+            echo "[]" > "$GITHUB_WORKSPACE/symbols.json"
           fi
 
           echo ""
           echo "=== symbols.json size: $(wc -c < "$GITHUB_WORKSPACE/symbols.json" 2>/dev/null || echo 0) bytes ==="
-          echo "=== symbols.json head (first 2000 bytes) ==="
-          head -c 2000 "$GITHUB_WORKSPACE/symbols.json" 2>/dev/null || true
+          echo "=== symbols.json head (first 1500 bytes) ==="
+          head -c 1500 "$GITHUB_WORKSPACE/symbols.json" 2>/dev/null || true
           echo ""
 
+      # ---------- Ghidra project ----------
       - name: Cache ghidra project
         id: cache-project
         uses: actions/cache@v4
