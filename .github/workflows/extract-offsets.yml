@@ -20,6 +20,7 @@ jobs:
           java-version: "25"
           distribution: temurin
 
+      # --- Ghidra + Jython ---
       - name: Cache Ghidra
         id: cache-ghidra
         uses: actions/cache@v4
@@ -44,6 +45,7 @@ jobs:
       - name: Set Ghidra env
         run: echo "GHIDRA_ROOT=$GITHUB_WORKSPACE/ghidra" >> "$GITHUB_ENV"
 
+      # --- ipsw ---
       - name: Cache ipsw
         id: cache-ipsw
         uses: actions/cache@v4
@@ -60,27 +62,23 @@ jobs:
           tar -C /usr/local/bin -xzf /tmp/ipsw.tar.gz ipsw
           ipsw version
 
-      # --- КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ: symbolicator ---
-      - name: Cache symbolicator
+      # --- КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ: правильный symbolicator ---
+      - name: Cache symbolicator (blacktop)
         id: cache-symbolicator
         uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}/symbolicator
-          key: symbolicator-26.8.0
+          key: symbolicator-$(date +%Y%m%d) # Кэш обновляется ежедневно, т.к. сигнатуры часто обновляются
 
-      - name: Clone symbolicator 26.8.0
+      - name: Clone blacktop/symbolicator
         if: steps.cache-symbolicator.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
-          git clone --depth 1 --branch 26.8.0 \
-            https://github.com/getsentry/symbolicator.git "$GITHUB_WORKSPACE/symbolicator"
-          # ipsw expects a 'kernel' subdirectory with signature JSONs
-          mkdir -p "$GITHUB_WORKSPACE/symbolicator/kernel"
-          # Копируем сигнатуры из ipsw, если они там есть, иначе оставляем пусто
-          if [ -d "$GITHUB_WORKSPACE/symbolicator/kernel" ]; then
-            echo "symbolicator kernel dir ready"
-          fi
+          git clone --depth 1 https://github.com/blacktop/symbolicator.git "$GITHUB_WORKSPACE/symbolicator"
+          echo "=== symbolicator/kernel contents ==="
+          ls -la "$GITHUB_WORKSPACE/symbolicator/kernel" | head -20
 
+      # --- Распаковка kernel ---
       - name: Unpack kernel
         run: |
           set -euo pipefail
@@ -92,13 +90,7 @@ jobs:
           echo "KERNEL_NAME=$(basename "$K")" >> "$GITHUB_ENV"
           ls -lh "$K"
 
-      - name: Extract all KEXTs
-        run: |
-          set -uo pipefail
-          mkdir -p "$GITHUB_WORKSPACE/kexts"
-          ipsw kernel extract "$KERNEL" --all --output "$GITHUB_WORKSPACE/kexts" || true
-          find "$GITHUB_WORKSPACE/kexts" -type f | wc -l
-
+      # --- СИМВОЛИКАЦИЯ ЯДРА ---
       - name: Cache symbols
         id: cs
         uses: actions/cache@v4
@@ -106,22 +98,19 @@ jobs:
           path: ${{ github.workspace }}/symbols.json
           key: symbols-${{ hashFiles('kernel.zip') }}
 
-      # --- ИСПРАВЛЕННАЯ СИМВОЛИКАЦИЯ ---
-      - name: Symbolicate (STRICT)
+      - name: Symbolicate kernel (STRICT)
         if: steps.cs.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
-          # ipsw kernel sym требует --signatures <dir> с JSON-файлами
-          # Если сигнатуры не найдены, используем встроенные (ipsw может их иметь)
-          SYMDIR="$GITHUB_WORKSPACE/symbolicator/kernel"
-          echo "Using signatures from: $SYMDIR"
-          ls -la "$SYMDIR" || true
+          SIGDIR="$GITHUB_WORKSPACE/symbolicator/kernel"
+          echo "Using signatures from: $SIGDIR"
+          ls -la "$SIGDIR" | head -10
 
-          # Пробуем symbolicate
-          if ! ipsw kernel sym "$KERNEL" --json --signatures "$SYMDIR" 2>/tmp/sym_err.log; then
+          # Пробуем symbolicate с правильными сигнатурами
+          if ! ipsw kernel sym "$KERNEL" --json --signatures "$SIGDIR" 2>/tmp/sym_err.log; then
             echo "ipsw kernel sym FAILED. Log:"
             cat /tmp/sym_err.log
-            # Fallback: пробуем без --signatures (встроенные)
+            # Fallback: пробуем без --signatures (встроенные сигнатуры, если есть)
             echo "Trying without --signatures..."
             if ! ipsw kernel sym "$KERNEL" --json 2>/tmp/sym_err2.log; then
               echo "ipsw kernel sym without signatures FAILED too."
@@ -132,7 +121,8 @@ jobs:
             fi
           fi
 
-          SRC=$(find kernel -name '*.symbols.json' -o -name '*.json' | head -n1)
+          # Находим созданный JSON-файл
+          SRC=$(find . -name '*_symbols.json' -o -name '*symbols.json' | head -n1)
           if [ -z "$SRC" ] || [ ! -f "$SRC" ]; then
             echo "No symbols JSON produced"
             echo '[]' > "$GITHUB_WORKSPACE/symbols.json"
@@ -141,6 +131,7 @@ jobs:
           fi
           echo "symbols.json size: $(wc -c < "$GITHUB_WORKSPACE/symbols.json") bytes"
 
+      # --- Ghidra project ---
       - name: Cache project
         id: cp
         uses: actions/cache@v4
