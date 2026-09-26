@@ -13,61 +13,60 @@ OUT = os.path.join(WS, "result.txt")
 OUT_OFF = os.path.join(WS, "offsets.json")
 SYMBOLS_JSON = os.environ.get("SYMBOLS_JSON", os.path.join(WS, "symbols.json"))
 
-COPYIN_ADDR  = 0xFFFFFFF00A368EC0
-COPYOUT_ADDR = 0xFFFFFFF00A369A3C
-
 NECP_BASE = {
-    "necp_open":                  0xFFFFFFF00A4E411C,
-    "necp_client_action":         0xFFFFFFF00A4E5C28,
-    "necp_client_add_flow":       0xFFFFFFF00A4E843C,
-    "necp_client_copy_list":      0xFFFFFFF00A4E80FC,
-    "necp_client_copy_update":    0xFFFFFFF00A4EC264,
-    "necp_client_copy_interface": 0xFFFFFFF00A4EAC7C,
-    "necp_client_copy_result":    0xFFFFFFF00A4E7BE8,
-    "necp_client_remove_client":  0xFFFFFFF00A4E76F4,
-    "necp_client_remove_flow":    0xFFFFFFF00A4E93C4,
+    "necp_open":                     0xFFFFFFF00A4E411C,
+    "necp_client_action":            0xFFFFFFF00A4E5C28,
+    "necp_client_add_flow":          0xFFFFFFF00A4E843C,
+    "necp_client_copy_list":         0xFFFFFFF00A4E80FC,
+    "necp_client_copy_update":       0xFFFFFFF00A4EC264,
+    "necp_client_copy_interface":    0xFFFFFFF00A4EAC7C,
+    "necp_client_copy_result":       0xFFFFFFF00A4E7BE8,
+    "necp_client_remove_client":     0xFFFFFFF00A4E76F4,
+    "necp_client_remove_flow":       0xFFFFFFF00A4E93C4,
     "necp_client_copy_result_inner": 0xFFFFFFF00A4F26F0,
-    "necp_client_sysctl_arena":   0xFFFFFFF00A4EB704,
-    "necp_get_tlv_at_offset":     0xFFFFFFF00A4C2034,
-    "copyin":                     COPYIN_ADDR,
-    "copyout":                    COPYOUT_ADDR,
-    "kalloc_type":                0xFFFFFFF00A200988,
-    "kfree_type":                 0xFFFFFFF00A201000,
-    "kalloc_type_necp_flow":      0xFFFFFFF007C62E68,
+    "necp_client_sysctl_arena":      0xFFFFFFF00A4EB704,
+    "necp_get_tlv_at_offset":        0xFFFFFFF00A4C2034,
+    "copyin":                        0xFFFFFFF00A368EC0,
+    "copyout":                       0xFFFFFFF00A369A3C,
+    "kalloc_type":                   0xFFFFFFF00A200988,
+    "kfree_type":                    0xFFFFFFF00A201000,
+    "kalloc_type_necp_flow":         0xFFFFFFF007C62E68,
 }
 
-SOCKET_STRINGS = [
-    "sock_getsockopt", "sock_setsockopt", "sock_getopt", "sock_setopt",
-    "sooptcopyin", "sooptcopyout", "sbappendcontrol", "sbappendstream",
-    "sbappendrecord", "m_copydata", "m_pullup", "mbuf_copydata", "mbuf_copym",
-    "getsockopt error", "setsockopt error", "invalid socket option",
-    "invalid option level", "socket buffer too small",
+TARGETS = [
+    ("sooptcopyin",             0xFFFFFFF00A77FD2C),
+    ("sbappendcontrol",         0xFFFFFFF00A788A24),
+    ("sbappendstream",          0xFFFFFFF00A78811C),
+    ("sbappendrecord",          0xFFFFFFF00A7873B8),
+    ("necp_get_tlv_at_offset",  0xFFFFFFF00A4C2034),
+    ("necp_client_add_flow",    0xFFFFFFF00A4E843C),
+    ("necp_update_cache",       0xFFFFFFF00A4EBD58),
+    ("necp_per_flow_copy",      0xFFFFFFF00A4F2E70),
+    ("necp_flow_alloc",         0xFFFFFFF00A346E70),
+    ("necp_handler_big",        0xFFFFFFF00A3D91B4),
+    ("copyin_hot_1",            0xFFFFFFF00A6CEB84),
+    ("copyout_hot_1",           0xFFFFFFF00A6F18AC),
+    ("copyout_hot_2",           0xFFFFFFF00A6F318C),
+    ("copyin_hot_2",            0xFFFFFFF00A753850),
 ]
 
-IOKIT_STRINGS = [
-    "IOSurfaceRoot", "IOSurface", "IOConnectCallMethod", "io_connect_method",
-    "IOHIDEventSystemClient", "IOMemoryDescriptor", "IOMemoryMap",
-    "IOUserClient",
-]
-
-NECP_STRINGS = [
-    "assigned results copyout error",
-    "assigned results tlv_header copyout error",
-    "copy result copyout error",
-    "group members copyout error",
-    "parameters copyout error",
-    "necp_get_tlv_at_offset",
-    "necp_client_copy_result",
-]
-
-SYMBOL_TARGETS = [
-    "sock_getsockopt", "sock_setsockopt", "sooptcopyin", "sooptcopyout",
-    "sbappendcontrol", "sbappendstream", "m_copydata", "m_pullup",
-    "mbuf_copydata", "mbuf_copym", "sock_getopt", "sock_setopt",
-    "getsockopt", "setsockopt", "sendmsg", "recvmsg",
-    "IOConnectCallMethod", "IOSurfaceRoot", "io_connect_method",
-    "bsd_syscall_table", "mach_trap_table",
-    "kalloc_type", "kfree_type",
+PATTERNS = [
+    "copyout",
+    "copyin",
+    "kalloc_type",
+    "kfree_type",
+    "memcpy",
+    "memmove",
+    "bcopy",
+    "bzero",
+    "panic",
+    "overflow",
+    "len",
+    "length",
+    "size",
+    "bound",
+    "limit",
+    "alloc",
 ]
 
 
@@ -216,13 +215,13 @@ def decompile(f, timeout=300):
         if c is None:
             return ["(empty)"]
         for line in c.getC().split("\n"):
-            out.append("  " + line.rstrip())
+            out.append(line.rstrip())
     except Exception as e:
         out.append("(exception: %s)" % e)
     return out
 
 
-def callees(f, maxn=30):
+def callees(f, maxn=40):
     try:
         cf = f.getCalledFunctions(ConsoleTaskMonitor())
     except Exception:
@@ -249,59 +248,80 @@ def callees(f, maxn=30):
     return out[:maxn]
 
 
-def collect_xrefs(ga, limit=24):
-    out = []
-    try:
-        refs = getReferencesTo(ga)
-    except Exception:
-        return out
-    if refs is None:
-        return out
-    by_func = {}
-    try:
-        for r in refs:
-            try:
-                fa = r.getFromAddress()
-                fn = getFunctionContaining(fa)
-                if fn is None:
-                    continue
-                ent = _u(fn.getEntryPoint().getOffset())
-                nm = str(fn.getName())
-                if ent not in by_func:
-                    by_func[ent] = (nm, 0)
-                by_func[ent] = (nm, by_func[ent][1] + 1)
-            except Exception:
-                pass
-    except Exception:
-        pass
-    items = sorted(by_func.items(), key=lambda kv: -kv[1][1])[:limit]
-    for ent, (nm, cnt) in items:
-        out.append((ent, nm, cnt))
-    return out
-
-
-def dump_zone(addr, name, lines):
-    try:
-        ga = sa(addr)
-        if ga is None:
-            lines.append("  [%s] cannot resolve" % name)
-            return
-        lines.append("  [%s] @ %s" % (name, fmt(addr)))
-        for off in range(0, 0x40, 8):
-            try:
-                v = int(currentProgram.getMemory().getLong(ga.add(off))) & 0xFFFFFFFFFFFFFFFF
-                lines.append("    +0x%02X: %s" % (off, fmt(v)))
-            except Exception as e:
-                lines.append("    +0x%02X: err %s" % (off, e))
+def keyword_scan(declines):
+    hits = []
+    for idx, line in enumerate(declines):
+        low = line.lower()
+        for pat in PATTERNS:
+            if pat in low:
+                hits.append((idx, line))
                 break
-    except Exception as e:
-        lines.append("  [%s] exception: %s" % (name, e))
+    return hits
+
+
+def dump_mem_ops(f, lines, cap=0x2000):
+    seen = set()
+    body = f.getBody()
+    if body is None:
+        return
+    try:
+        it = body.getAddresses(True)
+    except Exception:
+        return
+    cnt = 0
+    while it.hasNext() and cnt < 8000:
+        a = it.next()
+        try:
+            pc = _u(a.getOffset())
+            raw = int(currentProgram.getMemory().getInt(a)) & 0xFFFFFFFF
+        except Exception:
+            cnt += 1
+            continue
+        cnt += 1
+        kind = None
+        base = 0
+        imm = 0
+        if (raw & 0xFFC00000) == 0xF9400000:
+            kind, base, imm = "ldr_x", (raw >> 5) & 0x1F, ((raw >> 10) & 0xFFF) * 8
+        elif (raw & 0xFFC00000) == 0xB9400000:
+            kind, base, imm = "ldr_w", (raw >> 5) & 0x1F, ((raw >> 10) & 0xFFF) * 4
+        elif (raw & 0xFFC00000) == 0xF9000000:
+            kind, base, imm = "str_x", (raw >> 5) & 0x1F, ((raw >> 10) & 0xFFF) * 8
+        elif (raw & 0xFFC00000) == 0xB9000000:
+            kind, base, imm = "str_w", (raw >> 5) & 0x1F, ((raw >> 10) & 0xFFF) * 4
+        elif (raw & 0xFFE00000) == 0x39400000:
+            kind, base, imm = "ldrb", (raw >> 5) & 0x1F, (raw >> 10) & 0xFFF
+        elif (raw & 0xFFE00000) == 0x39000000:
+            kind, base, imm = "strb", (raw >> 5) & 0x1F, (raw >> 10) & 0xFFF
+        elif (raw & 0xFFE00000) == 0x79400000:
+            kind, base, imm = "ldrh", (raw >> 5) & 0x1F, ((raw >> 10) & 0xFFF) * 2
+        elif (raw & 0xFFE00000) == 0x79000000:
+            kind, base, imm = "strh", (raw >> 5) & 0x1F, ((raw >> 10) & 0xFFF) * 2
+        elif (raw & 0xFFC00000) == 0xF8400000:
+            i = (raw >> 12) & 0x1FF
+            if i & 0x100:
+                i -= 0x200
+            kind, base, imm = "ldur_x", (raw >> 5) & 0x1F, i
+        elif (raw & 0xFFC00000) == 0xB8400000:
+            i = (raw >> 12) & 0x1FF
+            if i & 0x100:
+                i -= 0x200
+            kind, base, imm = "ldur_w", (raw >> 5) & 0x1F, i
+        else:
+            continue
+        if imm < 0 or imm > cap:
+            continue
+        key = (kind, base, imm)
+        if key in seen:
+            continue
+        seen.add(key)
+        lines.append("  %s  %-8s  [x%-2d, #0x%X]" % (fmt(pc), kind, base, imm))
 
 
 def main():
     lines = []
     offsets_out = {}
-    print("=== kernel_rw.py v19 (mbuf+io+necp) ===")
+    print("=== kernel_rw.py v20 (targets) ===")
 
     lines.append("=== PROGRAM ===")
     lines.append("name = %s" % currentProgram.getName())
@@ -315,17 +335,10 @@ def main():
     syms = load_symbols(SYMBOLS_JSON)
     lines.append("=== SYMBOLS ===")
     lines.append("loaded = %d" % len(syms))
-    if syms:
-        cnt = 0
-        for name in sorted(syms.keys()):
-            if cnt >= 30:
-                break
-            lines.append("  %s = %s" % (name, fmt(syms[name])))
-            cnt += 1
     lines.append("")
 
     lines.append("=" * 68)
-    lines.append("### A. NECP SANITY")
+    lines.append("### NECP SANITY")
     lines.append("=" * 68)
     for name, addr in NECP_BASE.items():
         f = get_func(addr)
@@ -336,125 +349,34 @@ def main():
                 sz = int(f.getBody().getNumAddresses())
             except Exception:
                 pass
-            lines.append("  %-30s %s  size=0x%X" % (name, fmt(ent), sz))
+            lines.append("  %-32s %s  size=0x%X" % (name, fmt(ent), sz))
             offsets_out[name] = fmt(ent)
         else:
-            lines.append("  %-30s %s  (no function)" % (name, fmt(addr)))
+            lines.append("  %-32s %s  (no func)" % (name, fmt(addr)))
             offsets_out[name] = fmt(addr)
     lines.append("")
 
     lines.append("=" * 68)
-    lines.append("### B. STRING XREF SCAN")
+    lines.append("### TARGET DECOMPILE + KEYWORD SCAN")
     lines.append("=" * 68)
 
-    def scan_strings(label, needles):
-        lines.append("")
-        lines.append("--- %s ---" % label)
-        for needle in needles:
-            found_at = find_string_bytes(needle)
-            if found_at is None:
-                lines.append("  %-45s : not found" % needle)
-                continue
-            lines.append("  %-45s : %s" % (needle, fmt(found_at)))
-            ga = sa(found_at)
-            xrefs = collect_xrefs(ga, limit=12)
-            if not xrefs:
-                lines.append("      no xrefs")
-                continue
-            for ent, nm, cnt in xrefs:
-                lines.append("      %-30s @ %s  (%d refs)" % (nm[:30], fmt(ent), cnt))
-                offsets_out["str_%s_%s" % (label, nm[:24])] = fmt(ent)
-
-    scan_strings("SOCKET", SOCKET_STRINGS)
-    scan_strings("IOKIT", IOKIT_STRINGS)
-    scan_strings("NECP", NECP_STRINGS)
-    lines.append("")
-
-    lines.append("=" * 68)
-    lines.append("### C. SYMBOL LOOKUPS")
-    lines.append("=" * 68)
-    for name in SYMBOL_TARGETS:
-        if name in syms:
-            addr = syms[name]
-            f = get_func(addr)
-            sz = 0
-            if f:
-                try:
-                    sz = int(f.getBody().getNumAddresses())
-                except Exception:
-                    pass
-            lines.append("  %-32s %s  size=0x%X" % (name, fmt(addr), sz))
-            offsets_out[name] = fmt(addr)
-    lines.append("")
-
-    lines.append("=" * 68)
-    lines.append("### D. COPYIN / COPYOUT CALL SITES")
-    lines.append("=" * 68)
-    for label, addr in [("copyin", COPYIN_ADDR), ("copyout", COPYOUT_ADDR)]:
-        lines.append("")
-        lines.append("--- %s @ %s ---" % (label, fmt(addr)))
-        ga = sa(addr)
-        xrefs = collect_xrefs(ga, limit=30)
-        if not xrefs:
-            lines.append("  no xrefs")
-            continue
-        for ent, nm, cnt in xrefs:
-            lines.append("  %s  %-40s  calls=%d" % (fmt(ent), nm[:40], cnt))
-            offsets_out["%s_callsite_%s" % (label, nm[:20])] = fmt(ent)
-    lines.append("")
-
-    lines.append("=" * 68)
-    lines.append("### E. KALLOC_TYPE zone")
-    lines.append("=" * 68)
-    dump_zone(0xFFFFFFF007C62E68, "necp_client_flow", lines)
-    lines.append("")
-
-    lines.append("=" * 68)
-    lines.append("### F. DECOMPILE")
-    lines.append("=" * 68)
-
-    decompile_set = set()
-
-    for group, needles in [("SOCKET", SOCKET_STRINGS),
-                           ("IOKIT", IOKIT_STRINGS),
-                           ("NECP", NECP_STRINGS)]:
-        for needle in needles:
-            at = find_string_bytes(needle)
-            if at is None:
-                continue
-            xrefs = collect_xrefs(sa(at), limit=4)
-            for ent, nm, cnt in xrefs:
-                decompile_set.add((ent, nm))
-
-    for name in SYMBOL_TARGETS:
-        if name in syms:
-            f = get_func(syms[name])
-            if f:
-                ent = _u(f.getEntryPoint().getOffset())
-                decompile_set.add((ent, name))
-
-    for label, addr in [("copyin", COPYIN_ADDR), ("copyout", COPYOUT_ADDR)]:
-        xrefs = collect_xrefs(sa(addr), limit=20)
-        for ent, nm, cnt in xrefs:
-            decompile_set.add((ent, nm))
-
-    targets = sorted(decompile_set)
-    lines.append("total targets: %d" % len(targets))
-    lines.append("")
-
-    for ent, nm in targets:
-        f = get_func(ent)
+    for label, addr in TARGETS:
+        f = get_func(addr)
         if not f:
-            lines.append("=== %s @ %s : no func ===" % (nm, fmt(ent)))
+            lines.append("")
+            lines.append("=== %s @ %s : NO FUNCTION ===" % (label, fmt(addr)))
             continue
+        ent = _u(f.getEntryPoint().getOffset())
         sz = 0
         try:
             sz = int(f.getBody().getNumAddresses())
         except Exception:
             pass
+        lines.append("")
         lines.append("=" * 68)
-        lines.append("=== %s @ %s  size=0x%X ===" % (nm, fmt(ent), sz))
+        lines.append("=== %s @ %s  size=0x%X ===" % (label, fmt(ent), sz))
         lines.append("=" * 68)
+        offsets_out[label] = fmt(ent)
 
         lines.append("--- CALLEES ---")
         cs = callees(f, maxn=30)
@@ -462,9 +384,23 @@ def main():
             lines.append("  %s  %-40s size=0x%X" % (fmt(e), n[:40], sz2))
         lines.append("")
 
-        lines.append("--- DECOMPILE %s ---" % nm)
-        for l in decompile(f, 300):
-            lines.append(l)
+        lines.append("--- MEM OPS ---")
+        dump_mem_ops(f, lines, cap=0x2000)
+        lines.append("")
+
+        body = decompile(f, 300)
+
+        lines.append("--- KEYWORD SCAN (line_no: text) ---")
+        hits = keyword_scan(body)
+        if not hits:
+            lines.append("  (no hits)")
+        for idx, hl in hits[:200]:
+            lines.append("  %4d: %s" % (idx, hl))
+        lines.append("")
+
+        lines.append("--- DECOMPILE ---")
+        for l in body:
+            lines.append("  " + l)
         lines.append("")
 
     try:
