@@ -82,12 +82,14 @@ jobs:
           ls -la "$GITHUB_WORKSPACE/symbolicator/kernel" | head -20
 
       # ---------- kernelcache (главный кэш) ----------
+      # ВАЖНО: запятые в ключе кэша запрещены GitHub Actions
+      # iPhone14,5 -> iPhone14_5
       - name: Cache kernelcache
         id: cache-kernelcache
         uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}/kernelcache
-          key: kernelcache-iPhone14,5-24A437
+          key: kernelcache-iPhone14_5-24A437
 
       - name: Download IPSW and extract kernelcache
         if: steps.cache-kernelcache.outputs.cache-hit != 'true'
@@ -99,18 +101,13 @@ jobs:
           echo "=== Downloading IPSW (iPhone14,5 27.0 24A437) ==="
           ipsw download ipsw \
             --device iPhone14,5 \
-            --version 27.0 \
-            --output ipsw \
-            --confirm 2>&1 | tee /tmp/dl.log || \
-          ipsw download ipsw \
-            --device iPhone14,5 \
             --build 24A437 \
-            --output ipsw \
-            --confirm 2>&1 | tee /tmp/dl.log || true
+            --output ipsw 2>&1 | tee /tmp/dl.log || true
 
           IPSW=$(find ipsw -name "*.ipsw" -type f | head -n1)
           if [ -z "$IPSW" ]; then
             echo "FATAL: IPSW not downloaded"
+            cat /tmp/dl.log
             exit 1
           fi
           ls -lh "$IPSW"
@@ -118,11 +115,17 @@ jobs:
           echo "=== Extracting kernelcache ==="
           ipsw extract --kernel "$IPSW" --output kernelcache
 
-          echo "=== Removing non-kernelcache files ==="
-          # Оставляем только файлы, чьё имя начинается с kernelcache
-          find kernelcache -type f ! -name "kernelcache*" -delete
+          echo "=== Listing extracted files BEFORE cleanup ==="
+          find kernelcache -type f -exec ls -lh {} \;
+
+          echo "=== Removing ALL non-kernelcache files ==="
+          # Удаляем всё, что НЕ является kernelcache (kernel.raw, sptm.raw и т.д.)
+          find kernelcache -type f ! -name "kernelcache*" -print -delete
+          # Чистим пустые папки
           find kernelcache -type d -empty -delete
-          ls -la kernelcache
+
+          echo "=== Listing extracted files AFTER cleanup ==="
+          find kernelcache -type f -exec ls -lh {} \;
 
       - name: Resolve kernelcache path
         shell: bash
@@ -130,14 +133,36 @@ jobs:
           set -euo pipefail
           KERNEL=$(find "$GITHUB_WORKSPACE/kernelcache" -type f -name "kernelcache*" | head -n1)
           if [ -z "$KERNEL" ]; then
-            echo "FATAL: kernelcache not found"
+            echo "FATAL: kernelcache not found after cleanup"
             ls -la "$GITHUB_WORKSPACE/kernelcache"
             exit 1
           fi
           echo "KERNEL=$KERNEL" >> "$GITHUB_ENV"
           echo "KERNEL_NAME=$(basename "$KERNEL")" >> "$GITHUB_ENV"
+          echo "=== File type check ==="
           file "$KERNEL"
           ls -lh "$KERNEL"
+
+      # ---------- декомпрессия kernelcache (если нужна) ----------
+      - name: Decompress kernelcache if needed
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Проверяем, сжат ли kernelcache
+          if file "$KERNEL" | grep -q "LZFSE\|compressed"; then
+            echo "=== Kernelcache is compressed, decompressing ==="
+            ipsw kernel dec "$KERNEL" --output kernelcache_decompressed
+            DECOMP=$(find "$GITHUB_WORKSPACE/kernelcache_decompressed" -type f -name "kernelcache*" | head -n1)
+            if [ -n "$DECOMP" ]; then
+              echo "KERNEL=$DECOMP" >> "$GITHUB_ENV"
+              echo "KERNEL_NAME=$(basename "$DECOMP")" >> "$GITHUB_ENV"
+              echo "=== Decompressed kernelcache ==="
+              file "$DECOMP"
+              ls -lh "$DECOMP"
+            fi
+          else
+            echo "=== Kernelcache is already decompressed ==="
+          fi
 
       # ---------- символикация ----------
       - name: Cache symbols
@@ -212,6 +237,9 @@ jobs:
           "$GHIDRA_ROOT/support/analyzeHeadless" \
             "$GITHUB_WORKSPACE/ghidra_project" KernelProject \
             -import "$KERNEL" \
+            -processor "AARCH64:LE:64:AppleSilicon" \
+            -loader BinaryLoader \
+            -loader-baseAddr 0xFFFFFFF007004000 \
             -postScript kernel_rw.py \
             -scriptPath "$GITHUB_WORKSPACE/scripts" \
             -analysisTimeoutPerFile 12000 \
