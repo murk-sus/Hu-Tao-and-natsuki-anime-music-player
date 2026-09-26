@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # @runtime Jython
-# kernel_rw.py v35 - essentials only
+# kernel_rw.py v36 - deep TLV post-processing chain
 
 import os
 import sys
@@ -35,31 +35,27 @@ SINKS = [
 ]
 
 TARGETS = [
+    ("fun_4c2cc0",               0xFFFFFFF00A4C2CC0),
+    ("fun_494808",               0xFFFFFFF00A494808),
+    ("fun_495c54",               0xFFFFFFF00A495C54),
+    ("fun_4db9f0",               0xFFFFFFF00A4DB9F0),
+    ("fun_4ee24c",               0xFFFFFFF00A4EE24C),
+    ("fun_501454",               0xFFFFFFF00A501454),
+    ("fun_4dd4cc",               0xFFFFFFF00A4DD4CC),
+    ("fun_4ed8bc",               0xFFFFFFF00A4ED8BC),
+    ("fun_aa40d30",              0xFFFFFFF00AA40D30),
     ("necp_client_action",       0xFFFFFFF00A4E5C28),
     ("necp_client_add_client",   0xFFFFFFF00A4E60DC),
     ("necp_client_add_flow",     0xFFFFFFF00A4E843C),
-    ("necp_client_remove_flow",  0xFFFFFFF00A4E93C4),
-    ("necp_client_remove_client",0xFFFFFFF00A4E76F4),
-    ("necp_client_copy_result",  0xFFFFFFF00A4E7BE8),
-    ("necp_client_copy_list",    0xFFFFFFF00A4E80FC),
-    ("necp_client_copy_interface",0xFFFFFFF00A4EAC7C),
-    ("necp_client_sysctl_arena", 0xFFFFFFF00A4EB704),
-    ("necp_client_copy_update",  0xFFFFFFF00A4EC264),
-    ("necp_handler_big",         0xFFFFFFF00A3D91B4),
-    ("necp_per_flow_copy",       0xFFFFFFF00A4F2E70),
-    ("fun_4dd4cc",               0xFFFFFFF00A4DD4CC),
-    ("fun_4ed8bc",               0xFFFFFFF00A4ED8BC),
-    ("fun_4ee24c",               0xFFFFFFF00A4EE24C),
-    ("fun_501454",               0xFFFFFFF00A501454),
-    ("fun_aa40d30",              0xFFFFFFF00AA40D30),
 ]
 
 GLOBAL_CALLERS = [
-    ("necp_client_action",  0xFFFFFFF00A4E5C28),
-    ("necp_client_add_flow",0xFFFFFFF00A4E843C),
-    ("fun_4dd4cc",          0xFFFFFFF00A4DD4CC),
-    ("fun_501454",          0xFFFFFFF00A501454),
-    ("fun_4ee24c",          0xFFFFFFF00A4EE24C),
+    ("fun_4c2cc0",           0xFFFFFFF00A4C2CC0),
+    ("fun_494808",           0xFFFFFFF00A494808),
+    ("fun_495c54",           0xFFFFFFF00A495C54),
+    ("fun_501454",           0xFFFFFFF00A501454),
+    ("fun_4ee24c",           0xFFFFFFF00A4EE24C),
+    ("fun_4dd4cc",           0xFFFFFFF00A4DD4CC),
 ]
 
 DEC = None
@@ -344,62 +340,21 @@ def global_bl_callers(target, max_hits=100, budget=GLOBAL_SCAN_BUDGET_SEC):
     return hits
 
 
-def dump_sysent(w):
-    w(SEP)
-    w("### SYSENT RAW")
-    w(SEP)
-    w("base=%s stride=%d kbase=%s" % (fmt(SYSENT_BASE), SYSENT_STRIDE, fmt(KERNEL_BASE)))
-    w("")
-    for idx in [500, 501, 502, 503]:
-        entry = SYSENT_BASE + idx * SYSENT_STRIDE
-        w("--- sysent[%d] @ %s" % (idx, fmt(entry)))
-        p0 = read_u64(entry)
-        p1 = read_u64(entry + 8)
-        p2 = read_u64(entry + 16)
-        if p0 is not None:
-            w("  +0x00 = %s" % fmt(p0))
-            low = p0 & 0xFFFFFFFF
-            guess = KERNEL_BASE + low
-            w("  low32 = 0x%08X   guess = %s" % (low, fmt(guess)))
-            f = get_func(guess)
-            if f:
-                ent = _u(f.getEntryPoint().getOffset())
-                try:
-                    sz = int(f.getBody().getNumAddresses())
-                except Exception:
-                    sz = 0
-                w("  func at guess: %s size=0x%X" % (fmt(ent), sz))
-            else:
-                w("  no func at guess")
-        if p1 is not None:
-            w("  +0x08 = %s" % fmt(p1))
-        if p2 is not None:
-            w("  +0x10 = %s" % fmt(p2))
-    w("")
-
-
 def main():
     L = []
 
     def w(s):
         L.append(s)
 
-    log("=== kernel_rw.py v35 ===")
+    log("=== kernel_rw.py v36 ===")
     log("program: %s" % currentProgram.getName())
-    log("disasm=%s create=%s" % (HAS_DISASM, HAS_CREATE))
 
     w("=== PROGRAM ===")
     w("name = %s" % currentProgram.getName())
     w("has_disasm=%s has_create=%s" % (HAS_DISASM, HAS_CREATE))
     w("")
 
-    log("[1/4] sysent")
-    try:
-        dump_sysent(w)
-    except Exception as ex:
-        w("SYSENT EXCEPTION %s" % ex)
-
-    log("[2/4] sanity")
+    log("[1/3] sanity")
     w(SEP)
     w("### SANITY")
     w(SEP)
@@ -421,7 +376,7 @@ def main():
             w("  %-32s EXCEPTION %s" % (name, str(ex)))
     w("")
 
-    log("[3/4] per-function")
+    log("[2/3] per-function")
     total = len(TARGETS)
     for idx, (name, addr) in enumerate(TARGETS):
         log("  [%d/%d] %s" % (idx + 1, total, name))
@@ -491,7 +446,7 @@ def main():
             w("FUNC EXCEPTION %s %s" % (name, ex))
             continue
 
-    log("[4/4] global callers")
+    log("[3/3] global callers")
     w(SEP)
     w("### GLOBAL BL CALLERS")
     w(SEP)
