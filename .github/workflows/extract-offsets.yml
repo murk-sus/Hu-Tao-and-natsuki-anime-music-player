@@ -21,6 +21,22 @@ jobs:
           java-version: "25"
           distribution: temurin
 
+      # ---------------------------------------------------------------
+      # Диагностика окружения (память/диск) — полезно чтобы понять, не
+      # режет ли runner место при распаковке кернелка и ghidra.
+      # ---------------------------------------------------------------
+      - name: Env diagnostics
+        run: |
+          echo "=== whoami / uname ==="
+          whoami; uname -a
+          echo "=== disk ==="
+          df -h
+          echo "=== memory ==="
+          free -h
+
+      # ---------------------------------------------------------------
+      # Ghidra
+      # ---------------------------------------------------------------
       - uses: actions/cache@v4
         id: cache-ghidra
         with:
@@ -30,6 +46,7 @@ jobs:
       - if: steps.cache-ghidra.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
+          echo "=== Ghidra cache MISS, downloading ==="
           curl -fsSL -o /tmp/g.zip https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_12.1.2_build/ghidra_12.1.2_PUBLIC_20260605.zip
           unzip -q /tmp/g.zip -d "$GITHUB_WORKSPACE"
           mv "$GITHUB_WORKSPACE/ghidra_12.1.2_PUBLIC" "$GITHUB_WORKSPACE/ghidra"
@@ -37,9 +54,20 @@ jobs:
           test -n "$JYTHON_ZIP"
           mkdir -p "$GITHUB_WORKSPACE/ghidra/Ghidra/Extensions"
           unzip -q "$JYTHON_ZIP" -d "$GITHUB_WORKSPACE/ghidra/Ghidra/Extensions"
+          rm -f /tmp/g.zip
+          echo "=== Ghidra installed ==="
 
-      - run: echo "GHIDRA_ROOT=$GITHUB_WORKSPACE/ghidra" >> "$GITHUB_ENV"
+      - name: Ghidra diagnostics
+        run: |
+          echo "GHIDRA_ROOT=$GITHUB_WORKSPACE/ghidra" >> "$GITHUB_ENV"
+          echo "=== Ghidra root ==="
+          ls -la "$GITHUB_WORKSPACE/ghidra" | head -20
+          echo "=== Jython extension ==="
+          ls -la "$GITHUB_WORKSPACE/ghidra/Ghidra/Extensions/Jython" 2>/dev/null | head -20 || echo "(no Jython dir)"
 
+      # ---------------------------------------------------------------
+      # ipsw CLI
+      # ---------------------------------------------------------------
       - uses: actions/cache@v4
         id: cache-ipsw
         with:
@@ -49,10 +77,21 @@ jobs:
       - if: steps.cache-ipsw.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
+          echo "=== ipsw cache MISS, downloading ==="
           curl -fsSL -o /tmp/ipsw.tar.gz https://github.com/blacktop/ipsw/releases/download/v3.1.716/ipsw_3.1.716_linux_x86_64.tar.gz
           tar -C /usr/local/bin -xzf /tmp/ipsw.tar.gz ipsw
+          rm -f /tmp/ipsw.tar.gz
+          chmod +x /usr/local/bin/ipsw
 
-      # bump v4 -> v5 чтобы подтянуть свежие сигнатуры (включая 27.0)
+      - name: ipsw version
+        run: |
+          ipsw version || true
+          which ipsw || true
+
+      # ---------------------------------------------------------------
+      # symbolicator (репо с сигнатурами ядра)
+      # v4 -> v5: принудительно тянем свежий клон с сигнатурами 27.x
+      # ---------------------------------------------------------------
       - uses: actions/cache@v4
         id: cache-symbolicator
         with:
@@ -62,32 +101,63 @@ jobs:
       - if: steps.cache-symbolicator.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
+          echo "=== symbolicator cache MISS, cloning fresh ==="
           rm -rf "$GITHUB_WORKSPACE/symbolicator"
           git clone --depth 1 https://github.com/blacktop/symbolicator.git "$GITHUB_WORKSPACE/symbolicator"
+        env:
+          GIT_LFS_SKIP_SMUDGE: 0
 
-      - id: sigs
+      - name: symbolicator diagnostics
         run: |
           set -uo pipefail
           ROOT="$GITHUB_WORKSPACE/symbolicator/kernel"
+          echo "=== symbolicator root: $ROOT ==="
+          if [ ! -d "$ROOT" ]; then
+            echo "::error::Папка $ROOT не существует"
+            ls -la "$GITHUB_WORKSPACE/symbolicator" || true
+            exit 1
+          fi
+          echo "=== доступные версии сигнатур ==="
+          ls -la "$ROOT" || true
+          echo "=== git log symbolicator (последний коммит) ==="
+          git -C "$GITHUB_WORKSPACE/symbolicator" log -1 --oneline || true
+
+      - id: sigs
+        name: Pick signature dir
+        run: |
+          set -uo pipefail
+          ROOT="$GITHUB_WORKSPACE/symbolicator/kernel"
+          # приоритет 27.0, потом 27.1/27.2/27.3
           if [ -d "$ROOT/27.0" ]; then
             echo "SIGDIR=$ROOT/27.0" >> "$GITHUB_ENV"
-            echo "SIG_VER=27.0" >> "$GITHUB_ENV"
-            exit 0
+            echo "SIG_VER=27.0"      >> "$GITHUB_ENV"
+          elif [ -d "$ROOT/27.1" ]; then
+            echo "SIGDIR=$ROOT/27.1" >> "$GITHUB_ENV"
+            echo "SIG_VER=27.1"      >> "$GITHUB_ENV"
+            echo "::warning::27.0 отсутствует, использую 27.1"
+          elif [ -d "$ROOT/27.2" ]; then
+            echo "SIGDIR=$ROOT/27.2" >> "$GITHUB_ENV"
+            echo "SIG_VER=27.2"      >> "$GITHUB_ENV"
+            echo "::warning::27.0 отсутствует, использую 27.2"
+          elif [ -d "$ROOT/27.3" ]; then
+            echo "SIGDIR=$ROOT/27.3" >> "$GITHUB_ENV"
+            echo "SIG_VER=27.3"      >> "$GITHUB_ENV"
+            echo "::warning::27.0 отсутствует, использую 27.3"
+          else
+            LATEST=$(ls -1 "$ROOT" 2>/dev/null | sort -V | tail -n1)
+            echo "SIGDIR=$ROOT/$LATEST" >> "$GITHUB_ENV"
+            echo "SIG_VER=$LATEST"      >> "$GITHUB_ENV"
+            echo "::warning::Ни одной 27.x нет, беру $LATEST — символы могут быть неполные"
           fi
-          for VER in "27.1" "27.2" "27.3"; do
-            if [ -d "$ROOT/$VER" ]; then
-              echo "SIGDIR=$ROOT/$VER" >> "$GITHUB_ENV"
-              echo "SIG_VER=$VER" >> "$GITHUB_ENV"
-              echo "::warning::27.0 не найдено, используем $VER"
-              exit 0
-            fi
-          done
-          LATEST=$(ls -1 "$ROOT" 2>/dev/null | sort -V | tail -n1)
-          echo "SIGDIR=$ROOT/$LATEST" >> "$GITHUB_ENV"
-          echo "SIG_VER=$LATEST" >> "$GITHUB_ENV"
-          echo "::warning::Ни одной 27.x нет, берём $LATEST"
 
-      # kernel тот же (24A437) — ключ не трогаем, остаётся warm
+          # Подробный листинг содержимого выбранной папки сигнатур
+          echo "=== SIG_VER=$SIG_VER ==="
+          ls -la "$ROOT/$SIG_VER" || true
+          find "$ROOT/$SIG_VER" -maxdepth 2 -type f | head -50 || true
+
+      # ---------------------------------------------------------------
+      # kernelcache 24A437 (ключ v4 — оставляем, чтобы не тянуть заново)
+      # ---------------------------------------------------------------
       - uses: actions/cache@v4
         id: cache-kernelcache
         with:
@@ -95,26 +165,42 @@ jobs:
           key: kernelcache-iPhone14_5-24A437-v4
 
       - if: steps.cache-kernelcache.outputs.cache-hit != 'true'
+        name: Download & extract kernelcache
         run: |
           set -euo pipefail
+          echo "=== kernelcache cache MISS ==="
           mkdir -p ipsw kernelcache
           ipsw download ipsw --device iPhone14,5 --build 24A437 --output ipsw 2>&1 | tee /tmp/dl.log || true
+          echo "=== downloaded files ==="
+          ls -la ipsw/ || true
           IPSW=$(find ipsw -name "*.ipsw" -type f | head -n1)
+          echo "=== IPSW = $IPSW ==="
           test -n "$IPSW"
-          ipsw extract --kernel "$IPSW" --output kernelcache
-          find kernelcache -type f ! -name "kernelcache*" -delete
-          find kernelcache -type d -empty -delete
+          ipsw extract --kernel "$IPSW" --output kernelcache 2>&1 | tee /tmp/extract.log || true
+          echo "=== kernelcache dir ==="
+          ls -la kernelcache/ || true
+          find kernelcache -type f ! -name "kernelcache*" -delete || true
+          find kernelcache -type d -empty -delete || true
+          # чистим ipsw сразу — больше не нужен
+          rm -rf ipsw
 
       - id: kernel
+        name: Locate kernel
         run: |
           set -uo pipefail
+          echo "=== kernelcache dir ==="
+          ls -la "$GITHUB_WORKSPACE/kernelcache" || true
           KERNEL=$(find "$GITHUB_WORKSPACE/kernelcache" -type f -name "kernelcache*" | head -n1)
+          echo "=== KERNEL = $KERNEL ==="
           test -n "$KERNEL"
           echo "KERNEL=$KERNEL" >> "$GITHUB_ENV"
           echo "KERNEL_NAME=$(basename "$KERNEL")" >> "$GITHUB_ENV"
           file "$KERNEL"
+          du -h "$KERNEL"
 
-      # bump v4 -> v5 чтобы пересчитать symbols.json со свежими сигнатурами
+      # ---------------------------------------------------------------
+      # symbols.json (v4 -> v5: пересчитываем со свежими сигнатурами)
+      # ---------------------------------------------------------------
       - uses: actions/cache@v4
         id: cache-symbols
         with:
@@ -131,28 +217,86 @@ jobs:
             echo "[]" > "$GITHUB_WORKSPACE/symbols.json"
             exit 1
           fi
-          ls -la "$SIGDIR" | head -20
+          ls -la "$SIGDIR" | head -40
+          echo "=== files in SIGDIR ==="
+          find "$SIGDIR" -maxdepth 2 -type f | head -40
 
-          echo "=== Running: ipsw kernel symbolicate --signatures $SIGDIR --json ==="
-          ipsw kernel symbolicate --signatures "$SIGDIR" --json -v --output "$GITHUB_WORKSPACE/symbols.json" "$KERNEL" 2>&1 | tee /tmp/sym.log || true
+          echo "=== ipsw kernel symbolicate --signatures $SIGDIR --json --output symbols.json ==="
+          ipsw kernel symbolicate \
+            --signatures "$SIGDIR" \
+            --json -v \
+            --output "$GITHUB_WORKSPACE/symbols.json" \
+            "$KERNEL" 2>&1 | tee /tmp/sym.log || true
 
-          echo "=== Built-in table markers ==="
-          grep -iE "bsd_syscall_table|mach_trap_table|mig_kern_subsystem|Found .* table" /tmp/sym.log || echo "(no markers)"
+          echo "=== symbols.json after primary run ==="
+          if [ -f "$GITHUB_WORKSPACE/symbols.json" ]; then
+            wc -c "$GITHUB_WORKSPACE/symbols.json"
+            echo "--- first 800 bytes ---"
+            head -c 800 "$GITHUB_WORKSPACE/symbols.json" || true
+            echo
+          else
+            echo "(файл не создан)"
+          fi
 
-          # fallback: если пусто / "[]" — тянем только встроенные таблицы
-          if [ ! -s "$GITHUB_WORKSPACE/symbols.json" ] || [ "$(cat "$GITHUB_WORKSPACE/symbols.json")" = "[]" ]; then
-            echo "=== signatures не сработали, fallback без --signatures ==="
-            ipsw kernel symbolicate --json -v --output "$GITHUB_WORKSPACE/symbols.json" "$KERNEL" 2>&1 | tee /tmp/sym_fb.log || true
+          # ---- fallback: пусто или "[]" — тянем только встроенные таблицы ----
+          NEED_FALLBACK=0
+          if [ ! -s "$GITHUB_WORKSPACE/symbols.json" ]; then
+            NEED_FALLBACK=1
+          elif [ "$(tr -d ' \n\t' < "$GITHUB_WORKSPACE/symbols.json")" = "[]" ]; then
+            NEED_FALLBACK=1
+          fi
+          if [ "$NEED_FALLBACK" = "1" ]; then
+            echo "=== primary пустой/[], fallback без --signatures ==="
+            ipsw kernel symbolicate --json -v \
+              --output "$GITHUB_WORKSPACE/symbols.json" \
+              "$KERNEL" 2>&1 | tee /tmp/sym_fb.log || true
           fi
 
           if [ ! -s "$GITHUB_WORKSPACE/symbols.json" ]; then
             echo "[]" > "$GITHUB_WORKSPACE/symbols.json"
           fi
 
-          echo "=== symbols.json: $(wc -c < "$GITHUB_WORKSPACE/symbols.json") bytes ==="
-          head -c 800 "$GITHUB_WORKSPACE/symbols.json"
+          echo "=== ФИНАЛЬНЫЙ symbols.json: $(wc -c < "$GITHUB_WORKSPACE/symbols.json") bytes ==="
+          head -c 1200 "$GITHUB_WORKSPACE/symbols.json"
+          echo
+          echo "=== сколько ключей в JSON (грубо, по grep) ==="
+          grep -o '"' "$GITHUB_WORKSPACE/symbols.json" | wc -l || echo 0
 
-      # ВАЖНО: ключ НЕ меняем (v4), чтобы сохранить warm-run Ghidra
+      - name: Validate symbols.json (жёстко, до Ghidra)
+        run: |
+          set -uo pipefail
+          F="$GITHUB_WORKSPACE/symbols.json"
+          echo "=== размер $F ==="
+          ls -la "$F" || true
+          echo "=== валидный JSON? ==="
+          python3 - <<'PY'
+import json, os, sys
+p = os.path.join(os.environ["GITHUB_WORKSPACE"], "symbols.json")
+try:
+    with open(p) as f:
+        d = json.load(f)
+except Exception as e:
+    print(f"::error::symbols.json невалиден: {e}")
+    sys.exit(1)
+
+def count(x):
+    if isinstance(x, list):  return sum(count(i) for i in x) if x else 0
+    if isinstance(x, dict):  return sum(count(v) for v in x.values()) if x else 0
+    return 1
+
+n = count(d)
+print(f"тип верхнего уровня : {type(d).__name__}")
+print(f"элементов всего     : {n}")
+if isinstance(d, dict):
+    print(f"верхние ключи       : {list(d.keys())[:20]}")
+if n == 0:
+    print("::error::symbols.json ПУСТОЙ — символикация не дала результата")
+    sys.exit(1)
+PY
+
+      # ---------------------------------------------------------------
+      # Ghidra project — ключ v4 НЕ меняем, чтобы сохранить warm-run
+      # ---------------------------------------------------------------
       - uses: actions/cache@v4
         id: cache-project
         with:
@@ -166,6 +310,11 @@ jobs:
           SYMBOLS_JSON: ${{ github.workspace }}/symbols.json
           GITHUB_WORKSPACE: ${{ github.workspace }}
         run: |
+          echo "=== cache-project hit: ${{ steps.cache-project.outputs.cache-hit }} ==="
+          echo "=== symbols.json перед Ghidra ==="
+          ls -la "$SYMBOLS_JSON" || true
+          head -c 400 "$SYMBOLS_JSON" || true; echo
+
           if [ "${{ steps.cache-project.outputs.cache-hit }}" = "true" ]; then
             echo "=== warm ==="
             "$GHIDRA_ROOT/support/analyzeHeadless" \
@@ -191,6 +340,13 @@ jobs:
               2>&1 | tee kernel.log || true
           fi
 
+          echo "=== результат kernel_rw.py ==="
+          echo "--- result.txt ---"; [ -f result.txt ]  && head -n 40 result.txt  || echo "(нет)"
+          echo "--- offsets.json ---"; [ -f offsets.json ] && head -c 800 offsets.json || echo "(нет)"
+
+      # ---------------------------------------------------------------
+      # Артефакты
+      # ---------------------------------------------------------------
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -204,3 +360,30 @@ jobs:
           if-no-files-found: warn
           overwrite: true
           compression-level: 9
+
+      # ---------------------------------------------------------------
+      # Чистка workspace от мусора (всегда, даже при падении)
+      # ---------------------------------------------------------------
+      - name: Cleanup workspace
+        if: always()
+        run: |
+          set +e
+          echo "=== disk BEFORE cleanup ==="
+          df -h
+          du -sh "$GITHUB_WORKSPACE"/* 2>/dev/null | sort -h || true
+
+          # Тяжёлое и больше не нужное:
+          rm -rf "$GITHUB_WORKSPACE/ipsw"          || true
+          rm -rf "$GITHUB_WORKSPACE/kernelcache"   || true
+          rm -rf "$GITHUB_WORKSPACE/symbolicator"  || true
+          rm -rf "$GITHUB_WORKSPACE/ghidra_project"|| true
+          rm -rf "$GITHUB_WORKSPACE/ghidra"        || true
+          rm -rf /tmp/g.zip /tmp/ipsw.tar.gz       || true
+          rm -rf /tmp/sym.log /tmp/sym_fb.log      || true
+          rm -rf /tmp/dl.log /tmp/extract.log      || true
+          rm -rf "$HOME/.config/ghidra"            || true
+          rm -rf /var/tmp/runner-ghidra            || true
+
+          echo "=== disk AFTER cleanup ==="
+          df -h
+          du -sh "$GITHUB_WORKSPACE"/* 2>/dev/null | sort -h || true
