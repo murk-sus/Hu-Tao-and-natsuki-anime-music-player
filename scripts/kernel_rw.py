@@ -89,19 +89,15 @@ def _try_int(v):
         return None
     if isinstance(v, bool):
         return None
-    if isinstance(v, int):
-        return v
-    if isinstance(v, long):
+    if isinstance(v, (int, long)):
         return int(v)
     if isinstance(v, float):
         return int(v)
-    if isinstance(v, str):
+    if isinstance(v, basestring):
         s = v.strip()
         try:
             if s.startswith("0x") or s.startswith("0X"):
                 return int(s, 16)
-            if s.startswith("$"):
-                return None
             return int(s)
         except Exception:
             return None
@@ -136,7 +132,7 @@ def load_symbols(path):
     diag = {"dict": 0, "list": 0, "pairs": 0, "skip": 0}
 
     def add(name, addr):
-        if not isinstance(name, str):
+        if not isinstance(name, basestring):
             diag["skip"] += 1
             return
         n = name.strip()
@@ -158,7 +154,7 @@ def load_symbols(path):
             n = None
             a = None
             for nk in ("name", "symbol", "sym", "n"):
-                if nk in node and isinstance(node[nk], str):
+                if nk in node and isinstance(node[nk], basestring):
                     n = node[nk]
                     break
             for ak in ("addr", "address", "value", "v"):
@@ -171,13 +167,13 @@ def load_symbols(path):
             for k, v in node.items():
                 ka = _is_kernel_addr(k)
                 if ka is not None:
-                    if isinstance(v, str):
+                    if isinstance(v, basestring):
                         add(v, ka)
                         continue
                     if isinstance(v, dict):
                         nn = None
                         for nk in ("name", "symbol", "sym"):
-                            if nk in v and isinstance(v[nk], str):
+                            if nk in v and isinstance(v[nk], basestring):
                                 nn = v[nk]
                                 break
                         if nn is not None:
@@ -186,7 +182,7 @@ def load_symbols(path):
                     diag["skip"] += 1
                     continue
                 kv = _is_kernel_addr(v)
-                if kv is not None and isinstance(k, str):
+                if kv is not None and isinstance(k, basestring):
                     add(k, kv)
                     continue
                 walk(v, depth + 1)
@@ -202,7 +198,7 @@ def load_symbols(path):
         diag["dict"], diag["list"], diag["pairs"], diag["skip"]))
 
     if len(syms) == 0:
-        print("[!] first-level keys sample:")
+        print("[!] sample keys:")
         if isinstance(data, dict):
             cnt = 0
             for k in data.keys():
@@ -452,7 +448,7 @@ def resolve_target(name, hardcoded, syms):
 def main():
     lines = []
     offsets_out = {}
-    print("=== kernel_rw.py v22 ===")
+    print("=== kernel_rw.py v23 ===")
 
     lines.append("=== PROGRAM ===")
     lines.append("name = %s" % currentProgram.getName())
