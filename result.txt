@@ -1,123 +1,148 @@
 === PROGRAM ===
 name = kernelcache.release.iPhone14,5
-
+has_disasm=True has_create=True
 SOURCES: 24
 SINKS: kalloc_type,kalloc_zone,copyin,copyout,memmove,memset
 
+  [FUN_fffffff00a4e5c28 @ 0xFFFFFFF00A4E5C28 d=0] no taint propagated
 
 ========================================================================
 ### SOURCE necp_client_action @ 0xFFFFFFF00A4E5C28
-no function
+========================================================================
+  no tainted sinks reached
+  [FUN_fffffff00a4e843c @ 0xFFFFFFF00A4E843C d=0] no taint propagated
 
 ========================================================================
 ### SOURCE necp_client_add_flow @ 0xFFFFFFF00A4E843C
 ========================================================================
   no tainted sinks reached
+  [FUN_fffffff00a4e60dc @ 0xFFFFFFF00A4E60DC d=0] no taint propagated
 
 ========================================================================
 ### SOURCE necp_client_add_client @ 0xFFFFFFF00A4E60DC
 ========================================================================
   no tainted sinks reached
+  [FUN_fffffff00a4e93c4 @ 0xFFFFFFF00A4E93C4 d=0] no taint propagated
 
 ========================================================================
 ### SOURCE necp_client_remove_flow @ 0xFFFFFFF00A4E93C4
 ========================================================================
   no tainted sinks reached
+  [FUN_fffffff00a4e76f4 @ 0xFFFFFFF00A4E76F4 d=0] no taint propagated
 
 ========================================================================
 ### SOURCE necp_client_remove_client @ 0xFFFFFFF00A4E76F4
 ========================================================================
   no tainted sinks reached
+  [FUN_fffffff00a4e7be8 @ 0xFFFFFFF00A4E7BE8 d=0] no taint propagated
 
 ========================================================================
 ### SOURCE necp_client_copy_result @ 0xFFFFFFF00A4E7BE8
 ========================================================================
   no tainted sinks reached
+  [FUN_fffffff00a4e80fc @ 0xFFFFFFF00A4E80FC d=0] no taint propagated
 
 ========================================================================
 ### SOURCE necp_client_copy_list @ 0xFFFFFFF00A4E80FC
 ========================================================================
   no tainted sinks reached
+  [FUN_fffffff00a4eac7c @ 0xFFFFFFF00A4EAC7C d=0] no taint propagated
 
 ========================================================================
 ### SOURCE necp_client_copy_interface @ 0xFFFFFFF00A4EAC7C
 ========================================================================
   no tainted sinks reached
+  [FUN_fffffff00a4eb704 @ 0xFFFFFFF00A4EB704 d=0] no taint propagated
 
 ========================================================================
 ### SOURCE necp_client_sysctl_arena @ 0xFFFFFFF00A4EB704
 ========================================================================
   no tainted sinks reached
+  [FUN_fffffff00a4ebd58 @ 0xFFFFFFF00A4EBD58 d=0] no taint propagated
 
 ========================================================================
 ### SOURCE necp_client_update_cache @ 0xFFFFFFF00A4EBD58
 ========================================================================
   no tainted sinks reached
+  [FUN_fffffff00a4ec264 @ 0xFFFFFFF00A4EC264 d=0] no taint propagated
 
 ========================================================================
 ### SOURCE necp_client_copy_update @ 0xFFFFFFF00A4EC264
 ========================================================================
   no tainted sinks reached
+  [FUN_fffffff00a4e9904 @ 0xFFFFFFF00A4E9904 d=0] no taint propagated
 
 ========================================================================
 ### SOURCE necp_client_request_nexus @ 0xFFFFFFF00A4E9904
 ========================================================================
   no tainted sinks reached
+  [FUN_fffffff00a4ea0b4 @ 0xFFFFFFF00A4EA0B4 d=0] no taint propagated
 
 ========================================================================
 ### SOURCE necp_client_agent_action @ 0xFFFFFFF00A4EA0B4
 ========================================================================
   no tainted sinks reached
+  [FUN_fffffff00a4ea778 @ 0xFFFFFFF00A4EA778 d=0] no taint propagated
 
 ========================================================================
 ### SOURCE necp_client_copy_agent @ 0xFFFFFFF00A4EA778
 ========================================================================
   no tainted sinks reached
+  [FUN_fffffff00a4eba0c @ 0xFFFFFFF00A4EBA0C d=0] no taint propagated
 
 ========================================================================
 ### SOURCE necp_client_copy_route_stats @ 0xFFFFFFF00A4EBA0C
 ========================================================================
   no tainted sinks reached
+  [FUN_fffffff00a4ea8a0 @ 0xFFFFFFF00A4EA8A0 d=0] no taint propagated
 
 ========================================================================
 ### SOURCE necp_client_copy_parameters @ 0xFFFFFFF00A4EA8A0
 ========================================================================
   no tainted sinks reached
+  [FUN_fffffff00a4e7158 @ 0xFFFFFFF00A4E7158 d=0] no taint propagated
 
 ========================================================================
 ### SOURCE necp_client_claim @ 0xFFFFFFF00A4E7158
 ========================================================================
   no tainted sinks reached
+  [FUN_fffffff00a4ec5d8 @ 0xFFFFFFF00A4EC5D8 d=0] no taint propagated
 
 ========================================================================
 ### SOURCE necp_client_sign @ 0xFFFFFFF00A4EC5D8
 ========================================================================
   no tainted sinks reached
+  [FUN_fffffff00a4eb2b4 @ 0xFFFFFFF00A4EB2B4 d=0] no taint propagated
 
 ========================================================================
 ### SOURCE necp_client_get_iface_addr @ 0xFFFFFFF00A4EB2B4
 ========================================================================
   no tainted sinks reached
+  [FUN_fffffff00a4eab50 @ 0xFFFFFFF00A4EAB50 d=0] no taint propagated
 
 ========================================================================
 ### SOURCE necp_client_copy_agent_alt @ 0xFFFFFFF00A4EAB50
 ========================================================================
   no tainted sinks reached
+  [FUN_fffffff00a4ec9ec @ 0xFFFFFFF00A4EC9EC d=0] no taint propagated
 
 ========================================================================
 ### SOURCE necp_client_validate @ 0xFFFFFFF00A4EC9EC
 ========================================================================
   no tainted sinks reached
+  [FUN_fffffff00a4ecc4c @ 0xFFFFFFF00A4ECC4C d=0] no taint propagated
 
 ========================================================================
 ### SOURCE necp_client_get_signed_id @ 0xFFFFFFF00A4ECC4C
 ========================================================================
   no tainted sinks reached
+  [FUN_fffffff00a4ece88 @ 0xFFFFFFF00A4ECE88 d=0] no taint propagated
 
 ========================================================================
 ### SOURCE necp_client_set_signed_id @ 0xFFFFFFF00A4ECE88
 ========================================================================
   no tainted sinks reached
+  [FUN_fffffff00a4ed170 @ 0xFFFFFFF00A4ED170 d=0] no taint propagated
 
 ========================================================================
 ### SOURCE necp_client_get_flow_stats @ 0xFFFFFFF00A4ED170
