@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # @runtime Jython
-# kernel_rw.py v29 - hang-proof, result.txt only
+# kernel_rw.py v30 - ensures function boundaries, only result.txt
 
 import os
 import sys
@@ -9,6 +9,8 @@ import traceback
 from jarray import zeros
 from ghidra.app.decompiler import DecompInterface
 from ghidra.util.task import ConsoleTaskMonitor
+from ghidra.app.cmd.disassemble import Aarch64DisassembleCommand
+from ghidra.app.cmd.function import CreateFunctionCmd
 
 WS = os.environ.get("GITHUB_WORKSPACE", "/tmp")
 OUT = os.path.join(WS, "result.txt")
@@ -93,6 +95,40 @@ def get_func(addr):
             return f
         return getFunctionContaining(ga)
     except Exception:
+        return None
+
+
+def disassemble(addr):
+    try:
+        ga = sa(addr)
+        if ga is None:
+            return
+        cmd = Aarch64DisassembleCommand(ga, None, True)
+        cmd.applyTo(currentProgram)
+    except Exception as e:
+        log("  disasm fail " + str(e))
+
+
+def ensure_function(addr):
+    try:
+        ga = sa(addr)
+        if ga is None:
+            return None
+        f = getFunctionAt(ga)
+        if f is not None:
+            return f
+        f = getFunctionContaining(ga)
+        if f is not None:
+            return f
+        disassemble(ga)
+        ccmd = CreateFunctionCmd(ga)
+        ccmd.applyTo(currentProgram)
+        f = getFunctionAt(ga)
+        if f is not None:
+            return f
+        return getFunctionContaining(ga)
+    except Exception as e:
+        log("  ensure_function fail " + fmt(addr) + " " + str(e))
         return None
 
 
@@ -295,20 +331,24 @@ def main():
     def w(s):
         L.append(s)
 
-    log("=== kernel_rw.py v29 ===")
+    log("=== kernel_rw.py v30 ===")
     log("program: " + currentProgram.getName())
 
     w("=== PROGRAM ===")
     w("name = " + currentProgram.getName())
     w("")
 
-    log("[1/3] NECP sanity")
+    log("[1/3] NECP sanity + ensure functions")
     w(SEP)
     w("### NECP SANITY")
     w(SEP)
+    resolved = {}
     for name, addr in TARGETS:
         try:
             f = get_func(addr)
+            if f is None:
+                log("  ensure " + name)
+                f = ensure_function(addr)
             if f:
                 ent = _u(f.getEntryPoint().getOffset())
                 try:
@@ -316,8 +356,10 @@ def main():
                 except Exception:
                     sz = 0
                 w("  %-32s %s size=0x%X OK" % (name, fmt(ent), sz))
+                resolved[name] = ent
             else:
                 w("  %-32s %s no func" % (name, fmt(addr)))
+                resolved[name] = addr
         except Exception as ex:
             w("  %-32s EXCEPTION %s" % (name, str(ex)))
     w("")
@@ -328,6 +370,8 @@ def main():
         log("  [" + str(idx + 1) + "/" + str(total) + "] " + name)
         try:
             f = get_func(addr)
+            if f is None:
+                f = ensure_function(addr)
             if not f:
                 continue
             ent = _u(f.getEntryPoint().getOffset())
