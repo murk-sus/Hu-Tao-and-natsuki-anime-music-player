@@ -23,6 +23,7 @@ jobs:
           java-version: "25"
           distribution: temurin
 
+      # ---------- Ghidra ----------
       - name: Cache Ghidra
         id: cache-ghidra
         uses: actions/cache@v4
@@ -47,6 +48,7 @@ jobs:
         shell: bash
         run: echo "GHIDRA_ROOT=$GITHUB_WORKSPACE/ghidra" >> "$GITHUB_ENV"
 
+      # ---------- ipsw ----------
       - name: Cache ipsw
         id: cache-ipsw
         uses: actions/cache@v4
@@ -63,6 +65,7 @@ jobs:
           tar -C /usr/local/bin -xzf /tmp/ipsw.tar.gz ipsw
           ipsw version
 
+      # ---------- symbolicator ----------
       - name: Cache symbolicator
         id: cache-symbolicator
         uses: actions/cache@v4
@@ -79,6 +82,7 @@ jobs:
           echo "=== Available signature versions ==="
           ls -1 "$GITHUB_WORKSPACE/symbolicator/kernel" | head -40
 
+      # ---------- kernelcache ----------
       - name: Cache kernelcache
         id: cache-kernelcache
         uses: actions/cache@v4
@@ -108,7 +112,7 @@ jobs:
           find kernelcache -type d -empty -delete
           find kernelcache -type f -exec ls -lh {} \;
 
-      - name: Resolve kernelcache path
+      - name: Resolve and decompress kernelcache
         shell: bash
         run: |
           set -euo pipefail
@@ -117,11 +121,28 @@ jobs:
             echo "FATAL: kernelcache not found"
             exit 1
           fi
-          echo "KERNEL=$KERNEL" >> "$GITHUB_ENV"
-          echo "KERNEL_NAME=$(basename "$KERNEL")" >> "$GITHUB_ENV"
+          echo "=== Original kernelcache ==="
           file "$KERNEL"
           ls -lh "$KERNEL"
 
+          # Принудительная распаковка (LZFSE/LZSS)
+          echo "=== Decompressing kernelcache ==="
+          ipsw kernel dec "$KERNEL" --output "$GITHUB_WORKSPACE/kernelcache_decompressed" 2>&1 | tee /tmp/dec.log || true
+
+          DECOMP=$(find "$GITHUB_WORKSPACE/kernelcache_decompressed" -type f -name "kernelcache*" | head -n1)
+          if [ -n "$DECOMP" ]; then
+            echo "=== Decompressed kernelcache ==="
+            file "$DECOMP"
+            ls -lh "$DECOMP"
+            echo "KERNEL=$DECOMP" >> "$GITHUB_ENV"
+            echo "KERNEL_NAME=$(basename "$DECOMP")" >> "$GITHUB_ENV"
+          else
+            echo "Decompression failed or not needed, using original"
+            echo "KERNEL=$KERNEL" >> "$GITHUB_ENV"
+            echo "KERNEL_NAME=$(basename "$KERNEL")" >> "$GITHUB_ENV"
+          fi
+
+      # ---------- Full symbolication ----------
       - name: Cache symbols
         id: cache-symbols
         uses: actions/cache@v4
@@ -129,30 +150,28 @@ jobs:
           path: ${{ github.workspace }}/symbols.json
           key: symbols-${{ hashFiles('kernelcache/**') }}
 
-      - name: Full symbolication (blacktop + built-in fallback)
+      - name: Full symbolication (blacktop signatures + built-in tables)
         if: steps.cache-symbols.outputs.cache-hit != 'true'
         shell: bash
         run: |
           set -uo pipefail
           SIGDIR="$GITHUB_WORKSPACE/symbolicator/kernel"
-          echo "=== Signatures dir: $SIGDIR ==="
-          ls -la "$SIGDIR" | head -10
 
-          echo "=== Running: ipsw kernel sym with signatures ==="
-          ipsw kernel sym "$KERNEL" --json --signatures "$SIGDIR" 2>&1 | tee /tmp/sym_full.log || true
+          echo "=== Running: ipsw kernel symbolicate ==="
+          ipsw kernel symbolicate --signatures "$SIGDIR" --json "$KERNEL" 2>&1 | tee /tmp/sym_full.log || true
 
-          echo "=== Checking if symbolication produced output ==="
+          echo "=== Checking for symbols JSON ==="
           SRC=$(find . -type f -name "*.symbols.json" | head -n1)
           if [ -z "$SRC" ]; then
             SRC=$(find . -type f -name "*symbols*.json" | head -n1)
           fi
 
           if [ -z "$SRC" ] || [ ! -s "$SRC" ]; then
-            echo "No symbols JSON from signature engine — using built-in tables only"
+            echo "No symbols JSON from signature engine — trying built-in tables only"
             # Пробуем отдельно достать встроенные таблицы
             echo "=== Fallback: built-in syscall/mach/MIG tables ==="
-            ipsw kernel sym "$KERNEL" --json --signatures "$SIGDIR" \
-              --output "$GITHUB_WORKSPACE/symbols.json" 2>&1 | tee /tmp/sym_fallback.log || true
+            ipsw kernel symbolicate --signatures "$SIGDIR" --json \
+              --output "$GITHUB_WORKSPACE/symbols.json" "$KERNEL" 2>&1 | tee /tmp/sym_fallback.log || true
             if [ ! -s "$GITHUB_WORKSPACE/symbols.json" ]; then
               echo "[]" > "$GITHUB_WORKSPACE/symbols.json"
             fi
@@ -160,9 +179,10 @@ jobs:
             cp "$SRC" "$GITHUB_WORKSPACE/symbols.json"
           fi
 
-          echo "=== Symbols.json size: $(wc -c < "$GITHUB_WORKSPACE/symbols.json") bytes ==="
-          head -c 2000 "$GITHUB_WORKSPACE/symbols.json"
+          echo "=== symbols.json size: $(wc -c < "$GITHUB_WORKSPACE/symbols.json") bytes ==="
+          head -c 3000 "$GITHUB_WORKSPACE/symbols.json"
 
+      # ---------- Ghidra project ----------
       - name: Cache ghidra project
         id: cache-project
         uses: actions/cache@v4
