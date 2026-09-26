@@ -1,23 +1,40 @@
 # -*- coding: utf-8 -*-
 # @runtime Jython
-# final_recon.py — v2 (two-pass os_log descriptor resolver)
+# kernel_rw.py — comprehensive iOS kernel reconnaissance for Ghidra 12+
+#
+# Fixes known issues from chat:
+#   - os_log descriptor resolver now scans __TEXT, __const, __data
+#   - Supports rel32 (relative 32-bit) pointers in descriptors
+#   - Supports ADRP+LDR (GOT-style) in addition to ADRP+ADD
+#   - Added block diagnostics to detect truncated dumps
+#   - Accessor-based offset extraction (ldr X0,[X0,#imm]; ret)
+#   - PAC gadget finder (autia/pacibsp sequences)
+#   - KTRR/KPP detection via string patterns
+#   - Mach trap table analysis
+#
+# References:
+#   - ghidra_kernelcache (0x36) — symbolication, vtables, IOKit dispatch
+#   - Kawaiidra MCP — PAC gadgets, KTRR detection, Mach trap analysis
+#   - ios-reverse-skills — 14-phase workflow, Ghidra headless scripts
+#   - "You Have a Kernel Read/Write. Not Enough!" — offset extraction methodology
 
 import os
 import json
 import traceback
-
 from jarray import zeros
 from ghidra.app.decompiler import DecompInterface
-from ghidra.util.task import ConsoleTaskMonitor
-from ghidra.util.task import TaskMonitor
+from ghidra.util.task import ConsoleTaskMonitor, TaskMonitor
 
 WS = os.environ.get("GITHUB_WORKSPACE", "/tmp")
-OUT = os.path.join(WS, "result.txt")
-OUT_JSON = os.path.join(WS, "final_offsets.json")
+OUT = os.path.join(WS, "kernel_rw_report.txt")
+OUT_JSON = os.path.join(WS, "kernel_rw_report.json")
 
 KPTR_MIN = 0xFFFFFFF000000000
 KPTR_MAX = 0xFFFFFFFFFF000000
 
+# ---------------------------------------------------------------
+# NECP targets
+# ---------------------------------------------------------------
 NECP_FUNCS = [
     ("necp_open",                 0xFFFFFFF00A4E411C),
     ("necp_client_add_flow",      0xFFFFFFF00A4E843C),
@@ -37,7 +54,6 @@ TARGET_STRINGS = {
     "copy_update_copyout":      "Copy client update copyout error",
 }
 
-# Строки, которые точно принадлежат copy_result — по ним ищем кандидата
 COPY_RESULT_NEEDLES = {"assigned_results_copyout", "assigned_tlv_header",
                        "result_copyout", "group_members_copyout",
                        "params_copyout", "flow_divert_tlv_copyout"}
@@ -91,6 +107,23 @@ NUMERIC_OFFSETS = {
     "off_ucred_cr_svgid":    0x24,
 }
 
+# KTRR/KPP related strings
+KTRR_STRINGS = [
+    "KTRR", "KPP", "kernel patch protection",
+    "sptm", "SPTM", "Secure Page Table Monitor",
+    "ctrr", "CTRR",
+]
+
+# PAC gadget patterns (ARM64e)
+PAC_GADGET_PATTERNS = [
+    # autia1716 + ret
+    (0xD503233F, 0xD65F03C0),   # autia1716; ret
+    # pacibsp + ... + ret  (simplified)
+    (0xD503237F, 0xD65F03C0),   # pacibsp; ret
+    # ldp x29, x30, [sp], #0x10; autia1716; ret (epilogue)
+    (0xA8C17BFD, 0xD503233F),
+]
+
 
 def _u(v):
     return int(v) & 0xFFFFFFFFFFFFFFFF
@@ -115,13 +148,13 @@ def sa(a):
         return None
 
 
-_blocks = None
+_blocks_cache = None
 
 
 def blocks():
-    global _blocks
-    if _blocks is not None:
-        return _blocks
+    global _blocks_cache
+    if _blocks_cache is not None:
+        return _blocks_cache
     out = []
     try:
         for b in currentProgram.getMemory().getBlocks():
@@ -136,7 +169,7 @@ def blocks():
                 pass
     except Exception:
         pass
-    _blocks = out
+    _blocks_cache = out
     return out
 
 
@@ -228,7 +261,7 @@ def disasm_func(f, maxn):
     return out
 
 
-def load_text_to_memory():
+def load_exec_buffers():
     """Read every exec block into one contiguous bytearray with block offsets."""
     buffers = []
     for s, e, n, is_exec in blocks():
@@ -253,52 +286,69 @@ def load_text_to_memory():
     return buffers
 
 
+# ---------------------------------------------------------------
+# FIXED: os_log descriptor resolver
+# ---------------------------------------------------------------
 def find_oslog_descriptors(string_vas):
     """
-    Second hop: scan __const/__data for 8-byte pointers equal to string VAs.
-    Those pointers live inside os_log descriptor structs.
-    Return dict: string_va -> descriptor_va
+    Two-hop resolver:
+      hop1: scan __TEXT/__const/__data for pointers (64-bit absolute or
+            32-bit relative) equal to string VAs -> descriptor VA
+      hop2: caller resolves ADRP+ADD / ADRP+LDR against descriptor VA
     """
-    desc_map = {}
+    desc_map = {}   # string_va -> descriptor_va
     scanned = set()
     for s, e, n, is_exec in blocks():
         if is_exec:
             continue
-        if n not in ("__const", "__data", "__data_const", "__common", "__bss"):
-            # os_log descriptors usually live in __const; be permissive
-            if "__const" not in n and "__data" not in n:
-                continue
+        # FIX: include __TEXT blocks (not just __const/__data)
+        if not any(k in n for k in ("__const", "__data", "__TEXT",
+                                     "__common", "__bss", "__os_log")):
+            continue
         if n in scanned:
             continue
         scanned.add(n)
         sz = e - s
-        if sz <= 8 or sz > 32 * 1024 * 1024:
+        if sz <= 8 or sz > 64 * 1024 * 1024:
             continue
         try:
             ga = sa(s)
             jbuf = zeros(sz, 'b')
             currentProgram.getMemory().getBytes(ga, jbuf)
-            # quick scan step 8 bytes at a time
+            # pass 1: 64-bit absolute pointers
             i = 0
             while i + 8 <= sz:
-                v = (int(jbuf[i]) & 0xFF) | \
-                    ((int(jbuf[i+1]) & 0xFF) << 8) | \
-                    ((int(jbuf[i+2]) & 0xFF) << 16) | \
-                    ((int(jbuf[i+3]) & 0xFF) << 24) | \
-                    ((int(jbuf[i+4]) & 0xFF) << 32) | \
-                    ((int(jbuf[i+5]) & 0xFF) << 40) | \
-                    ((int(jbuf[i+6]) & 0xFF) << 48) | \
-                    ((int(jbuf[i+7]) & 0xFF) << 56)
+                v = 0
+                for k in range(8):
+                    v |= (int(jbuf[i + k]) & 0xFF) << (8 * k)
                 if v in string_vas:
                     desc_map[v] = s + i
                 i += 8
+            # pass 2: 32-bit relative pointers (rel32)
+            i = 0
+            while i + 4 <= sz:
+                rel = 0
+                for k in range(4):
+                    rel |= (int(jbuf[i + k]) & 0xFF) << (8 * k)
+                if rel & 0x80000000:
+                    rel -= 0x100000000
+                tgt = s + i + rel
+                if tgt in string_vas:
+                    desc_map[tgt] = s + i
+                i += 4
         except Exception as ex:
             print("[-] scan desc block %s failed: %s" % (n, str(ex)))
     return desc_map
 
 
+# ---------------------------------------------------------------
+# FIXED: xref resolver (ADRP+ADD and ADRP+LDR)
+# ---------------------------------------------------------------
 def find_all_xrefs_to_targets(target_set, buffers):
-    """Single pass over all exec blocks. Collect ADRP+ADD refs to any target."""
+    """
+    Single pass over all exec blocks.
+    Collect ADRP+ADD refs (address computation) and ADRP+LDR refs (GOT-style).
+    """
     results = {}
     for s, sz, buf, name in buffers:
         addr = s
@@ -306,6 +356,7 @@ def find_all_xrefs_to_targets(target_set, buffers):
         while i + 8 <= sz:
             b0 = buf[i] | (buf[i+1] << 8) | (buf[i+2] << 16) | (buf[i+3] << 24)
             b1 = buf[i+4] | (buf[i+5] << 8) | (buf[i+6] << 16) | (buf[i+7] << 24)
+            # ADRP
             if (b0 & 0x9F000000) == 0x90000000:
                 rd = b0 & 0x1F
                 immlo = (b0 >> 29) & 3
@@ -314,6 +365,7 @@ def find_all_xrefs_to_targets(target_set, buffers):
                 if imm & 0x100000:
                     imm -= 0x200000
                 page = (addr & ~0xFFF) + (imm << 12)
+                # ADRP + ADD (address computation)
                 if (b1 & 0xFF800000) == 0x91000000:
                     rn = (b1 >> 5) & 0x1F
                     rd2 = b1 & 0x1F
@@ -322,6 +374,15 @@ def find_all_xrefs_to_targets(target_set, buffers):
                         resolved = (page + imm12) & 0xFFFFFFFFFFFFFFFF
                         if resolved in target_set:
                             results.setdefault(resolved, []).append(addr)
+                # ADRP + LDR (GOT-style load)
+                elif (b1 & 0xFFC00000) == 0xF9400000:
+                    rn = (b1 >> 5) & 0x1F
+                    imm12 = ((b1 >> 10) & 0xFFF) * 8
+                    if rn == rd:
+                        # For ADRP+LDR, the target is an address of a pointer,
+                        # but the pointer value may itself be in target_set.
+                        ptr_addr = page + imm12
+                        results.setdefault(ptr_addr, []).append(addr)
             addr += 4
             i += 4
     return results
@@ -391,14 +452,160 @@ def extract_mem(raw):
     return None
 
 
+# ---------------------------------------------------------------
+# NEW: Accessor-based offset extraction
+# ---------------------------------------------------------------
+def find_accessor_offsets(buffers):
+    """
+    Find functions of the form:
+        ldr X0, [X0, #imm]
+        ret
+    These are accessors and directly reveal struct field offsets.
+    """
+    results = []  # (func_addr, imm, kind)
+    for s, sz, buf, name in buffers:
+        i = 0
+        while i + 8 <= sz:
+            b0 = buf[i] | (buf[i+1] << 8) | (buf[i+2] << 16) | (buf[i+3] << 24)
+            b1 = buf[i+4] | (buf[i+5] << 8) | (buf[i+6] << 16) | (buf[i+7] << 24)
+            # ldr X0, [X0, #imm]
+            if (b0 & 0xFFC00000) == 0xF9400000:
+                rn = (b0 >> 5) & 0x1F
+                rt = b0 & 0x1F
+                imm = ((b0 >> 10) & 0xFFF) * 8
+                if rn == 0 and rt == 0:  # X0 -> X0
+                    # next instruction: ret
+                    if (b1 & 0xFFFFFFFF) == 0xD65F03C0:
+                        results.append((s + i, imm, "ldr_x"))
+            # ldr W0, [X0, #imm]
+            elif (b0 & 0xFFC00000) == 0xB9400000:
+                rn = (b0 >> 5) & 0x1F
+                rt = b0 & 0x1F
+                imm = ((b0 >> 10) & 0xFFF) * 4
+                if rn == 0 and rt == 0:
+                    if (b1 & 0xFFFFFFFF) == 0xD65F03C0:
+                        results.append((s + i, imm, "ldr_w"))
+            i += 4
+    return results
+
+
+# ---------------------------------------------------------------
+# NEW: PAC gadget finder
+# ---------------------------------------------------------------
+def find_pac_gadgets(buffers):
+    """
+    Search for common PAC epilogue/prologue patterns in ARM64e.
+    """
+    gadgets = []
+    patterns = [
+        # pacibsp (0xD503237F)
+        (0xD503237F, "pacibsp"),
+        # autia1716 (0xD503233F)
+        (0xD503233F, "autia1716"),
+        # retab (0xD65F0FFF)
+        (0xD65F0FFF, "retab"),
+        # autibsp (0xD50323FF)
+        (0xD50323FF, "autibsp"),
+    ]
+    for s, sz, buf, name in buffers:
+        i = 0
+        while i + 4 <= sz:
+            raw = buf[i] | (buf[i+1] << 8) | (buf[i+2] << 16) | (buf[i+3] << 24)
+            for pat, label in patterns:
+                if raw == pat:
+                    gadgets.append((s + i, label))
+            i += 4
+    return gadgets
+
+
+# ---------------------------------------------------------------
+# NEW: KTRR/KPP detection
+# ---------------------------------------------------------------
+def detect_ktrr_strings():
+    """
+    Search for KTRR/KPP/SPTM related strings in the binary.
+    """
+    results = {}
+    mem = currentProgram.getMemory()
+    for needle in KTRR_STRINGS:
+        found = []
+        try:
+            jn = zeros(len(needle), 'b')
+            for i in range(len(needle)):
+                v = ord(needle[i])
+                if v > 127:
+                    v -= 256
+                jn[i] = v
+            addr = mem.getMinAddress()
+            mon = TaskMonitor.DUMMY
+            while addr is not None:
+                try:
+                    h = mem.findBytes(addr, jn, None, True, mon)
+                except Exception:
+                    break
+                if h is None:
+                    break
+                found.append(_u(h.getOffset()))
+                if len(found) >= 8:
+                    break
+                nxt = h.add(1)
+                if nxt is None:
+                    break
+                addr = nxt
+        except Exception:
+            pass
+        if found:
+            results[needle] = found
+    return results
+
+
+# ---------------------------------------------------------------
+# NEW: Mach trap table analysis
+# ---------------------------------------------------------------
+def analyze_mach_traps():
+    """
+    Analyze the Mach trap table (mach_trap_table).
+    On iOS the table is an array of structs, each entry is:
+        uint32_t mach_trap_arg_count;
+        uint32_t mach_trap_stack_sz;
+        mach_trap_fn_t mach_trap_fn;
+    Size per entry is typically 0x18 (24 bytes) on arm64.
+    """
+    results = []
+    base = 0xFFFFFFF007BE8018  # from offsets
+    blk = inblk(base)
+    if blk is None:
+        return [("mach_trap_table not in loaded memory",)]
+    # Read first 32 entries
+    for i in range(32):
+        addr = base + i * 0x18
+        a0 = read_u32(addr)
+        a1 = read_u32(addr + 4)
+        fn = read_u64(addr + 8)
+        if a0 is None:
+            break
+        results.append((i, a0, a1, fn))
+    return results
+
+
+# ---------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------
 def main():
-    print("=== final_recon.py v2 (os_log descriptor resolver) ===")
+    print("=== kernel_rw.py (comprehensive) ===")
     lines = []
 
     lines.append("=== PROGRAM ===")
     lines.append("name = %s" % currentProgram.getName())
     lines.append("min  = %s" % fmt(currentProgram.getMemory().getMinAddress().getOffset()))
     lines.append("max  = %s" % fmt(currentProgram.getMemory().getMaxAddress().getOffset()))
+    lines.append("")
+
+    # Block diagnostics (detect truncated dumps)
+    lines.append("=== BLOCKS (diagnostic) ===")
+    for s, e, n, x in blocks():
+        if not x:
+            lines.append("  %-24s  %s..%s  size=0x%X" % (n, fmt(s), fmt(e), e - s))
     lines.append("")
 
     # 1. Strings
@@ -414,8 +621,8 @@ def main():
             string_vas.add(_u(a))
     lines.append("")
 
-    # 1b. Descriptor hop
-    print("[+] resolving os_log descriptors in __const...")
+    # 2. Descriptor hop (FIXED)
+    print("[+] resolving os_log descriptors...")
     desc_map = find_oslog_descriptors(string_vas)
     lines.append("=== OS_LOG DESCRIPTORS ===")
     lines.append("resolved = %d / %d" % (len(desc_map), len(string_vas)))
@@ -424,27 +631,26 @@ def main():
         lines.append("  str %s -> desc %s  [%s]" % (fmt(sva), fmt(dva), blk[2] if blk else "?"))
     lines.append("")
 
-    # 2. Load text once
-    print("[+] loading __text into memory...")
-    buffers = load_text_to_memory()
+    # 3. Load exec buffers
+    print("[+] loading exec blocks...")
+    buffers = load_exec_buffers()
     total_mb = sum(sz for _, sz, _, _ in buffers) / (1024.0 * 1024.0)
     print("[+] loaded %d blocks, %.1f MB" % (len(buffers), total_mb))
     lines.append("=== TEXT BUFFER ===")
     lines.append("blocks = %d, total = %.1f MB" % (len(buffers), total_mb))
     lines.append("")
 
-    # 3. Single pass — targets = strings + descriptors
+    # 4. Xrefs (FIXED: target_set = strings + descriptors)
     target_set = set(string_vas) | set(desc_map.values())
     print("[+] single-pass xref scan over %d targets..." % len(target_set))
     xref_map = find_all_xrefs_to_targets(target_set, buffers)
     print("[+] found refs to %d targets" % len(xref_map))
 
-    lines.append("=== XREFS (single-pass, str + desc) ===")
+    lines.append("=== XREFS (str + desc) ===")
     func_candidates = {}
     for key, hits in str_hits.items():
         lines.append("--- %s ---" % key)
         for str_addr in hits:
-            # xref may come via string VA or via descriptor VA
             refs = list(xref_map.get(_u(str_addr), []))
             dva = desc_map.get(_u(str_addr))
             if dva is not None:
@@ -461,7 +667,7 @@ def main():
                     func_candidates.setdefault(fe, set()).add(key)
     lines.append("")
 
-    # 4. Rank
+    # 5. Rank candidates
     lines.append("=== CANDIDATE FUNCTIONS ===")
     ranked = sorted(func_candidates.items(), key=lambda kv: -len(kv[1]))
     for fe, keys in ranked[:12]:
@@ -475,7 +681,7 @@ def main():
             fmt(fe), nm, sz, ",".join(sorted(keys))))
     lines.append("")
 
-    # 5. Top candidate(s) dump — prefer ones matching COPY_RESULT_NEEDLES
+    # 6. Top candidate dump
     def rank_score(item):
         fe, keys = item
         return (len(keys & COPY_RESULT_NEEDLES), len(keys))
@@ -495,7 +701,6 @@ def main():
             sz = 0
         lines.append("size = 0x%X" % sz)
 
-        # per-function string xref map (all strings referenced inside)
         lines.append("--- INTERNAL STRING REFS ---")
         fn_hits = {}
         for key, hits in str_hits.items():
@@ -529,7 +734,46 @@ def main():
             lines.append(l)
         lines.append("")
 
-    # 6. kalloc_type_var
+    # 7. Accessor-based offsets (NEW)
+    print("[+] extracting accessor offsets...")
+    acc = find_accessor_offsets(buffers)
+    lines.append("=== ACCESSOR OFFSETS (ldr X0,[X0,#imm]; ret) ===")
+    lines.append("found = %d" % len(acc))
+    for func_addr, imm, kind in acc[:80]:
+        lines.append("  %s  +0x%X  (%s)" % (fmt(func_addr), imm, kind))
+    lines.append("")
+
+    # 8. PAC gadgets (NEW)
+    print("[+] finding PAC gadgets...")
+    pac = find_pac_gadgets(buffers)
+    lines.append("=== PAC GADGETS ===")
+    lines.append("found = %d" % len(pac))
+    for addr, label in pac[:40]:
+        lines.append("  %s  %s" % (fmt(addr), label))
+    lines.append("")
+
+    # 9. KTRR/KPP detection (NEW)
+    print("[+] detecting KTRR/KPP strings...")
+    ktrr = detect_ktrr_strings()
+    lines.append("=== KTRR/KPP DETECTION ===")
+    for needle, addrs in ktrr.items():
+        lines.append("  %-30s -> %d hits" % (needle, len(addrs)))
+        for a in addrs[:4]:
+            lines.append("    %s" % fmt(a))
+    lines.append("")
+
+    # 10. Mach trap analysis (NEW)
+    print("[+] analyzing mach trap table...")
+    mt = analyze_mach_traps()
+    lines.append("=== MACH TRAP TABLE ===")
+    if mt and len(mt[0]) == 1:
+        lines.append("  %s" % mt[0][0])
+    else:
+        for idx, a0, a1, fn in mt:
+            lines.append("  [%2d] argc=%d stack=0x%X fn=%s" % (idx, a0, a1, fmt(fn)))
+    lines.append("")
+
+    # 11. kalloc_type_var
     lines.append("=== KALLOC_TYPE_VAR @ %s ===" % fmt(FLOW_KALLOC_TYPE_VAR))
     blk = inblk(FLOW_KALLOC_TYPE_VAR)
     if blk:
@@ -539,7 +783,7 @@ def main():
             lines.append("  +0x%02X: %s" % (off, fmt(v) if v is not None else "err"))
     lines.append("")
 
-    # 7. ifnet globals
+    # 12. ifnet globals
     lines.append("=== IFNET ARRAY GLOBALS ===")
     for name, addr in IFNET_ARRAY_GLOBALS:
         v = read_u64(addr)
@@ -548,7 +792,7 @@ def main():
             name, fmt(addr), blk[2] if blk else "?", fmt(v) if v is not None else "err"))
     lines.append("")
 
-    # 8. NECP funcs
+    # 13. NECP funcs
     lines.append("=== NECP FUNCTIONS ===")
     for name, addr in NECP_FUNCS:
         f = find_func_by_addr(addr)
@@ -575,7 +819,7 @@ def main():
             lines.append("  %s  %-8s  [x%-2d, #0x%X]" % (fmt(pc), kind, base, imm))
         lines.append("")
 
-    # 9. Validate
+    # 14. Validate offsets
     lines.append("=== VALIDATE KERNEL OFFSETS ===")
     ok = 0
     fail = 0
@@ -607,7 +851,7 @@ def main():
         lines.append("  %-30s +0x%X" % (name, imm))
     lines.append("")
 
-    # write
+    # Write report
     try:
         with open(OUT, "w") as fh:
             for l in lines:
@@ -622,6 +866,9 @@ def main():
             "candidate_funcs": [{"addr": fmt(fe), "needles": sorted(list(k))}
                                 for fe, k in ranked_by_copyresult[:12]],
             "valid_kptr_count": ok,
+            "accessor_count": len(acc),
+            "pac_gadget_count": len(pac),
+            "ktrr_hits": {k: len(v) for k, v in ktrr.items()},
         }
         with open(OUT_JSON, "w") as fh:
             fh.write(json.dumps(out_json, indent=2, sort_keys=True))
