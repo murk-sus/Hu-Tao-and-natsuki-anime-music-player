@@ -16,6 +16,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Log workspace start
+        run: |
+          echo "=== workspace at start ==="
+          ls -la "$GITHUB_WORKSPACE" || true
+          echo "=== sizes ==="
+          du -sh "$GITHUB_WORKSPACE"/* 2>/dev/null | sort -hr | head -30 || true
+          echo "=== find dirs ==="
+          find "$GITHUB_WORKSPACE" -maxdepth 3 -type d 2>/dev/null | head -60 || true
+
       - uses: actions/setup-java@v4
         with:
           java-version: "25"
@@ -25,7 +34,7 @@ jobs:
         id: cache-ghidra
         with:
           path: ${{ github.workspace }}/ghidra
-          key: ghidra-12.1.2-jython
+          key: ghidra-12.1.2-jython-v2
 
       - if: steps.cache-ghidra.outputs.cache-hit != 'true'
         run: |
@@ -44,7 +53,7 @@ jobs:
         id: cache-ipsw
         with:
           path: /usr/local/bin/ipsw
-          key: ipsw-3.1.716
+          key: ipsw-3.1.716-v2
 
       - if: steps.cache-ipsw.outputs.cache-hit != 'true'
         run: |
@@ -56,7 +65,7 @@ jobs:
         id: cache-symbolicator
         with:
           path: ${{ github.workspace }}/symbolicator
-          key: symbolicator-v1
+          key: symbolicator-v2
 
       - if: steps.cache-symbolicator.outputs.cache-hit != 'true'
         run: |
@@ -82,7 +91,7 @@ jobs:
         id: cache-kernelcache
         with:
           path: ${{ github.workspace }}/kernelcache
-          key: kernelcache-iPhone14_5-24A437
+          key: kernelcache-iPhone14_5-24A437-v2
 
       - if: steps.cache-kernelcache.outputs.cache-hit != 'true'
         run: |
@@ -102,12 +111,13 @@ jobs:
           test -n "$KERNEL"
           echo "KERNEL=$KERNEL" >> "$GITHUB_ENV"
           echo "KERNEL_NAME=$(basename "$KERNEL")" >> "$GITHUB_ENV"
+          file "$KERNEL"
 
       - uses: actions/cache@v4
         id: cache-symbols
         with:
           path: ${{ github.workspace }}/symbols.json
-          key: symbols-${{ hashFiles('kernelcache/**') }}
+          key: symbols-24A437-v2
 
       - if: steps.cache-symbols.outputs.cache-hit != 'true'
         run: |
@@ -125,12 +135,13 @@ jobs:
               echo "[]" > "$GITHUB_WORKSPACE/symbols.json"
             fi
           fi
+          echo "symbols.json size: $(wc -c < "$GITHUB_WORKSPACE/symbols.json")"
 
       - uses: actions/cache@v4
         id: cache-project
         with:
           path: ${{ github.workspace }}/ghidra_project
-          key: ghidra-project-${{ hashFiles('kernelcache/**') }}
+          key: ghidra-project-24A437-v2
 
       - id: warm
         if: steps.cache-project.outputs.cache-hit == 'true'
@@ -168,44 +179,25 @@ jobs:
             -max-cpu 4 \
             2>&1 | tee kernel.log || true
 
-      - if: always()
+      - name: Log workspace end
+        if: always()
         run: |
-          set -uo pipefail
-          rm -rf "$GITHUB_WORKSPACE/ghidra"                   || true
-          rm -rf "$GITHUB_WORKSPACE/ghidra_project"           || true
-          rm -rf "$GITHUB_WORKSPACE/kernelcache"              || true
-          rm -rf "$GITHUB_WORKSPACE/kernelcache_decompressed" || true
-          rm -rf "$GITHUB_WORKSPACE/symbolicator"             || true
-          rm -rf "$GITHUB_WORKSPACE/ipsw"                     || true
-          rm -f  "$GITHUB_WORKSPACE"/*.symbols.json           || true
-          rm -f  "$GITHUB_WORKSPACE"/sym_*.json               || true
-          rm -f  "$GITHUB_WORKSPACE"/*.tar.gz                 || true
-          rm -f  "$GITHUB_WORKSPACE"/kernelcache.release.*    || true
+          echo "=== workspace at end ==="
+          ls -la "$GITHUB_WORKSPACE" || true
+          echo "=== sizes ==="
+          du -sh "$GITHUB_WORKSPACE"/* 2>/dev/null | sort -hr | head -30 || true
 
-      - if: always()
-        run: |
-          set -uo pipefail
-          rm -rf "$GITHUB_WORKSPACE/artifacts"
-          mkdir -p "$GITHUB_WORKSPACE/artifacts"
-          for f in result.txt offsets.json kernel.log symbols.json; do
-            if [ -f "$GITHUB_WORKSPACE/$f" ]; then
-              cp "$GITHUB_WORKSPACE/$f" "$GITHUB_WORKSPACE/artifacts/$f"
-            else
-              case "$f" in
-                offsets.json) echo '{}' > "$GITHUB_WORKSPACE/artifacts/$f" ;;
-                symbols.json) echo '[]' > "$GITHUB_WORKSPACE/artifacts/$f" ;;
-                *) echo "missing" > "$GITHUB_WORKSPACE/artifacts/$f" ;;
-              esac
-            fi
-          done
-          ls -la "$GITHUB_WORKSPACE/artifacts"
-
-      - uses: actions/upload-artifact@v4
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
         if: always()
         with:
           name: kernel-offsets-${{ github.sha }}
-          path: ${{ github.workspace }}/artifacts
+          path: |
+            result.txt
+            offsets.json
+            kernel.log
+            symbols.json
           retention-days: 30
-          if-no-files-found: error
+          if-no-files-found: warn
           overwrite: true
           compression-level: 9
