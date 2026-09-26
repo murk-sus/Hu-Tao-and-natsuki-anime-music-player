@@ -62,20 +62,21 @@ jobs:
           tar -C /usr/local/bin -xzf /tmp/ipsw.tar.gz ipsw
           ipsw version
 
-      # --- КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ: правильный symbolicator ---
+      # --- КЛЮЧЕВОЕ: правильный symbolicator ---
       - name: Cache symbolicator (blacktop)
         id: cache-symbolicator
         uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}/symbolicator
-          key: symbolicator-$(date +%Y%m%d) # Кэш обновляется ежедневно, т.к. сигнатуры часто обновляются
+          key: symbolicator-v1
 
       - name: Clone blacktop/symbolicator
         if: steps.cache-symbolicator.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
-          git clone --depth 1 https://github.com/blacktop/symbolicator.git "$GITHUB_WORKSPACE/symbolicator"
-          echo "=== symbolicator/kernel contents ==="
+          git clone --depth 1 https://github.com/blacktop/symbolicator.git \
+            "$GITHUB_WORKSPACE/symbolicator"
+          echo "=== symbolicator/kernel ==="
           ls -la "$GITHUB_WORKSPACE/symbolicator/kernel" | head -20
 
       # --- Распаковка kernel ---
@@ -84,45 +85,40 @@ jobs:
           set -euo pipefail
           mkdir -p kernel
           unzip -o kernel.zip -d kernel
-          K=$(find kernel -type f \( -name 'kernel.raw' -o -name 'kernelcache*' \) -print -quit)
-          test -n "$K"
-          echo "KERNEL=$K" >> "$GITHUB_ENV"
+          K=$(4find kernel -type f \( -
+name 'kernel.raw' -o -name        with 'kernelcache*' \) -print -quit)
+         :
+ test -n "$K"
+          echo "K         ERNEL=$K" >> "$GITHUB_ENV"
           echo "KERNEL_NAME=$(basename "$K")" >> "$GITHUB_ENV"
           ls -lh "$K"
 
       # --- СИМВОЛИКАЦИЯ ЯДРА ---
       - name: Cache symbols
         id: cs
-        uses: actions/cache@v4
-        with:
-          path: ${{ github.workspace }}/symbols.json
+        uses: actions/cache@v path: ${{ github.workspace }}/symbols.json
           key: symbols-${{ hashFiles('kernel.zip') }}
 
-      - name: Symbolicate kernel (STRICT)
+      - name: Symbolicate kernel (signatures + C++)
         if: steps.cs.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
           SIGDIR="$GITHUB_WORKSPACE/symbolicator/kernel"
-          echo "Using signatures from: $SIGDIR"
+          echo "Signatures dir: $SIGDIR"
           ls -la "$SIGDIR" | head -10
 
-          # Пробуем symbolicate с правильными сигнатурами
-          if ! ipsw kernel sym "$KERNEL" --json --signatures "$SIGDIR" 2>/tmp/sym_err.log; then
-            echo "ipsw kernel sym FAILED. Log:"
-            cat /tmp/sym_err.log
-            # Fallback: пробуем без --signatures (встроенные сигнатуры, если есть)
-            echo "Trying without --signatures..."
-            if ! ipsw kernel sym "$KERNEL" --json 2>/tmp/sym_err2.log; then
-              echo "ipsw kernel sym without signatures FAILED too."
-              cat /tmp/sym_err2.log
-              echo "Creating empty symbols.json"
-              echo '[]' > "$GITHUB_WORKSPACE/symbols.json"
-              exit 0
-            fi
-          fi
+          # Шаг 1: сигнатуры
+          echo "=== Step 1: signature-based symbolication ==="
+          ipsw kernel sym "$KERNEL" --json --signatures "$SIGDIR" 2>&1 | tee /tmp/sym1.log || true
 
-          # Находим созданный JSON-файл
-          SRC=$(find . -name '*_symbols.json' -o -name '*symbols.json' | head -n1)
+          # Шаг 2: C++ runtime recovery (для IOKit и XNU классов)
+          echo "=== Step 2: C++ runtime recovery ==="
+          ipsw kernel cpp "$KERNEL" --json 2>&1 | tee /tmp/sym2.log || true
+
+          # Собираем все JSON, которые создал ipsw
+          echo "=== Collecting JSON outputs ==="
+          find . -name '*_symbols.json' -o -name '*symbols*.json' | head -20
+          SRC=$(find . -name '*_symbols.json' -o -name '*symbols*.json' | head -n1)
           if [ -z "$SRC" ] || [ ! -f "$SRC" ]; then
             echo "No symbols JSON produced"
             echo '[]' > "$GITHUB_WORKSPACE/symbols.json"
