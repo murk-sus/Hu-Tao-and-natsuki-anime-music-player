@@ -1,7 +1,5 @@
 # -*- coding: utf-8 -*-
 # @runtime Jython
-#
-# FIX v2: O(1) dedup, external symbols.json FIRST, capped Ghidra table.
 
 import os, re, json, traceback, time
 
@@ -10,13 +8,10 @@ SYM = os.environ.get("SYMBOLS_JSON", os.path.join(WS, "symbols.json"))
 OUT = os.path.join(WS, "result.txt")
 OUT_JSON = os.path.join(WS, "offsets.json")
 
-NAME = "necp_client_copy_result"
-HINT = 0xFFFFFFF0070D61C6
-MASK48 = 0x0000FFFFFFFFFFFF
-KTEXT_LO = 0xFFF007004000
-KTEXT_HI = 0xFFF200000000
-MAX_GHIDRA_SYMS = 60000
-MAX_XREFS = 40
+NEEDLE = b"necp_client_copy_result"
+MAX_HITS = 60
+MAX_FUNCS = 6
+MAX_DISASM = 500
 
 def _u(v): return int(v) & 0xFFFFFFFFFFFFFFFF
 def fmt(v):
@@ -26,11 +21,6 @@ def fmt(v):
 def sa(a):
     if a is None: return None
     try: return currentProgram.getAddressFactory().getAddress("%X" % (int(a) & 0xFFFFFFFFFFFFFFFF))
-    except: return None
-def r32(a):
-    ga = sa(a)
-    if ga is None: return None
-    try: return int(currentProgram.getMemory().getInt(ga)) & 0xFFFFFFFF
     except: return None
 
 _blocks = None
@@ -42,8 +32,9 @@ def blocks():
         for b in currentProgram.getMemory().getBlocks():
             try:
                 if not b.isInitialized(): continue
-                out.append((_u(b.getStart().getOffset()), _u(b.getEnd().getOffset()),
-                            b.getName(), b.isExecute()))
+                out.append((_u(b.getStart().getOffset()),
+                            _u(b.getEnd().getOffset()),
+                            b.getName(), b.isExecute(), b))
             except: pass
     except: pass
     _blocks = out
@@ -51,170 +42,50 @@ def blocks():
 
 def inblk(a):
     if a is None: return None
-    for s, e, n, x in blocks():
+    for s, e, n, x, b in blocks():
         if s <= a < e: return (s, e, n, x)
     return None
 
-def is_ktext(p):
-    if p is None or p == 0: return False
-    return KTEXT_LO <= (p & MASK48) < KTEXT_HI
-
-# ---------- symbols ----------
-_symidx = None
-_symset = None
-
-def _add(a, n):
-    """O(1) dedup via set."""
-    global _symidx, _symset
-    if _symidx is None:
-        _symidx = []
-        _symset = set()
-    try:
-        av = _u(a)
-        key = (av, n)
-        if key in _symset: return
-        _symset.add(key)
-        _symidx.append(key)
-    except: pass
-
-def _walk_entry(it, fallback_addr=None):
-    if isinstance(it, dict):
-        n = it.get("name") or it.get("symbol") or it.get("n") or it.get("s")
-        a = it.get("address") or it.get("addr") or it.get("value") or it.get("a") or fallback_addr
+# ---------- find string occurrences ----------
+def find_string_occurrences():
+    hits = []
+    for s, e, name, is_exec, blk in blocks():
         try:
-            if n and a is not None:
-                av = int(a, 0) if isinstance(a, str) else int(a)
-                if av >= 0xFFFF000000000000: _add(av, n)
-        except: pass
-    elif isinstance(it, (list, tuple)) and len(it) == 2:
-        try:
-            a = int(it[0], 0) if isinstance(it[0], str) else int(it[0])
-            n = it[1]
-            if a >= 0xFFFF000000000000 and isinstance(n, str): _add(a, n)
-        except: pass
+            size = e - s
+            if size <= 0 or size > 32 * 1024 * 1024:
+                # chunk big blocks
+                if size > 32 * 1024 * 1024:
+                    step = 16 * 1024 * 1024
+                    off = s
+                    while off < e:
+                        chunk = min(step, e - off)
+                        try:
+                            buf = bytearray(chunk)
+                            ga = sa(off)
+                            blk.getBytes(ga, buf)
+                            _scan_buf(bytes(buf), off, hits)
+                        except: pass
+                        off += chunk - len(NEEDLE)
+                        if len(hits) >= MAX_HITS: return hits
+                continue
+            buf = bytearray(size)
+            ga = sa(s)
+            blk.getBytes(ga, buf)
+            _scan_buf(bytes(buf), s, hits)
+            if len(hits) >= MAX_HITS: break
+        except Exception as ex:
+            print("[-] scan %s: %s" % (name, str(ex)))
+    return hits
 
-def build_idx():
-    global _symidx, _symset
-    if _symidx is not None: return
-    _symidx = []
-    _symset = set()
-
-    # ---------- 1. external symbols.json (fast, first) ----------
-    if os.path.exists(SYM):
-        print("[+] loading %s" % SYM)
-        t0 = time.time()
-        try:
-            with open(SYM) as fh: raw = fh.read()
-            print("[+] raw size: %d bytes" % len(raw))
-            data = json.loads(raw)
-            print("[+] parsed: %s" % type(data).__name__)
-            n_before = 0
-            if isinstance(data, dict):
-                n_items = len(data)
-                print("[+] dict keys: %d" % n_items)
-                for k, v in data.items():
-                    # format A: { "0xADDR": "name" }
-                    try:
-                        a = int(k, 0)
-                        if isinstance(v, str) and a >= 0xFFFF000000000000:
-                            _add(a, v); continue
-                    except: pass
-                    # format B: { "name": "0xADDR" or int }
-                    try:
-                        a = int(v, 0) if isinstance(v, str) else int(v)
-                        if a >= 0xFFFF000000000000:
-                            _add(a, k); continue
-                    except: pass
-                    # format C: { "0xADDR": {"name": ...} }
-                    if isinstance(v, dict):
-                        nn = v.get("name") or v.get("symbol")
-                        if nn:
-                            try:
-                                a = int(k, 0)
-                                if a >= 0xFFFF000000000000: _add(a, nn)
-                            except: pass
-                for key in ("symbols", "addrs", "entries", "items", "data"):
-                    v = data.get(key)
-                    if isinstance(v, list):
-                        for it in v: _walk_entry(it)
-                    elif isinstance(v, dict):
-                        for k2, it in v.items(): _walk_entry(it, fallback_addr=k2)
-            elif isinstance(data, list):
-                print("[+] list len: %d" % len(data))
-                for it in data: _walk_entry(it)
-            print("[+] external added: %d (%.1fs)" % (len(_symidx), time.time() - t0))
-        except Exception as e:
-            print("[-] external err: %s" % str(e))
-
-    # ---------- 2. Ghidra symbol table (fallback, capped) ----------
-    n_ext = len(_symidx)
-    if n_ext < 1000:
-        print("[+] external small (%d), falling back to Ghidra table" % n_ext)
-        t0 = time.time()
-        try:
-            count = 0
-            for sym in currentProgram.getSymbolTable().getAllSymbols(False):
-                try:
-                    _add(sym.getAddress().getOffset(), sym.getName())
-                    count += 1
-                    if count % 10000 == 0:
-                        print("[+]   ghidra syms: %d" % count)
-                    if count >= MAX_GHIDRA_SYMS: break
-                except: pass
-            print("[+] ghidra added: %d (%.1fs)" % (count, time.time() - t0))
-        except Exception as e:
-            print("[-] ghidra err: %s" % str(e))
-    else:
-        print("[+] external sufficient (%d), skipping Ghidra table" % n_ext)
-
-    print("[+] total symbols: %d" % len(_symidx))
-
-def names_match(substr, exec_only=None):
-    build_idx()
-    out = []
-    for a, n in _symidx:
-        if substr not in n: continue
-        blk = inblk(a)
-        is_exec = bool(blk and blk[3])
-        if exec_only is True and not is_exec: continue
-        if exec_only is False and is_exec: continue
-        out.append((a, n, blk[2] if blk else "NO_BLOCK", is_exec))
-    return out
-
-def name_at(a):
-    build_idx()
-    best = None
-    for aa, n in _symidx:
-        if not is_ktext(aa): continue
-        if aa <= a < aa + 0x1000:
-            d = a - aa
-            if d == 0: return n
-            if best is None or d < best[0]: best = (d, n)
-    return ("%s+0x%X" % (best[1], best[0])) if best else None
-
-def func_containing(a):
-    try:
-        ga = sa(a)
-        if ga is None: return None
-        f = getFunctionContaining(ga)
-        if f is None: return None
-        return _u(f.getEntryPoint().getOffset())
-    except: return None
-
-def xrefs_to(a):
-    out = []
-    try:
-        ga = sa(a)
-        if ga is None: return out
-        cnt = 0
-        for ref in getReferencesTo(ga):
-            try:
-                out.append(_u(ref.getFromAddress().getOffset()))
-                cnt += 1
-                if cnt >= MAX_XREFS: break
-            except: pass
-    except: pass
-    return out
+def _scan_buf(data, base, hits):
+    pos = 0
+    n = len(NEEDLE)
+    while True:
+        i = data.find(NEEDLE, pos)
+        if i < 0: break
+        hits.append(base + i)
+        pos = i + 1
+        if len(hits) >= MAX_HITS: return
 
 # ---------- decoder ----------
 def dec(b, pc):
@@ -338,8 +209,7 @@ def dec(b, pc):
         il = (b >> 29) & 3; ih = (b >> 5) & 0x7FFFF
         i = (ih << 2) | il
         if i & 0x100000: i -= 0x200000
-        page = (pc & ~0xFFF) + (i << 12)
-        return "adrp x%d, 0x%016X" % (b & 0x1F, page & 0xFFFFFFFFFFFFFFFF)
+        return "adrp x%d, 0x%016X" % (b & 0x1F, ((pc & ~0xFFF) + (i << 12)) & 0xFFFFFFFFFFFFFFFF)
     if (b & 0x9F000000) == 0x10000000:
         il = (b >> 29) & 3; ih = (b >> 5) & 0x7FFFF
         i = (ih << 2) | il
@@ -381,12 +251,11 @@ def dec(b, pc):
     return "?? (0x%08X)" % b
 
 def disasm(a, count):
-    if a is None: return ["(addr is None)"]
+    if a is None: return []
     blk = inblk(a)
-    if blk is None: return ["(addr %s NOT IN ANY LOADED BLOCK)" % fmt(a)]
-    if not blk[3]: return ["(addr %s in NON-EXEC block %s)" % (fmt(a), blk[2])]
+    if blk is None: return []
     ga = sa(a)
-    if ga is None: return ["(cannot toAddr %s)" % fmt(a)]
+    if ga is None: return []
     mem = currentProgram.getMemory()
     out = []
     for i in range(count):
@@ -397,7 +266,7 @@ def disasm(a, count):
             b = mem.getInt(gaa) & 0xFFFFFFFF
         except: break
         out.append("%016X  %08X  %s" % (aa, b, dec(b, aa)))
-    return out if out else ["(no readable code at %s)" % fmt(a)]
+    return out
 
 def parse_instr(line):
     m = re.match(r"([0-9A-F]{16})\s+([0-9A-F]{8})\s+(.*)", line)
@@ -417,153 +286,152 @@ def extract_call(body):
     m = re.search(r"->\s*0x([0-9A-F]+)", body)
     return int(m.group(1), 16) if m else None
 
-# ---------- resolve ----------
-def resolve_target():
-    hits = names_match(NAME, exec_only=True)
-    if hits:
-        a, n, blk, _ = hits[0]
-        return a, "exec symbol '%s' @ %s [%s]" % (n, fmt(a), blk)
-    blk = inblk(HINT)
-    if blk and blk[3]:
-        return HINT, "hint %s (exec %s)" % (fmt(HINT), blk[2])
-    hits_ne = names_match(NAME, exec_only=False)
-    for a, n, blkname, _ in hits_ne[:6]:
-        refs = xrefs_to(a)
-        for r in refs:
-            f = func_containing(r)
-            if f:
-                return f, "func of xref to str '%s' @ %s (ref@%s)" % (n, fmt(a), fmt(r))
-    return None, "no exec symbol, hint not exec, no xrefs to strings"
+# ---------- xrefs & func ----------
+def get_refs_to(a):
+    out = []
+    try:
+        ga = sa(a)
+        if ga is None: return out
+        for ref in getReferencesTo(ga):
+            try: out.append(_u(ref.getFromAddress().getOffset()))
+            except: pass
+    except: pass
+    return out
+
+def func_containing(a):
+    try:
+        ga = sa(a)
+        if ga is None: return None
+        f = getFunctionContaining(ga)
+        if f is None: return None
+        return _u(f.getEntryPoint().getOffset())
+    except: return None
 
 # ---------- main ----------
 def main():
-    print("=== necp_client_copy_result focused ===")
+    print("=== necp_client_copy_result string-search ===")
     t0 = time.time()
-    build_idx()
-    print("[+] idx built in %.1fs" % (time.time() - t0))
 
     lines = []
-    lines.append("=== SYMBOL DIAG ===")
-    lines.append("total symbols: %d" % len(_symidx or []))
-    lines.append("symbols.json: %s (%s)" % (SYM, "exists" if os.path.exists(SYM) else "MISSING"))
+    lines.append("=== SCAN ===")
+    lines.append("needle: %s" % NEEDLE)
+    lines.append("total blocks: %d" % len(blocks()))
+    n_exec = sum(1 for _,_,_,x,_ in blocks() if x)
+    lines.append("exec blocks:  %d" % n_exec)
     try:
-        if os.path.exists(SYM): lines.append("size: %d" % os.path.getsize(SYM))
+        ks = currentProgram.getMemory().getMinAddress().getOffset()
+        ke = currentProgram.getMemory().getMaxAddress().getOffset()
+        lines.append("memory range: %s - %s" % (fmt(ks), fmt(ke)))
     except: pass
     lines.append("")
 
-    all_exec = names_match(NAME, exec_only=True)
-    all_none = names_match(NAME, exec_only=False)
-    lines.append("=== MATCHES ===")
-    lines.append("exec (%d):" % len(all_exec))
-    for a, n, blk, _ in all_exec[:20]:
-        lines.append("  %s  %-40s  [%s]" % (fmt(a), n, blk))
-    lines.append("non-exec (%d):" % len(all_none))
-    for a, n, blk, _ in all_none[:20]:
-        lines.append("  %s  %-40s  [%s]" % (fmt(a), n, blk))
+    print("[+] scanning memory for string...")
+    hits = find_string_occurrences()
+    print("[+] string hits: %d (%.1fs)" % (len(hits), time.time() - t0))
+    lines.append("string hits: %d" % len(hits))
+    for h in hits[:20]:
+        blk = inblk(h)
+        lines.append("  %s  [%s]" % (fmt(h), blk[2] if blk else "?"))
     lines.append("")
 
-    target, how = resolve_target()
-    lines.append("=== RESOLVED TARGET ===")
-    if target is None:
-        lines.append("FAIL: %s" % how)
-        lines.append("")
-        lines.append("xref dump:")
-        for a, n, blkname, _ in all_none[:4]:
-            lines.append("  str @ %s  '%s'  [%s]" % (fmt(a), n, blkname))
-            refs = xrefs_to(a)
-            lines.append("    xrefs: %d" % len(refs))
-            for r in refs[:8]:
-                f = func_containing(r)
-                lines.append("      %s -> func %s" % (fmt(r), fmt(f) if f else "?"))
+    if not hits:
+        lines.append("VERDICT: string 'necp_client_copy_result' not found in memory.")
+        lines.append("    Kernel.raw may have strings in a separate segment not loaded.")
         write(lines, {})
         return
 
-    lines.append("target = %s" % fmt(target))
-    lines.append("how    = %s" % how)
-    blk = inblk(target)
-    lines.append("block  = %s (exec=%s)" % (blk[2], blk[3]))
+    # collect functions via xrefs
+    print("[+] resolving xrefs -> functions...")
+    func_set = {}
+    for h in hits:
+        refs = get_refs_to(h)
+        if refs:
+            for r in refs:
+                f = func_containing(r)
+                if f:
+                    func_set[f] = func_set.get(f, 0) + 1
+    print("[+] unique functions: %d" % len(func_set))
+
+    lines.append("=== REFS -> FUNCS ===")
+    for f in sorted(func_set.keys()):
+        blk = inblk(f)
+        lines.append("  func %s  hits=%d  [%s]" % (fmt(f), func_set[f],
+                                                    blk[2] if blk else "?"))
     lines.append("")
 
-    lines.append("=== DISASM ===")
-    dis = disasm(target, 400)
-    for l in dis:
-        r = parse_instr(l)
-        note = ""
-        if r:
+    if not func_set:
+        lines.append("VERDICT: string found but no xrefs -> no containing funcs.")
+        lines.append("    Analysis may not have created functions for this code.")
+        write(lines, {})
+        return
+
+    # disasm each function
+    top = sorted(func_set.items(), key=lambda kv: -kv[1])[:MAX_FUNCS]
+    print("[+] disassembling top %d candidates" % len(top))
+    seq_all = []
+    for f, cnt in top:
+        lines.append("=== FUNC %s (hits=%d) ===" % (fmt(f), cnt))
+        dis = disasm(f, MAX_DISASM)
+        lines.append("  disasm count: %d" % len(dis))
+        ldr = {}
+        calls = []
+        for l in dis:
+            r = parse_instr(l)
+            if not r: continue
             pc, mn, body = r
+            e = extract_mem(body)
+            if mn in ("ldr", "ldrb", "ldrh", "ldur") and e:
+                ldr.setdefault(e, []).append((pc, body))
             if mn in ("b", "bl"):
                 t = extract_call(body)
-                if t and is_ktext(t):
-                    nn = name_at(t)
-                    if nn: note = "    ; => " + nn
-        lines.append("  " + l + note)
-    lines.append("")
-
-    ldr = {}
-    strm = {}
-    calls = []
-    for l in dis:
-        r = parse_instr(l)
-        if not r: continue
-        pc, mn, body = r
-        e = extract_mem(body)
-        if mn in ("ldr", "ldrb", "ldrh", "ldur"):
-            if e: ldr.setdefault(e, []).append((pc, body))
-        elif mn in ("str", "strb", "strh", "stur"):
-            if e: strm.setdefault(e, []).append((pc, body))
-        if mn in ("b", "bl"):
-            t = extract_call(body)
-            if t: calls.append((pc, mn, t))
-
-    lines.append("=== LDR [base, #imm] ===")
-    for (b, i), ent in sorted(ldr.items(), key=lambda kv: kv[0][1]):
-        lines.append("  [%s, #0x%X]  hits=%d" % (b, i, len(ent)))
-        for pc, body in ent[:3]:
-            lines.append("      %016X  %s" % (pc, body))
-    lines.append("")
-
-    lines.append("=== STR [base, #imm] ===")
-    for (b, i), ent in sorted(strm.items(), key=lambda kv: kv[0][1]):
-        lines.append("  [%s, #0x%X]  hits=%d" % (b, i, len(ent)))
-    lines.append("")
-
-    lines.append("=== CALLS ===")
-    seen = set()
-    for pc, mn, t in calls:
-        if t in seen: continue
-        seen.add(t)
-        nn = name_at(t) or "?"
-        lines.append("  %s -> %s  %s" % (mn, fmt(t), nn))
-    lines.append("")
-
-    flowregs = ("x19","x20","x21","x22","x23","x24")
-    lines.append("=== FLOW-REG LDRs (x19..x24, imm 0x40..0x300) ===")
-    seq = []
-    for (b, i), ent in ldr.items():
-        if b in flowregs and 0x40 <= i <= 0x300:
-            for pc, body in ent:
-                seq.append((pc, b, i, body))
-    seq.sort()
-    for pc, b, i, body in seq:
-        lines.append("  %016X  %s" % (pc, body))
-    lines.append("")
+                if t: calls.append((pc, mn, t))
+        # candidate offsets
+        flowregs = ("x19","x20","x21","x22","x23","x24")
+        cand = []
+        for (b, i), ent in ldr.items():
+            if b in flowregs and 0x40 <= i <= 0x300:
+                for pc, body in ent:
+                    cand.append((pc, b, i, body))
+        cand.sort()
+        lines.append("  flow-reg LDRs (x19..x24, 0x40..0x300): %d" % len(cand))
+        for pc, b, i, body in cand[:20]:
+            lines.append("    %016X  %s" % (pc, body))
+            seq_all.append((f, pc, b, i, body))
+        # all ldr offsets
+        lines.append("  all LDR offsets:")
+        seen = set()
+        for (b, i), ent in sorted(ldr.items(), key=lambda kv: kv[0][1]):
+            if i in seen: continue
+            seen.add(i)
+            lines.append("    +0x%03X bases=%s n=%d" % (
+                i, ",".join(sorted(set(x for x,_ in ent))), len(ent)))
+        lines.append("")
+        lines.append("  calls (b/bl):")
+        seen_t = set()
+        for pc, mn, t in calls:
+            if t in seen_t: continue
+            seen_t.add(t)
+            lines.append("    %s -> %s" % (mn, fmt(t)))
+        lines.append("")
+        lines.append("  --- disasm (first 80) ---")
+        for l in dis[:80]:
+            lines.append("  " + l)
+        lines.append("")
 
     lines.append("=== VERDICT ===")
-    if seq:
-        lines.append("flow-reg LDRs found:")
-        lines.append("  candidate pair (assigned_results, length):")
-        lines.append("    %s" % seq[0][3])
-        if len(seq) > 1: lines.append("    %s" % seq[1][3])
+    if seq_all:
+        lines.append("flow-reg LDRs found in %d funcs" % len(top))
+        lines.append("Most likely candidate pair:")
+        for f, pc, b, i, body in seq_all[:4]:
+            lines.append("  func=%s  %s" % (fmt(f), body))
     else:
-        lines.append("NO flow-reg LDRs. necp_client_copy_result does NOT")
-        lines.append("read flow->assigned_results on this build.")
+        lines.append("No flow-reg LDRs. copy_result likely does not read")
+        lines.append("flow->assigned_results directly.")
 
     jout = {
-        "target": fmt(target),
-        "how": how,
-        "flow_ldrs": ["%s+0x%X" % (b, i) for _, b, i, _ in seq],
-        "all_ldr": sorted(set(i for _, i in ldr.keys())),
-        "all_str": sorted(set(i for _, i in strm.keys())),
+        "string_hits": [fmt(h) for h in hits],
+        "funcs": [fmt(f) for f, _ in top],
+        "flow_ldrs": ["%s+0x%X" % (b, i) for _, _, b, i, _ in seq_all],
     }
     write(lines, jout)
 
