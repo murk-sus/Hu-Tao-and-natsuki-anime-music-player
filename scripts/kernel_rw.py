@@ -1,9 +1,8 @@
 # -*- coding: utf-8 -*-
 # @runtime Jython
-# final_recon.py — full reconnaissance for kread on iOS 27.0 / 24A437
+# final_recon.py — fast version (single pass over __text)
 
 import os
-import re
 import json
 import traceback
 
@@ -69,7 +68,7 @@ VALIDATE_OFFSETS = {
     "off_zone_site_struct_task": "0xFFFFFFF007C64080",
     "off_zone_site_struct_proc": "0xFFFFFFF007C71240",
     "off_zone_site_struct_thread": "0xFFFFFFF007C63D00",
-    "off_zone_site_struct_ucred": "0xFFFFFFF006F140",
+    "off_zone_site_struct_ucred": "0xFFFFFFF007C6F140",
 }
 
 NUMERIC_OFFSETS = {
@@ -105,7 +104,8 @@ def sa(a):
     if a is None:
         return None
     try:
-        return currentProgram.getAddressFactory().getAddress("%X" % (int(a) & 0xFFFFFFFFFFFFFFFF))
+        return currentProgram.getAddressFactory().getAddress(
+            "%X" % (int(a) & 0xFFFFFFFFFFFFFFFF))
     except Exception:
         return None
 
@@ -223,19 +223,41 @@ def disasm_func(f, maxn):
     return out
 
 
-def find_string_xrefs(target_addr, max_hits=8):
-    out = []
-    target = _u(target_addr)
+def load_text_to_memory():
+    """Read every exec block into one contiguous bytearray with block offsets."""
+    buffers = []
     for s, e, n, is_exec in blocks():
         if not is_exec:
             continue
+        sz = e - s
+        if sz <= 0 or sz > 64 * 1024 * 1024:
+            continue
+        try:
+            ga = sa(s)
+            jbuf = zeros(sz, 'b')
+            currentProgram.getMemory().getBytes(ga, jbuf)
+            b = bytearray(sz)
+            for i in range(sz):
+                v = int(jbuf[i])
+                if v < 0:
+                    v += 256
+                b[i] = v
+            buffers.append((s, sz, b, n))
+        except Exception as ex:
+            print("[-] load block %s failed: %s" % (n, str(ex)))
+    return buffers
+
+
+def find_all_xrefs_to_targets(target_set, buffers):
+    """Single pass over all exec blocks. Collect ADRP+ADD refs to any target."""
+    results = {}
+    for s, sz, buf, name in buffers:
         addr = s
-        while addr < e - 8:
-            b0 = read_u32(addr)
-            b1 = read_u32(addr + 4)
-            if b0 is None or b1 is None:
-                addr += 4
-                continue
+        end = s + sz
+        i = 0
+        while i + 8 <= sz:
+            b0 = buf[i] | (buf[i+1] << 8) | (buf[i+2] << 16) | (buf[i+3] << 24)
+            b1 = buf[i+4] | (buf[i+5] << 8) | (buf[i+6] << 16) | (buf[i+7] << 24)
             if (b0 & 0x9F000000) == 0x90000000:
                 rd = b0 & 0x1F
                 immlo = (b0 >> 29) & 3
@@ -250,12 +272,11 @@ def find_string_xrefs(target_addr, max_hits=8):
                     imm12 = (b1 >> 10) & 0xFFF
                     if rn == rd and rd2 == rd:
                         resolved = (page + imm12) & 0xFFFFFFFFFFFFFFFF
-                        if resolved == target:
-                            out.append(addr)
-                            if len(out) >= max_hits:
-                                return out
+                        if resolved in target_set:
+                            results.setdefault(resolved, []).append(addr)
             addr += 4
-    return out
+            i += 4
+    return results
 
 
 def find_string_occurrences():
@@ -323,9 +344,8 @@ def extract_mem(raw):
 
 
 def main():
-    print("=== final_recon.py ===")
+    print("=== final_recon.py (fast) ===")
     lines = []
-    out_json = {}
 
     lines.append("=== PROGRAM ===")
     lines.append("name = %s" % currentProgram.getName())
@@ -333,24 +353,41 @@ def main():
     lines.append("max  = %s" % fmt(currentProgram.getMemory().getMaxAddress().getOffset()))
     lines.append("")
 
+    # 1. Strings
     print("[+] locating strings...")
     str_hits = find_string_occurrences()
     lines.append("=== STRING HITS ===")
+    target_set = set()
     for key, hits in str_hits.items():
         lines.append("--- %s ---" % key)
         for a in hits:
             blk = inblk(a)
             lines.append("  str @ %s  [%s]" % (fmt(a), blk[2] if blk else "?"))
+            target_set.add(_u(a))
     lines.append("")
 
-    print("[+] resolving xrefs via ADRP+ADD...")
-    lines.append("=== XREF RESOLUTION (ADRP+ADD) ===")
+    # 2. Load text once
+    print("[+] loading __text into memory...")
+    buffers = load_text_to_memory()
+    total_mb = sum(sz for _, sz, _, _ in buffers) / (1024.0 * 1024.0)
+    print("[+] loaded %d blocks, %.1f MB" % (len(buffers), total_mb))
+    lines.append("=== TEXT BUFFER ===")
+    lines.append("blocks = %d, total = %.1f MB" % (len(buffers), total_mb))
+    lines.append("")
+
+    # 3. Single pass
+    print("[+] single-pass xref scan over %d targets..." % len(target_set))
+    xref_map = find_all_xrefs_to_targets(target_set, buffers)
+    print("[+] found refs to %d targets" % len(xref_map))
+
+    lines.append("=== XREFS (single-pass) ===")
     func_candidates = {}
     for key, hits in str_hits.items():
+        lines.append("--- %s ---" % key)
         for str_addr in hits:
-            xrefs = find_string_xrefs(str_addr, max_hits=8)
-            lines.append("--- %s @ %s : %d xrefs ---" % (key, fmt(str_addr), len(xrefs)))
-            for pc in xrefs:
+            key_refs = xref_map.get(_u(str_addr), [])
+            lines.append("  str %s -> %d refs" % (fmt(str_addr), len(key_refs)))
+            for pc in key_refs[:8]:
                 blk = inblk(pc)
                 f = find_func_by_addr(pc)
                 fn = str(f.getName()) if f is not None else "?"
@@ -361,7 +398,8 @@ def main():
                     func_candidates.setdefault(fe, set()).add(key)
     lines.append("")
 
-    lines.append("=== CANDIDATE FUNCTIONS (by needle refs) ===")
+    # 4. Rank
+    lines.append("=== CANDIDATE FUNCTIONS ===")
     ranked = sorted(func_candidates.items(), key=lambda kv: -len(kv[1]))
     for fe, keys in ranked[:12]:
         f = find_func_by_addr(fe)
@@ -374,9 +412,10 @@ def main():
             fmt(fe), nm, sz, ",".join(sorted(keys))))
     lines.append("")
 
+    # 5. Top candidate dump
     if ranked:
         top_fe = ranked[0][0]
-        lines.append("=== TOP CANDIDATE FULL DUMP @ %s ===" % fmt(top_fe))
+        lines.append("=== TOP CANDIDATE @ %s ===" % fmt(top_fe))
         f = find_func_by_addr(top_fe)
         if f is not None:
             try:
@@ -385,15 +424,14 @@ def main():
                 sz = 0
             lines.append("size = 0x%X" % sz)
 
-            lines.append("--- DISASM (interesting ldr/str 0x20..0x400) ---")
+            lines.append("--- DISASM (ldr/str 0x20..0x400) ---")
             for pc, raw, txt in disasm_func(f, 500):
                 r = extract_mem(raw)
                 if r is None:
                     continue
                 kind, base, imm = r
                 if 0x20 <= imm <= 0x400:
-                    lines.append("  %s  %-8s  [x%-2d, #0x%X]  %s" % (
-                        fmt(pc), kind, base, imm, txt))
+                    lines.append("  %s  %-8s  [x%-2d, #0x%X]" % (fmt(pc), kind, base, imm))
 
             lines.append("")
             lines.append("--- DECOMPILE ---")
@@ -401,7 +439,8 @@ def main():
                 lines.append(l)
         lines.append("")
 
-    lines.append("=== KALLOC_TYPE_VAR (flow alloc) @ %s ===" % fmt(FLOW_KALLOC_TYPE_VAR))
+    # 6. kalloc_type_var
+    lines.append("=== KALLOC_TYPE_VAR @ %s ===" % fmt(FLOW_KALLOC_TYPE_VAR))
     blk = inblk(FLOW_KALLOC_TYPE_VAR)
     if blk:
         lines.append("block = %s" % blk[2])
@@ -410,6 +449,7 @@ def main():
             lines.append("  +0x%02X: %s" % (off, fmt(v) if v is not None else "err"))
     lines.append("")
 
+    # 7. ifnet globals
     lines.append("=== IFNET ARRAY GLOBALS ===")
     for name, addr in IFNET_ARRAY_GLOBALS:
         v = read_u64(addr)
@@ -418,11 +458,12 @@ def main():
             name, fmt(addr), blk[2] if blk else "?", fmt(v) if v is not None else "err"))
     lines.append("")
 
-    lines.append("=== NECP FUNCTIONS (mem ops 0x20..0x400) ===")
+    # 8. NECP funcs
+    lines.append("=== NECP FUNCTIONS ===")
     for name, addr in NECP_FUNCS:
         f = find_func_by_addr(addr)
         if f is None:
-            lines.append("--- %s @ %s : NO FUNCTION" % (name, fmt(addr)))
+            lines.append("--- %s : NO FUNCTION" % name)
             continue
         entry = _u(f.getEntryPoint().getOffset())
         try:
@@ -444,6 +485,7 @@ def main():
             lines.append("  %s  %-8s  [x%-2d, #0x%X]" % (fmt(pc), kind, base, imm))
         lines.append("")
 
+    # 9. Validate
     lines.append("=== VALIDATE KERNEL OFFSETS ===")
     ok = 0
     fail = 0
@@ -475,13 +517,7 @@ def main():
         lines.append("  %-30s +0x%X" % (name, imm))
     lines.append("")
 
-    lines.append("=== VERDICT ===")
-    if ranked:
-        lines.append("Top candidate function: %s" % fmt(ranked[0][0]))
-        lines.append("Check disasm section above for ldr [xN, #0x20/0x68/0x70/0x88]")
-        lines.append("with base = x19..x24 — these are flow struct field accessors.")
-    lines.append("")
-
+    # write
     try:
         with open(OUT, "w") as fh:
             for l in lines:
