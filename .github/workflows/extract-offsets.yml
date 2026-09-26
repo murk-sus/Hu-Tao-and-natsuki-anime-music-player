@@ -82,7 +82,7 @@ jobs:
         id: cache-symbolicator
         with:
           path: ${{ github.workspace }}/symbolicator
-          key: symbolicator-v7
+          key: symbolicator-v8
 
       - if: steps.cache-symbolicator.outputs.cache-hit != 'true'
         name: Clone symbolicator
@@ -94,66 +94,28 @@ jobs:
 
       - name: Inspect symbolicator 27.0
         run: |
-          set -uo pipefail
           ROOT="$GITHUB_WORKSPACE/symbolicator/kernel"
           test -d "$ROOT" || { echo "::error::no kernel dir"; exit 1; }
-          echo "=== available versions ==="
+          echo "=== versions ==="
           ls -1 "$ROOT"
           echo ""
-          echo "=== 27.0 detail ==="
+          echo "=== 27.0 contents ==="
           if [ -d "$ROOT/27.0" ]; then
-            ls -la "$ROOT/27.0" || true
-            if [ -d "$ROOT/27.0/kexts" ]; then
-              N=$(find "$ROOT/27.0/kexts" -maxdepth 1 -type f -name "*.json" | wc -l)
-              echo "kexts json count: $N"
-              echo "first 20:"
-              find "$ROOT/27.0/kexts" -maxdepth 1 -type f -name "*.json" 2>/dev/null | sort | head -20
+            ls -la "$ROOT/27.0" 2>&1 | head -20 || true
+            echo ""
+            if [ -f "$ROOT/27.0/xnu.json" ]; then
+              echo "xnu.json: $(wc -c < "$ROOT/27.0/xnu.json") bytes"
             else
-              echo "NO kexts/ in 27.0"
-              echo "flat json count: $(find "$ROOT/27.0" -maxdepth 1 -type f -name "*.json" | wc -l)"
+              echo "no xnu.json"
+            fi
+            if [ -d "$ROOT/27.0/kexts" ]; then
+              N=$(find "$ROOT/27.0/kexts" -maxdepth 1 -type f -name "*.json" 2>/dev/null | wc -l)
+              echo "kexts json: $N"
             fi
           else
-            echo "NO 27.0 dir"
+            echo "NO 27.0"
           fi
-
-      - id: sigs
-        name: Pick signature dir 27.0 only
-        run: |
-          set -uo pipefail
-          ROOT="$GITHUB_WORKSPACE/symbolicator/kernel"
-          test -d "$ROOT" || { echo "::error::no kernel dir"; exit 1; }
-
-          SIGDIR="$ROOT/27.0"
-          if [ ! -d "$SIGDIR" ]; then
-            echo "::error::no 27.0 dir in symbolicator"
-            echo "SIG_PATH=" >> "$GITHUB_ENV"
-            echo "SIG_VER=none" >> "$GITHUB_ENV"
-            exit 0
-          fi
-
-          KEXTS="$SIGDIR/kexts"
-          if [ -d "$KEXTS" ]; then
-            N=$(find "$KEXTS" -maxdepth 1 -type f -name "*.json" | wc -l)
-            if [ "$N" -gt 0 ]; then
-              echo "SIG_PATH=$KEXTS" >> "$GITHUB_ENV"
-              echo "SIG_VER=27.0" >> "$GITHUB_ENV"
-              echo "picked kexts: $KEXTS ($N json)"
-              exit 0
-            fi
-            echo "kexts dir exists but empty"
-          fi
-
-          N_FLAT=$(find "$SIGDIR" -maxdepth 1 -type f -name "*.json" | wc -l)
-          if [ "$N_FLAT" -gt 0 ]; then
-            echo "SIG_PATH=$SIGDIR" >> "$GITHUB_ENV"
-            echo "SIG_VER=27.0-flat" >> "$GITHUB_ENV"
-            echo "picked flat: $SIGDIR ($N_FLAT json)"
-            exit 0
-          fi
-
-          echo "::warning::27.0 exists but no json files (no kexts, no flat)"
-          echo "SIG_PATH=" >> "$GITHUB_ENV"
-          echo "SIG_VER=27.0-empty" >> "$GITHUB_ENV"
+          exit 0
 
       - uses: actions/cache@v4
         id: cache-kernelcache
@@ -201,12 +163,11 @@ jobs:
         id: cache-symbols
         with:
           path: ${{ github.workspace }}/symbols.json
-          key: symbols-24A437-27.0-v8
+          key: symbols-24A437-27.0-v9
 
       - name: Symbolicate 27.0
         if: steps.cache-symbols.outputs.cache-hit != 'true'
         run: |
-          set -uo pipefail
           OUT="$GITHUB_WORKSPACE/symbols.json"
           echo "[]" > "$OUT"
 
@@ -218,14 +179,14 @@ jobs:
             SIG="$1"
             TAG="$2"
             if [ -z "$SIG" ]; then
-              echo "--- skip [$TAG]: empty path"
+              echo "--- skip [$TAG]: empty"
               return 1
             fi
             if [ ! -e "$SIG" ]; then
-              echo "--- skip [$TAG]: not exists"
+              echo "--- skip [$TAG]: not exists $SIG"
               return 1
             fi
-            echo "--- [$TAG] sig=$SIG"
+            echo "--- try [$TAG] sig=$SIG"
             ipsw kernel symbolicate --signatures "$SIG" --json "$KERNEL" \
               > /tmp/sym_out.txt 2>/tmp/sym_err.txt
             RC=$?
@@ -233,11 +194,11 @@ jobs:
             echo "  rc=$RC bytes=$SZ"
             if [ -s /tmp/sym_err.txt ]; then
               echo "  stderr (head):"
-              head -8 /tmp/sym_err.txt | sed 's/^/    /'
+              head -8 /tmp/sym_err.txt 2>/dev/null | sed 's/^/    /' || true
             fi
             if [ -s /tmp/sym_out.txt ]; then
               echo "  stdout (head 200):"
-              head -c 200 /tmp/sym_out.txt | sed 's/^/    /'
+              head -c 200 /tmp/sym_out.txt 2>/dev/null | sed 's/^/    /' || true
               echo ""
             fi
             if [ -s /tmp/sym_out.txt ] && jq empty /tmp/sym_out.txt 2>/dev/null; then
@@ -252,32 +213,31 @@ jobs:
             return 1
           }
 
-          echo "SIG_PATH=$SIG_PATH"
+          SIG_ROOT="$GITHUB_WORKSPACE/symbolicator/kernel/27.0"
 
-          if [ -n "$SIG_PATH" ]; then
-            run_sign "$SIG_PATH" "27.0-primary" || true
-          fi
+          echo "=== [1] primary: full 27.0 dir (xnu + kexts) ==="
+          run_sign "$SIG_ROOT" "27.0-full" || true
 
-          if [ "$(count_entries "$OUT")" = "0" ] && [ -d "$GITHUB_WORKSPACE/symbolicator/kernel/27.0/kexts" ]; then
+          if [ "$(count_entries "$OUT")" = "0" ]; then
             echo ""
-            echo "=== fallback A: 27.0/kexts hardcoded ==="
-            run_sign "$GITHUB_WORKSPACE/symbolicator/kernel/27.0/kexts" "27.0-kexts" || true
-          fi
-
-          if [ "$(count_entries "$OUT")" = "0" ] && [ -d "$GITHUB_WORKSPACE/symbolicator/kernel/27.0" ]; then
-            echo ""
-            echo "=== fallback B: 27.0 flat ==="
-            run_sign "$GITHUB_WORKSPACE/symbolicator/kernel/27.0" "27.0-flat" || true
+            echo "=== [2] xnu.json only ==="
+            run_sign "$SIG_ROOT/xnu.json" "27.0-xnu" || true
           fi
 
           if [ "$(count_entries "$OUT")" = "0" ]; then
             echo ""
-            echo "=== fallback C: ipsw builtin tables (no --signatures) ==="
+            echo "=== [3] kexts only ==="
+            run_sign "$SIG_ROOT/kexts" "27.0-kexts" || true
+          fi
+
+          if [ "$(count_entries "$OUT")" = "0" ]; then
+            echo ""
+            echo "=== [4] ipsw builtin tables ==="
             ipsw kernel symbolicate --json "$KERNEL" > /tmp/sym_out.txt 2>/tmp/sym_err.txt
             RC=$?
             echo "  rc=$RC bytes=$(wc -c < /tmp/sym_out.txt 2>/dev/null || echo 0)"
             if [ -s /tmp/sym_err.txt ]; then
-              head -8 /tmp/sym_err.txt | sed 's/^/    /'
+              head -8 /tmp/sym_err.txt 2>/dev/null | sed 's/^/    /' || true
             fi
             if [ -s /tmp/sym_out.txt ] && jq empty /tmp/sym_out.txt 2>/dev/null; then
               N=$(count_entries /tmp/sym_out.txt)
@@ -298,18 +258,18 @@ jobs:
           echo ""
           echo "=== FINAL: bytes=$(wc -c < "$OUT") entries=$FINAL ==="
           if [ "$FINAL" = "0" ]; then
-            echo "::warning::no 27.0 symbols - Ghidra will use hardcoded addresses only"
+            echo "::warning::no symbols"
           fi
           echo ""
           echo "=== first 800 bytes ==="
-          head -c 800 "$OUT" || true
+          head -c 800 "$OUT" 2>/dev/null || true
           echo ""
+          exit 0
 
       - name: Validate symbols.json
         if: always()
         continue-on-error: true
         run: |
-          set -uo pipefail
           F="$GITHUB_WORKSPACE/symbols.json"
           if [ ! -f "$F" ]; then
             echo "::warning::symbols.json missing"
@@ -322,6 +282,7 @@ jobs:
           TYPE=$(jq -r 'type' "$F")
           CNT=$(jq 'if type == "array" then length elif type == "object" then (keys | length) else 0 end' "$F")
           echo "top-level: $TYPE, entries: $CNT"
+          exit 0
 
       - uses: actions/cache@v4
         id: cache-project
@@ -348,7 +309,7 @@ jobs:
           if [ -f "$SYMBOLS_JSON" ]; then
             SZ=$(wc -c < "$SYMBOLS_JSON")
             echo "  size=$SZ bytes"
-            head -c 200 "$SYMBOLS_JSON" || true
+            head -c 200 "$SYMBOLS_JSON" 2>/dev/null || true
             echo ""
           else
             echo "  not found"
@@ -383,11 +344,10 @@ jobs:
         if: always()
         continue-on-error: true
         run: |
-          set -uo pipefail
           echo "=== result.txt ==="
           if [ -s result.txt ]; then
             echo "lines: $(wc -l < result.txt)"
-            head -30 result.txt
+            head -30 result.txt 2>/dev/null || true
           else
             echo "::warning::result.txt empty"
           fi
@@ -395,13 +355,14 @@ jobs:
           echo "=== offsets.json ==="
           if [ -s offsets.json ] && jq empty offsets.json 2>/dev/null; then
             echo "valid, bytes=$(wc -c < offsets.json)"
-            jq -r 'if type=="object" then keys[] else . end' offsets.json 2>/dev/null | head -30
+            jq -r 'if type=="object" then keys[] else . end' offsets.json 2>/dev/null | head -30 || true
           else
             echo "::warning::offsets.json empty/invalid"
           fi
           echo ""
           echo "=== kernel.log tail ==="
           tail -n 40 kernel.log 2>/dev/null || echo "(no kernel.log)"
+          exit 0
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -420,15 +381,10 @@ jobs:
       - name: Cleanup workspace
         if: always()
         run: |
-          set +e
-          rm -rf "$GITHUB_WORKSPACE/ipsw"           2>/dev/null
-          rm -rf "$GITHUB_WORKSPACE/kernelcache"    2>/dev/null
-          rm -rf "$GITHUB_WORKSPACE/symbolicator"   2>/dev/null
-          rm -rf "$GITHUB_WORKSPACE/ghidra"         2>/dev/null
-          rm -rf "$GITHUB_WORKSPACE/ghidra_project" 2>/dev/null
-          rm -f  /tmp/g.zip /tmp/ipsw.tar.gz 2>/dev/null
-          rm -f  /tmp/sym_out.txt /tmp/sym_err.txt /tmp/dl.log /tmp/files.txt 2>/dev/null
-          rm -rf /tmp/sigs /tmp/sig.tar.gz 2>/dev/null
-          rm -rf "$HOME/.config/ghidra"             2>/dev/null
-          rm -rf /var/tmp/runner-ghidra             2>/dev/null
+          rm -rf "$GITHUB_WORKSPACE/ipsw" "$GITHUB_WORKSPACE/kernelcache" \
+                 "$GITHUB_WORKSPACE/symbolicator" "$GITHUB_WORKSPACE/ghidra" \
+                 "$GITHUB_WORKSPACE/ghidra_project"
+          rm -f /tmp/g.zip /tmp/ipsw.tar.gz /tmp/sym_out.txt /tmp/sym_err.txt /tmp/dl.log
+          rm -rf /tmp/sigs /tmp/sig.tar.gz
+          rm -rf "$HOME/.config/ghidra" /var/tmp/runner-ghidra
           exit 0
