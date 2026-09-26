@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # @runtime Jython
-# kernel_rw.py v43 - parameter discovery via LocalSymbolMap
+# kernel_rw.py v44 - taint via LocalSymbolMap, high limits
 
 import os
 import sys
@@ -27,11 +27,11 @@ WS = os.environ.get("GITHUB_WORKSPACE", "/tmp")
 OUT = os.path.join(WS, "result.txt")
 SEP = "=" * 72
 
-MAX_DECOMPILE_SEC = 30
-MAX_ANALYZED = 800
-MAX_WORKLIST = 3000
-TOTAL_BUDGET_SEC = 2400
-MAX_DEPTH = 8
+MAX_DECOMPILE_SEC = 45
+MAX_ANALYZED = 20000
+MAX_WORKLIST = 50000
+TOTAL_BUDGET_SEC = 14400
+MAX_DEPTH = 12
 
 SINKS = [
     ("kalloc_type", 0xFFFFFFF00A200988, 1),
@@ -190,7 +190,6 @@ def vn_key(vn):
 
 
 def get_param_keys(hf):
-    """Use LocalSymbolMap to find real SSA varnodes for parameters."""
     result = {}
     try:
         lsm = hf.getLocalSymbolMap()
@@ -202,7 +201,7 @@ def get_param_keys(hf):
         count = 0
         while syms.hasNext():
             count += 1
-            if count > 200:
+            if count > 500:
                 break
             sym = syms.next()
             try:
@@ -249,7 +248,7 @@ def propagate_taint(hf, tainted_param_idx, diag):
             tainted.add(k)
 
     if not tainted:
-        diag["seed_empty"] = True
+        diag["seed_count"] = 0
         return tainted
 
     diag["seed_count"] = len(tainted)
@@ -263,7 +262,7 @@ def propagate_taint(hf, tainted_param_idx, diag):
 
     changed = True
     iters = 0
-    while changed and iters < 200:
+    while changed and iters < 300:
         changed = False
         iters += 1
         for op in all_ops:
@@ -305,7 +304,7 @@ def resolve_call_target(op):
     return None
 
 
-def analyze_source(start_addr, start_name, L, seen_states):
+def analyze_source(start_addr, start_name, L):
     worklist = [(start_addr, frozenset([0, 1, 2, 3, 4, 5, 6, 7]), 0)]
     findings = []
     local_analyzed = set()
@@ -315,26 +314,23 @@ def analyze_source(start_addr, start_name, L, seen_states):
             L.append("    analyzed limit reached")
             break
         if time.time() - START_TS > TOTAL_BUDGET_SEC:
-            L.append("    budget exceeded, stopping")
+            L.append("    budget exceeded")
             break
 
         addr, tainted_idx, depth = worklist.pop(0)
         key = (addr, tainted_idx)
-        if key in seen_states or key in local_analyzed:
+        if key in local_analyzed:
             continue
-        seen_states.add(key)
         local_analyzed.add(key)
 
         f = get_func(addr)
         if f is None:
             f = ensure_function(addr)
         if f is None:
-            L.append("    [%s @ %s d=%d] no function" % (start_name, fmt(addr), depth))
             continue
 
         hf = decompile(f)
         if hf is None:
-            L.append("    [%s @ %s d=%d] no highfunction" % (start_name, fmt(addr), depth))
             continue
 
         diag = {}
@@ -345,7 +341,7 @@ def analyze_source(start_addr, start_name, L, seen_states):
         except Exception:
             fname = "?"
 
-        L.append("    [%s @ %s d=%d] params_found=%s cats=%s ops=%s seed=%s tainted=%d iters=%s" % (
+        L.append("    [%s @ %s d=%d] params=%s cats=%s ops=%s seed=%s tainted=%d iters=%s" % (
             fname, fmt(addr), depth,
             diag.get("params_found", "?"),
             diag.get("param_cats", "?"),
@@ -392,7 +388,7 @@ def analyze_source(start_addr, start_name, L, seen_states):
                                 "in_func": fname,
                                 "in_func_addr": fmt(addr),
                                 "depth": depth,
-                                "via_param": start_name,
+                                "via": start_name,
                             })
                 except Exception:
                     pass
@@ -413,7 +409,7 @@ def analyze_source(start_addr, start_name, L, seen_states):
                 if callee is not None:
                     worklist.append((target, frozenset(new_tainted), depth + 1))
                     if len(worklist) > MAX_WORKLIST:
-                        L.append("    worklist limit reached")
+                        L.append("    worklist limit")
                         break
 
     return findings
@@ -427,47 +423,35 @@ def main():
     def w(s):
         L.append(s)
 
-    log("=== kernel_rw.py v43 ===")
+    log("=== kernel_rw.py v44 ===")
     log("program: %s" % currentProgram.getName())
-    log("disasm=%s create=%s" % (HAS_DISASM, HAS_CREATE))
 
     w("=== PROGRAM ===")
     w("name = %s" % currentProgram.getName())
     w("has_disasm=%s has_create=%s" % (HAS_DISASM, HAS_CREATE))
     w("SOURCES: %d" % len(SOURCES))
     w("SINKS: %s" % ",".join([s[0] for s in SINKS]))
-    w("MAX_DEPTH=%d MAX_ANALYZED=%d BUDGET=%ds" % (MAX_DEPTH, MAX_ANALYZED, TOTAL_BUDGET_SEC))
+    w("LIMITS: depth=%d analyzed=%d worklist=%d budget=%ds" % (
+        MAX_DEPTH, MAX_ANALYZED, MAX_WORKLIST, TOTAL_BUDGET_SEC))
     w("")
 
     all_findings = []
-    seen_states = set()
 
     for idx, (addr, name) in enumerate(SOURCES):
         log("[%d/%d] %s" % (idx + 1, len(SOURCES), name))
-        try:
-            f = get_func(addr)
-            if f is None:
-                f = ensure_function(addr)
-            if f is None:
-                w("")
-                w(SEP)
-                w("### SOURCE %s @ %s" % (name, fmt(addr)))
-                w("  no function")
-                continue
-        except Exception as ex:
-            w("")
-            w(SEP)
-            w("### SOURCE %s @ %s" % (name, fmt(addr)))
-            w("  exception %s" % ex)
-            continue
-
         w("")
         w(SEP)
         w("### SOURCE %s @ %s" % (name, fmt(addr)))
         w(SEP)
 
         try:
-            findings = analyze_source(addr, name, L, seen_states)
+            f = get_func(addr)
+            if f is None:
+                f = ensure_function(addr)
+            if f is None:
+                w("  no function")
+                continue
+            findings = analyze_source(addr, name, L)
         except Exception as ex:
             findings = []
             L.append("  exception %s" % ex)
@@ -492,8 +476,8 @@ def main():
     for sk in sorted(by_sink.keys()):
         w("  %s: %d" % (sk, len(by_sink[sk])))
         for fd in by_sink[sk]:
-            w("    from %-28s sink @ %s  in %s  d=%d" % (
-                fd["via_param"], fd["pc"], fd["in_func"], fd["depth"]))
+            w("    %-28s -> sink @ %s in %s d=%d" % (
+                fd["via"], fd["pc"], fd["in_func"], fd["depth"]))
 
     try:
         fh = open(OUT, "w")
