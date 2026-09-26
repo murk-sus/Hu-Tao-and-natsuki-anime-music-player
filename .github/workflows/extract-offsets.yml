@@ -10,7 +10,7 @@ permissions:
 jobs:
   offsets:
     runs-on: ubuntu-24.04
-    timeout-minutes: 300
+    timeout-minutes: 360
 
     steps:
       - name: Checkout
@@ -22,7 +22,6 @@ jobs:
           java-version: "25"
           distribution: temurin
 
-      # ---------- Ghidra ----------
       - name: Cache Ghidra
         id: cache-ghidra
         uses: actions/cache@v4
@@ -47,7 +46,6 @@ jobs:
         shell: bash
         run: echo "GHIDRA_ROOT=$GITHUB_WORKSPACE/ghidra" >> "$GITHUB_ENV"
 
-      # ---------- ipsw ----------
       - name: Cache ipsw
         id: cache-ipsw
         uses: actions/cache@v4
@@ -64,7 +62,6 @@ jobs:
           tar -C /usr/local/bin -xzf /tmp/ipsw.tar.gz ipsw
           ipsw version
 
-      # ---------- symbolicator ----------
       - name: Cache symbolicator
         id: cache-symbolicator
         uses: actions/cache@v4
@@ -78,12 +75,10 @@ jobs:
         run: |
           set -euo pipefail
           git clone --depth 1 "https://github.com/blacktop/symbolicator.git" "$GITHUB_WORKSPACE/symbolicator"
-          echo "=== symbolicator/kernel contents ==="
-          ls -la "$GITHUB_WORKSPACE/symbolicator/kernel" | head -20
+          echo "=== Checking if iOS 27 signatures exist ==="
+          ls -la "$GITHUB_WORKSPACE/symbolicator/kernel/" | head -30
+          find "$GITHUB_WORKSPACE/symbolicator/kernel" -name "*13432*" -o -name "*27.*" | head
 
-      # ---------- kernelcache (главный кэш) ----------
-      # ВАЖНО: запятые в ключе кэша запрещены GitHub Actions
-      # iPhone14,5 -> iPhone14_5
       - name: Cache kernelcache
         id: cache-kernelcache
         uses: actions/cache@v4
@@ -97,13 +92,8 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p ipsw kernelcache
-
           echo "=== Downloading IPSW (iPhone14,5 27.0 24A437) ==="
-          ipsw download ipsw \
-            --device iPhone14,5 \
-            --build 24A437 \
-            --output ipsw 2>&1 | tee /tmp/dl.log || true
-
+          ipsw download ipsw --device iPhone14,5 --build 24A437 --output ipsw 2>&1 | tee /tmp/dl.log || true
           IPSW=$(find ipsw -name "*.ipsw" -type f | head -n1)
           if [ -z "$IPSW" ]; then
             echo "FATAL: IPSW not downloaded"
@@ -111,20 +101,11 @@ jobs:
             exit 1
           fi
           ls -lh "$IPSW"
-
           echo "=== Extracting kernelcache ==="
           ipsw extract --kernel "$IPSW" --output kernelcache
-
-          echo "=== Listing extracted files BEFORE cleanup ==="
-          find kernelcache -type f -exec ls -lh {} \;
-
-          echo "=== Removing ALL non-kernelcache files ==="
-          # Удаляем всё, что НЕ является kernelcache (kernel.raw, sptm.raw и т.д.)
+          echo "=== Removing non-kernelcache files ==="
           find kernelcache -type f ! -name "kernelcache*" -print -delete
-          # Чистим пустые папки
           find kernelcache -type d -empty -delete
-
-          echo "=== Listing extracted files AFTER cleanup ==="
           find kernelcache -type f -exec ls -lh {} \;
 
       - name: Resolve kernelcache path
@@ -133,38 +114,14 @@ jobs:
           set -euo pipefail
           KERNEL=$(find "$GITHUB_WORKSPACE/kernelcache" -type f -name "kernelcache*" | head -n1)
           if [ -z "$KERNEL" ]; then
-            echo "FATAL: kernelcache not found after cleanup"
-            ls -la "$GITHUB_WORKSPACE/kernelcache"
+            echo "FATAL: kernelcache not found"
             exit 1
           fi
           echo "KERNEL=$KERNEL" >> "$GITHUB_ENV"
           echo "KERNEL_NAME=$(basename "$KERNEL")" >> "$GITHUB_ENV"
-          echo "=== File type check ==="
           file "$KERNEL"
           ls -lh "$KERNEL"
 
-      # ---------- декомпрессия kernelcache (если нужна) ----------
-      - name: Decompress kernelcache if needed
-        shell: bash
-        run: |
-          set -euo pipefail
-          # Проверяем, сжат ли kernelcache
-          if file "$KERNEL" | grep -q "LZFSE\|compressed"; then
-            echo "=== Kernelcache is compressed, decompressing ==="
-            ipsw kernel dec "$KERNEL" --output kernelcache_decompressed
-            DECOMP=$(find "$GITHUB_WORKSPACE/kernelcache_decompressed" -type f -name "kernelcache*" | head -n1)
-            if [ -n "$DECOMP" ]; then
-              echo "KERNEL=$DECOMP" >> "$GITHUB_ENV"
-              echo "KERNEL_NAME=$(basename "$DECOMP")" >> "$GITHUB_ENV"
-              echo "=== Decompressed kernelcache ==="
-              file "$DECOMP"
-              ls -lh "$DECOMP"
-            fi
-          else
-            echo "=== Kernelcache is already decompressed ==="
-          fi
-
-      # ---------- символикация ----------
       - name: Cache symbols
         id: cache-symbols
         uses: actions/cache@v4
@@ -172,33 +129,37 @@ jobs:
           path: ${{ github.workspace }}/symbols.json
           key: symbols-${{ hashFiles('kernelcache/**') }}
 
-      - name: Symbolicate kernel
+      - name: Symbolicate kernel (with built-in fallback)
         if: steps.cache-symbols.outputs.cache-hit != 'true'
         shell: bash
         run: |
           set -uo pipefail
           SIGDIR="$GITHUB_WORKSPACE/symbolicator/kernel"
-          echo "=== Signatures dir: $SIGDIR ==="
-          ls -la "$SIGDIR" | head -10
 
-          echo "=== Step 1: signature-based symbolication ==="
-          ipsw kernel sym "$KERNEL" --json --signatures "$SIGDIR" 2>&1 | tee /tmp/sym1.log || true
+          echo "=== Step 1: Signature-based symbolication ==="
+          ipsw kernel symbolicate --signatures "$SIGDIR" --json "$KERNEL" 2>&1 | tee /tmp/sym1.log || true
 
-          echo "=== Step 2: C++ runtime recovery ==="
-          ipsw kernel cpp "$KERNEL" --json 2>&1 | tee /tmp/sym2.log || true
+          echo "=== Step 2: Built-in symbol extraction (no signatures needed) ==="
+          ipsw kernel syscall "$KERNEL" --json > /tmp/syscalls.json 2>&1 || true
+          ipsw kernel mig "$KERNEL" --json > /tmp/mig.json 2>&1 || true
 
           echo "=== Collecting JSON outputs ==="
           find . -type f -name "*symbols*.json" | head -20
           SRC=$(find . -type f -name "*symbols*.json" | head -n1)
           if [ -z "$SRC" ] || [ ! -f "$SRC" ]; then
-            echo "No symbols JSON produced"
-            echo "[]" > "$GITHUB_WORKSPACE/symbols.json"
+            echo "No symbols JSON from signature engine"
+            # Пробуем извлечь из встроенных таблиц
+            if [ -s /tmp/syscalls.json ]; then
+              echo "Using syscalls.json as fallback"
+              cp /tmp/syscalls.json "$GITHUB_WORKSPACE/symbols.json"
+            else
+              echo "[]" > "$GITHUB_WORKSPACE/symbols.json"
+            fi
           else
             cp "$SRC" "$GITHUB_WORKSPACE/symbols.json"
           fi
           echo "symbols.json size: $(wc -c < "$GITHUB_WORKSPACE/symbols.json") bytes"
 
-      # ---------- Ghidra project ----------
       - name: Cache ghidra project
         id: cache-project
         uses: actions/cache@v4
@@ -206,7 +167,7 @@ jobs:
           path: ${{ github.workspace }}/ghidra_project
           key: ghidra-project-${{ hashFiles('kernelcache/**') }}
 
-      - name: Warm run (cached project)
+      - name: Warm run
         id: warm
         if: steps.cache-project.outputs.cache-hit == 'true'
         continue-on-error: true
@@ -223,7 +184,7 @@ jobs:
             -scriptPath "$GITHUB_WORKSPACE/scripts" \
             2>&1 | tee kernel.log || true
 
-      - name: Cold run (fresh import)
+      - name: Cold run
         if: steps.cache-project.outputs.cache-hit != 'true' || steps.warm.outcome != 'success'
         continue-on-error: true
         shell: bash
@@ -264,6 +225,7 @@ jobs:
             offsets.json
             kernel.log
             symbols.json
+            syscalls.json
           retention-days: 30
           if-no-files-found: warn
           overwrite: true
