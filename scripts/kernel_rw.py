@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # @runtime Jython
-# kernel_rw.py v33 - sysent lookup + deep handlers + raw disasm fallback
+# kernel_rw.py v34 - no string concat, only percent format
 
 import os
 import sys
@@ -20,7 +20,6 @@ GLOBAL_SCAN_BUDGET_SEC = 120
 
 SYSENT_BASE = 0xFFFFFFF007C192A0
 SYSENT_STRIDE = 24
-SYSENT_COUNT = 558
 NECP_OPEN_IDX = 501
 NECP_ACTION_IDX = 502
 
@@ -148,7 +147,7 @@ def strip_pac(p):
     p = p & 0xFFFFFFFFFFFFFFFF
     if (p & 0xFFFFFFF000000000) == 0xFFFFFFF000000000:
         return p
-    return p & 0x0000000FFFFFFFFF | 0xFFFFFFF000000000
+    return (p & 0x0000000FFFFFFFFF) | 0xFFFFFFF000000000
 
 
 def get_func(addr):
@@ -174,7 +173,7 @@ def disassemble(addr):
         cmd = _DC(ga, None, True)
         cmd.applyTo(currentProgram)
     except Exception as e:
-        log("  disasm fail " + str(e))
+        log("  disasm fail %s" % e)
 
 
 def ensure_function(addr):
@@ -194,17 +193,17 @@ def ensure_function(addr):
                 ccmd = _CFC(ga)
                 ccmd.applyTo(currentProgram)
             except Exception as e:
-                log("  createFunctionCmd fail " + str(e))
+                log("  createFunctionCmd fail %s" % e)
         try:
             fm = currentProgram.getFunctionManager()
-            f = fm.createFunction(ga, "nk_" + ("%X" % addr))
+            f = fm.createFunction(ga, "nk_%X" % addr)
             if f is not None:
                 return f
         except Exception as e:
-            log("  fm.createFunction fail " + str(e))
+            log("  fm.createFunction fail %s" % e)
         return getFunctionAt(ga) or getFunctionContaining(ga)
     except Exception as e:
-        log("  ensure_function fail " + fmt(addr) + " " + str(e))
+        log("  ensure_function fail %s err=%s" % (fmt(addr), e))
         return None
 
 
@@ -263,7 +262,7 @@ def decompile(f, seconds=MAX_DECOMPILE_SEC):
             return ["(empty)"]
         return [line.rstrip() for line in c.getC().split("\n")]
     except Exception as e:
-        return ["(exception " + str(e) + ")"]
+        return ["(exception %s)" % e]
 
 
 def raw_disasm(addr, max_insn=400):
@@ -280,11 +279,11 @@ def raw_disasm(addr, max_insn=400):
             return out
         cnt = 0
         while insn is not None and cnt < max_insn:
-            out.append("  " + str(insn.getAddress()) + "  " + str(insn))
+            out.append("  %s  %s" % (insn.getAddress(), insn))
             insn = insn.getNext()
             cnt += 1
     except Exception as e:
-        out.append("(raw_disasm exception " + str(e) + ")")
+        out.append("(raw_disasm exception %s)" % e)
     return out
 
 
@@ -391,7 +390,7 @@ def global_bl_callers(target, max_hits=100, budget=GLOBAL_SCAN_BUDGET_SEC):
     start_ts = time.time()
     for s, e, name in blocks():
         if time.time() - start_ts > budget:
-            log("    (global scan budget exceeded, stopping)")
+            log("    global scan budget exceeded, stopping")
             break
         size = e - s + 1
         if size <= 0 or size > MAX_BLOCK_SIZE:
@@ -427,11 +426,11 @@ def dump_sysent(w):
     w(SEP)
     w("### SYSENT LOOKUP")
     w(SEP)
-    w("base = " + fmt(SYSENT_BASE) + " stride = " + str(SYSENT_STRIDE))
+    w("base = %s stride = %d" % (fmt(SYSENT_BASE), SYSENT_STRIDE))
     w("")
     for idx in [NECP_OPEN_IDX, NECP_ACTION_IDX, 500, 503]:
         entry = SYSENT_BASE + idx * SYSENT_STRIDE
-        w("--- sysent[" + str(idx) + "] @ " + fmt(entry))
+        w("--- sysent[%d] @ %s" % (idx, fmt(entry)))
         for off in range(0, SYSENT_STRIDE, 8):
             v = read_u64(entry + off)
             if v is None:
@@ -441,7 +440,7 @@ def dump_sysent(w):
         p0 = read_u64(entry)
         if p0 is not None:
             func = strip_pac(p0)
-            w("  entry0 stripped = " + fmt(func))
+            w("  entry0 stripped = %s" % fmt(func))
             f = get_func(func)
             if f:
                 ent = _u(f.getEntryPoint().getOffset())
@@ -449,9 +448,9 @@ def dump_sysent(w):
                     sz = int(f.getBody().getNumAddresses())
                 except Exception:
                     sz = 0
-                w("  func = " + fmt(ent) + " size=0x%X" % sz)
+                w("  func = %s size=0x%X" % (fmt(ent), sz))
             else:
-                w("  func = no function at " + fmt(func))
+                w("  func = no function at %s" % fmt(func))
     w("")
 
 
@@ -461,21 +460,21 @@ def main():
     def w(s):
         L.append(s)
 
-    log("=== kernel_rw.py v33 ===")
-    log("program: " + currentProgram.getName())
-    log("disasm available: " + str(HAS_DISASM))
-    log("create cmd available: " + str(HAS_CREATE))
+    log("=== kernel_rw.py v34 ===")
+    log("program: %s" % currentProgram.getName())
+    log("disasm available: %s" % HAS_DISASM)
+    log("create cmd available: %s" % HAS_CREATE)
 
     w("=== PROGRAM ===")
-    w("name = " + currentProgram.getName())
-    w("has_disasm=" + str(HAS_DISASM) + " has_create=" + str(HAS_CREATE))
+    w("name = %s" % currentProgram.getName())
+    w("has_disasm=%s has_create=%s" % (HAS_DISASM, HAS_CREATE))
     w("")
 
     log("[0/4] sysent lookup")
     try:
         dump_sysent(w)
     except Exception as ex:
-        w("SYSENT EXCEPTION " + str(ex))
+        w("SYSENT EXCEPTION %s" % ex)
 
     log("[1/4] NECP sanity + ensure functions")
     w(SEP)
@@ -502,7 +501,7 @@ def main():
     log("[2/4] per-function analysis")
     total = len(TARGETS)
     for idx, (name, addr) in enumerate(TARGETS):
-        log("  [" + str(idx + 1) + "/" + str(total) + "] " + name)
+        log("  [%d/%d] %s" % (idx + 1, total, name))
         try:
             f = get_func(addr)
             if f is None:
@@ -514,7 +513,7 @@ def main():
                 sz = 0
             w("")
             w(SEP)
-            w("### " + name + "  entry=" + fmt(ent) + "  size=0x%X" % sz)
+            w("### %s  entry=%s  size=0x%X" % (name, fmt(ent), sz))
             w(SEP)
             if not f:
                 w("NO FUNCTION, raw disasm fallback:")
@@ -529,12 +528,12 @@ def main():
                     mark = ""
                     for sa2, sn in SINKS:
                         if e == sa2:
-                            mark = "  <== " + sn
+                            mark = "  <== %s" % sn
                             break
                     w("  %s  %-40s size=0x%X%s" % (fmt(e), n[:40], s2, mark))
                 w("")
             except Exception as ex:
-                w("CALLEES EXCEPTION " + str(ex))
+                w("CALLEES EXCEPTION %s" % ex)
 
             try:
                 w("BL CALLS IN BODY:")
@@ -543,14 +542,14 @@ def main():
                     hits = bl_to(f, sa2)
                     if hits:
                         any_hit = True
-                        w("  " + sn + " x" + str(len(hits)) + ":")
+                        w("  %s x%d:" % (sn, len(hits)))
                         for pc in hits:
-                            w("    " + fmt(pc))
+                            w("    %s" % fmt(pc))
                 if not any_hit:
                     w("  (none)")
                 w("")
             except Exception as ex:
-                w("BL CALLS EXCEPTION " + str(ex))
+                w("BL CALLS EXCEPTION %s" % ex)
 
             try:
                 susp = mem_ops(f)
@@ -560,13 +559,13 @@ def main():
                         w("    %s  %-8s  [x%-2d, #0x%X]" % (pc, kind, base, imm))
                     w("")
             except Exception as ex:
-                w("MEM OPS EXCEPTION " + str(ex))
+                w("MEM OPS EXCEPTION %s" % ex)
 
             try:
                 w("DECOMPILE:")
                 body = decompile(f)
                 for l in body:
-                    w("  " + l)
+                    w("  %s" % l)
                 w("")
                 if len(body) <= 1 and body[0].startswith("(failed"):
                     w("RAW DISASM FALLBACK:")
@@ -574,9 +573,9 @@ def main():
                         w(l)
                     w("")
             except Exception as ex:
-                w("DECOMPILE EXCEPTION " + str(ex))
+                w("DECOMPILE EXCEPTION %s" % ex)
         except Exception as ex:
-            w("FUNC EXCEPTION " + name + " " + str(ex))
+            w("FUNC EXCEPTION %s %s" % (name, ex))
             continue
 
     log("[3/4] global BL callers")
@@ -584,13 +583,13 @@ def main():
     w("### GLOBAL BL CALLERS")
     w(SEP)
     for name, addr in GLOBAL_CALLERS:
-        log("  " + name)
+        log("  %s" % name)
         w("")
-        w("--- callers of " + name + " @ " + fmt(addr))
+        w("--- callers of %s @ %s" % (name, fmt(addr)))
         try:
             hits = global_bl_callers(addr, 100)
         except Exception as ex:
-            w("  exception " + str(ex))
+            w("  exception %s" % ex)
             continue
         if not hits:
             w("  (none)")
@@ -607,21 +606,21 @@ def main():
         for l in L:
             fh.write(l + "\n")
         fh.close()
-        log("[+] wrote " + OUT)
-    except Exception as eOK:
-        log("[-] "UP + str(e))
+        log("[+] wrote %s" % OUT)
+    except Exception as e:
+        log("[-] write fail %s" % e)
 
-    log("**=== DONE — ===")
+    log("=== DONE ===")
 
 
-try н:
+try:
     main()
 except Exception as e:
-    log("[-] FATAL " + str(e))
+    log("[-] FATAL %s" % e)
     traceback.print_exc()
     try:
         fh = open(OUT, "w")
-        fh.write("FATAL: " + str(e) + "\n")
+        fh.write("FATAL: %s\n" % e)
         fh.write(traceback.format_exc())
         fh.close()
     except Exception:
