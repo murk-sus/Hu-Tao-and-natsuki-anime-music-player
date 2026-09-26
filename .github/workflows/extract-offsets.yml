@@ -44,12 +44,13 @@ jobs:
           unzip -q "$JYTHON_ZIP" -d "$GITHUB_WORKSPACE/ghidra/Ghidra/Extensions"
           rm -f /tmp/g.zip
 
-      - run: echo "GHIDRA_ROOT=$GITHUB_WORKSPACE/ghidra" >> "$GITHUB_ENV"
+      - name: Set GHIDRA_ROOT
+        run: echo "GHIDRA_ROOT=$GITHUB_WORKSPACE/ghidra" >> "$GITHUB_ENV"
 
       - name: Validate Ghidra
         run: |
           set -euo pipefail
-          echo "=== GHIDRA_ROOT=$GHIDRA_ROOT ==="
+          echo "GHIDRA_ROOT=$GHIDRA_ROOT"
           test -x "$GHIDRA_ROOT/support/analyzeHeadless"
           test -d "$GHIDRA_ROOT/Ghidra/Extensions/Jython"
           ls -la "$GHIDRA_ROOT/support/analyzeHeadless"
@@ -101,7 +102,7 @@ jobs:
           test -d "$ROOT"
           echo "=== доступные версии сигнатур ==="
           ls -1 "$ROOT"
-          echo "=== размер каждой версии ==="
+          echo "=== количество файлов в каждой версии ==="
           for d in "$ROOT"/*/; do
             echo "  $d: $(find "$d" -type f | wc -l) files"
           done
@@ -133,7 +134,7 @@ jobs:
             exit 1
           fi
           COUNT=$(find "$SIGDIR" -type f | wc -l)
-          echo "=== SIGDIR=$SIGDIR (files=$COUNT) ==="
+          echo "SIGDIR=$SIGDIR (files=$COUNT)"
           ls -la "$SIGDIR"
           if [ "$COUNT" -eq 0 ]; then
             echo "::error::Папка сигнатур пуста: $SIGDIR"
@@ -150,7 +151,7 @@ jobs:
           key: kernelcache-iPhone14_5-24A437-v4
 
       - if: steps.cache-kernelcache.outputs.cache-hit != 'true'
-        name: Download & extract kernelcache
+        name: Download and extract kernelcache
         run: |
           set -euo pipefail
           echo "=== kernelcache cache MISS ==="
@@ -166,14 +167,14 @@ jobs:
           rm -rf ipsw
 
       - id: kernel
-        name: Locate & validate kernel
+        name: Locate and validate kernel
         run: |
           set -euo pipefail
           KERNEL=$(find "$GITHUB_WORKSPACE/kernelcache" -type f -name "kernelcache*" | head -n1)
           echo "KERNEL=$KERNEL"
           test -n "$KERNEL"
           test -s "$KERNEL"
-          file "$KERNEL" | grep -qi "Mach-O" || { echo "::error::не Mach-O"; exit 1; }
+          file "$KERNEL" | grep -qi "Mach-O" || (echo "::error::не Mach-O"; exit 1)
           ls -la "$KERNEL"
           echo "KERNEL=$KERNEL" >> "$GITHUB_ENV"
           echo "KERNEL_NAME=$(basename "$KERNEL")" >> "$GITHUB_ENV"
@@ -182,7 +183,7 @@ jobs:
         run: |
           set -euo pipefail
           test -f "$GITHUB_WORKSPACE/scripts/kernel_rw.py"
-          python3 -c "import ast; ast.parse(open('$GITHUB_WORKSPACE/scripts/kernel_rw.py').read())"
+          python3 -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "$GITHUB_WORKSPACE/scripts/kernel_rw.py"
           echo "kernel_rw.py OK"
 
       # ==================== SYMBOLICATE ====================
@@ -200,13 +201,12 @@ jobs:
           KDIR="$(dirname "$KERNEL")"
           echo "[]" > "$OUT"
 
-          echo "=== [1] ipsw kernel symbolicate --signatures $SIG_VER --json ==="
+          echo "=== [1] ipsw kernel symbolicate --signatures $SIG_VER --json -v ==="
           ipsw kernel symbolicate --signatures "$SIGDIR" --json -v "$KERNEL" \
             > /tmp/sym_stdout.txt 2>&1 || true
           echo "stdout size: $(wc -c < /tmp/sym_stdout.txt 2>/dev/null || echo 0)"
           tail -n 40 /tmp/sym_stdout.txt || true
 
-          # ipsw пишет JSON рядом с kernelcache в файл <kernelname>.symbols.json
           echo "=== [2] поиск *.symbols.json в $KDIR ==="
           ls -la "$KDIR" || true
           FOUND=$(find "$KDIR" -name "*.symbols.json" -type f | head -n1)
@@ -215,39 +215,36 @@ jobs:
             cp "$FOUND" "$OUT"
           fi
 
-          if ! python3 -c "import json,sys; d=json.load(open('$OUT')); sys.exit(0 if d else 1)" 2>/dev/null; then
-            echo "::warning::symbols.json пустой — идём дальше без символов"
+          if ! jq empty "$OUT" 2>/dev/null; then
+            echo "::warning::symbols.json невалиден, сбрасываю"
             echo "[]" > "$OUT"
           fi
-          echo "=== final symbols.json: $(wc -c < "$OUT") bytes ==="
+          SZ=$(wc -c < "$OUT" 2>/dev/null || echo 0)
+          CNT=$(jq 'if type == "array" then length elif type == "object" then (keys | length) else 0 end' "$OUT" 2>/dev/null || echo 0)
+          echo "=== final symbols.json: $SZ bytes, entries=$CNT ==="
           head -c 500 "$OUT" || true
           echo
 
       - name: Validate symbols.json
+        if: always()
         continue-on-error: true
         run: |
           set -uo pipefail
           F="$GITHUB_WORKSPACE/symbols.json"
-          test -f "$F" || { echo "::error::symbols.json отсутствует"; exit 1; }
-          python3 -c "
-import json, sys
-p = '$F'
-try:
-    d = json.load(open(p))
-except Exception as e:
-    print(f'::error::symbols.json невалиден: {e}')
-    sys.exit(1)
-def count(x):
-    if isinstance(x, list): return sum(count(i) for i in x) if x else 0
-    if isinstance(x, dict): return sum(count(v) for v in x.values()) if x else 0
-    return 1
-n = count(d)
-print(f'top-level: {type(d).__name__}, entries: {n}')
-if isinstance(d, dict) and d:
-    print(f'keys sample: {list(d.keys())[:20]}')
-if n == 0:
-    print('::warning::symbols.json пустой — символы не подтянутся')
-"
+          if [ ! -f "$F" ]; then
+            echo "::error::symbols.json отсутствует"
+            exit 1
+          fi
+          if ! jq empty "$F" 2>/dev/null; then
+            echo "::error::symbols.json невалиден"
+            exit 1
+          fi
+          TYPE=$(jq -r 'type' "$F")
+          CNT=$(jq 'if type == "array" then length elif type == "object" then (keys | length) else 0 end' "$F")
+          echo "top-level: $TYPE, entries: $CNT"
+          if [ "$CNT" = "0" ]; then
+            echo "::warning::symbols.json пустой — символы не подтянутся"
+          fi
 
       # ==================== GHIDRA PROJECT (warm) ====================
       - uses: actions/cache@v4
@@ -264,7 +261,8 @@ if n == 0:
           GITHUB_WORKSPACE: ${{ github.workspace }}
         run: |
           echo "cache-project hit: ${{ steps.cache-project.outputs.cache-hit }}"
-          echo "symbols.json size: $(wc -c < "$SYMBOLS_JSON" 2>/dev/null || echo 0)"
+          SZ=$(wc -c < "$SYMBOLS_JSON" 2>/dev/null || echo 0)
+          echo "symbols.json size: $SZ"
           if [ "${{ steps.cache-project.outputs.cache-hit }}" = "true" ]; then
             echo "=== warm ==="
             "$GHIDRA_ROOT/support/analyzeHeadless" \
@@ -296,15 +294,20 @@ if n == 0:
         run: |
           set -uo pipefail
           echo "=== result.txt ==="
-          if [ -s result.txt ]; then wc -l result.txt; head -20 result.txt; else echo "::warning::result.txt пуст"; fi
-          echo "=== offsets.json ==="
-          if [ -s offsets.json ]; then
-            python3 -c "import json; d=json.load(open('offsets.json')); print(f'type={type(d).__name__}, keys={list(d)[:15] if isinstance(d,dict) else len(d)}')" \
-              || echo "::error::offsets.json невалиден"
+          if [ -s result.txt ]; then
+            wc -l result.txt
+            head -20 result.txt
           else
-            echo "::error::offsets.json пуст или отсутствует"
+            echo "::warning::result.txt пуст"
           fi
-          echo "=== kernel.log (последние строки) ==="
+          echo "=== offsets.json ==="
+          if [ -s offsets.json ] && jq empty offsets.json 2>/dev/null; then
+            echo "offsets.json valid, bytes=$(wc -c < offsets.json)"
+            jq 'if type == "object" then keys else length end' offsets.json | head -20
+          else
+            echo "::error::offsets.json пуст или невалиден"
+          fi
+          echo "=== kernel.log tail ==="
           tail -n 40 kernel.log 2>/dev/null || echo "(no kernel.log)"
 
       - uses: actions/upload-artifact@v4
@@ -330,7 +333,8 @@ if n == 0:
           rm -rf "$GITHUB_WORKSPACE/symbolicator"   2>/dev/null
           rm -rf "$GITHUB_WORKSPACE/ghidra"         2>/dev/null
           rm -rf "$GITHUB_WORKSPACE/ghidra_project" 2>/dev/null
-          rm -f  /tmp/g.zip /tmp/ipsw.tar.gz /tmp/sym*.txt /tmp/sym*.log /tmp/dl.log 2>/dev/null
+          rm -f  /tmp/g.zip /tmp/ipsw.tar.gz 2>/dev/null
+          rm -f  /tmp/sym_stdout.txt /tmp/dl.log 2>/dev/null
           rm -rf "$HOME/.config/ghidra"             2>/dev/null
           rm -rf /var/tmp/runner-ghidra             2>/dev/null
           exit 0
