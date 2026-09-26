@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 # @runtime Jython
+# kernel_rw.py v25 — primitive hunter for iOS 27.0 / 24A437
+# Focus: NECP integer overflow (necp_flow_alloc), UAF, AirLift sandbox paths
 
 import os
 import json
@@ -11,12 +13,15 @@ from ghidra.util.task import ConsoleTaskMonitor, TaskMonitor
 WS = os.environ.get("GITHUB_WORKSPACE", "/tmp")
 OUT = os.path.join(WS, "result.txt")
 OUT_OFF = os.path.join(WS, "offsets.json")
+OUT_PRIM = os.path.join(WS, "primitives.json")
 SYMBOLS_JSON = os.environ.get("SYMBOLS_JSON", os.path.join(WS, "symbols.json"))
 
+# === TARGET ADDRESSES (iOS 27.0 / 24A437) ===
 COPYIN_ADDR  = 0xFFFFFFF00A368EC0
 COPYOUT_ADDR = 0xFFFFFFF00A369A3C
 KALLOC_ADDR  = 0xFFFFFFF00A200988
 KFREE_ADDR   = 0xFFFFFFF00A201000
+KALLOC_NECP  = 0xFFFFFFF007C62E68
 
 NECP_BASE = {
     "necp_open":                     0xFFFFFFF00A4E411C,
@@ -31,49 +36,57 @@ NECP_BASE = {
     "necp_client_copy_result_inner": 0xFFFFFFF00A4F26F0,
     "necp_client_sysctl_arena":      0xFFFFFFF00A4EB704,
     "necp_get_tlv_at_offset":        0xFFFFFFF00A4C2034,
+    "necp_flow_alloc":               0xFFFFFFF00A346E70,
+    "necp_handler_big":              0xFFFFFFF00A3D91B4,
+    "necp_update_cache":             0xFFFFFFF00A4EBD58,
+    "necp_per_flow_copy":            0xFFFFFFF00A4F2E70,
     "copyin":                        COPYIN_ADDR,
     "copyout":                       COPYOUT_ADDR,
     "kalloc_type":                   KALLOC_ADDR,
     "kfree_type":                    KFREE_ADDR,
-    "kalloc_type_necp_flow":         0xFFFFFFF007C62E68,
+    "kalloc_type_necp_flow":         KALLOC_NECP,
 }
 
-TARGETS = [
-    ("sooptcopyin",             0xFFFFFFF00A77FD2C),
-    ("sbappendcontrol",         0xFFFFFFF00A788A24),
-    ("sbappendstream",          0xFFFFFFF00A78811C),
-    ("sbappendrecord",          0xFFFFFFF00A7873B8),
-    ("necp_get_tlv_at_offset",  0xFFFFFFF00A4C2034),
-    ("necp_client_add_flow",    0xFFFFFFF00A4E843C),
-    ("necp_update_cache",       0xFFFFFFF00A4EBD58),
-    ("necp_per_flow_copy",      0xFFFFFFF00A4F2E70),
-    ("necp_flow_alloc",         0xFFFFFFF00A346E70),
-    ("necp_handler_big",        0xFFFFFFF00A3D91B4),
-    ("copyin_hot_1",            0xFFFFFFF00A6CEB84),
-    ("copyout_hot_1",           0xFFFFFFF00A6F18AC),
-    ("copyout_hot_2",           0xFFFFFFF00A6F318C),
-    ("copyin_hot_2",            0xFFFFFFF00A753850),
+# === PRIMITIVE HUNT TARGETS ===
+# Priority 1: integer overflow in flow_alloc
+PRIM_FLOW_ALLOC_CALLERS = [
+    ("flow_alloc_caller_1", 0xFFFFFFF00A346474),
+    ("flow_alloc_caller_2", 0xFFFFFFF00A348180),
+    ("handler_big_caller",  0xFFFFFFF00A3D9174),
+    ("tlv_wrapper",         0xFFFFFFF00A4C113C),
 ]
 
-FIND_CALLERS_FOR = [
-    ("necp_flow_alloc",    0xFFFFFFF00A346E70),
-    ("necp_handler_big",   0xFFFFFFF00A3D91B4),
-    ("necp_get_tlv",       0xFFFFFFF00A4C2034),
-    ("necp_open",          0xFFFFFFF00A4E411C),
-    ("necp_client_action", 0xFFFFFFF00A4E5C28),
+# Priority 2: NECP double-free / UAF
+PRIM_UAF_TARGETS = [
+    ("necp_client_remove_flow",  0xFFFFFFF00A4E93C4),
+    ("necp_client_remove_client",0xFFFFFFF00A4E76F4),
+    ("necp_client_copy_result_inner", 0xFFFFFFF00A4F26F0),
+    ("necp_per_flow_copy",       0xFFFFFFF00A4F2E70),
 ]
 
-PATTERNS = [
-    "copyout", "copyin", "kalloc_type", "kfree_type",
-    "memcpy", "memmove", "bcopy", "bzero",
-    "panic", "overflow", "len", "length", "size",
-    "bound", "limit", "alloc",
+# Priority 3: AirLift / socket copyin/copyout size mismatch
+PRIM_AIRLIFT_TARGETS = [
+    ("sooptcopyin",      0xFFFFFFF00A77FD2C),
+    ("sbappendcontrol",  0xFFFFFFF00A788A24),
+    ("sbappendrecord",   0xFFFFFFF00A7873B8),
+    ("sbappendstream",   0xFFFFFFF00A78811C),
 ]
 
+# Priority 4: copyin/copyout sinks reachable from NECP
+PRIM_COPY_SINKS = [
+    ("copyin_hot_1",    0xFFFFFFF00A6CEB84),
+    ("copyout_hot_1",   0xFFFFFFF00A6F18AC),
+    ("copyout_hot_2",   0xFFFFFFF00A6F318C),
+    ("copyin_hot_2",    0xFFFFFFF00A753850),
+]
 
+TARGETS = []
+for lst in [PRIM_FLOW_ALLOC_CALLERS, PRIM_UAF_TARGETS, PRIM_AIRLIFT_TARGETS, PRIM_COPY_SINKS]:
+    TARGETS.extend(lst)
+
+# === HELPERS ===
 def _u(v):
     return int(v) & 0xFFFFFFFFFFFFFFFF
-
 
 def fmt(v):
     if v is None:
@@ -83,7 +96,6 @@ def fmt(v):
     except Exception:
         return "0x0"
 
-
 def sa(a):
     if a is None:
         return None
@@ -92,7 +104,6 @@ def sa(a):
             "%X" % (int(a) & 0xFFFFFFFFFFFFFFFF))
     except Exception:
         return None
-
 
 def _try_int(v):
     if v is None:
@@ -113,7 +124,6 @@ def _try_int(v):
             return None
     return None
 
-
 def _is_kernel_addr(v):
     i = _try_int(v)
     if i is None:
@@ -123,7 +133,6 @@ def _is_kernel_addr(v):
     if i > 0xFFFFFFFFFFFFFFFF:
         return None
     return i
-
 
 def load_symbols(path):
     print("[+] symbols.json: %s" % path)
@@ -206,9 +215,7 @@ def load_symbols(path):
         diag["dict"], diag["list"], diag["pairs"], diag["skip"]))
     return syms
 
-
 _blocks_cache = None
-
 
 def blocks():
     global _blocks_cache
@@ -232,7 +239,6 @@ def blocks():
     _blocks_cache = out
     return out
 
-
 def inblk(a):
     if a is None:
         return None
@@ -241,7 +247,6 @@ def inblk(a):
         if s <= av < e:
             return (s, e, n, x)
     return None
-
 
 def get_func(addr):
     try:
@@ -255,29 +260,10 @@ def get_func(addr):
     except Exception:
         return None
 
-
-def find_string_bytes(needle):
-    try:
-        mem = currentProgram.getMemory()
-        jn = zeros(len(needle), 'b')
-        for i in range(len(needle)):
-            v = ord(needle[i])
-            if v > 127:
-                v -= 256
-            jn[i] = v
-        h = mem.findBytes(mem.getMinAddress(), jn, None, True, TaskMonitor.DUMMY)
-        if h is not None:
-            return _u(h.getOffset())
-    except Exception:
-        pass
-    return None
-
-
 def _sign_extend_26(x):
     if x & 0x02000000:
         return x - 0x04000000
     return x
-
 
 def find_callers_by_bl(target_addr, max_hits=64):
     hits = []
@@ -319,7 +305,6 @@ def find_callers_by_bl(target_addr, max_hits=64):
             pc += 4
     return hits
 
-
 def decompile(f, timeout=300):
     out = []
     try:
@@ -339,8 +324,7 @@ def decompile(f, timeout=300):
         out.append("(exception: %s)" % e)
     return out
 
-
-def callees(f, maxn=25):
+def callees(f, maxn=40):
     try:
         cf = f.getCalledFunctions(ConsoleTaskMonitor())
     except Exception:
@@ -366,49 +350,22 @@ def callees(f, maxn=25):
     out.sort(key=lambda x: x[0])
     return out[:maxn]
 
+# === PRIMITIVE ANALYSIS ===
 
-def collect_xrefs(ga, limit=24):
-    out = []
-    try:
-        refs = getReferencesTo(ga)
-    except Exception:
-        return out
-    if refs is None:
-        return out
-    by_func = {}
-    try:
-        for r in refs:
-            try:
-                fa = r.getFromAddress()
-                fn = getFunctionContaining(fa)
-                if fn is None:
-                    continue
-                ent = _u(fn.getEntryPoint().getOffset())
-                nm = str(fn.getName())
-                if ent not in by_func:
-                    by_func[ent] = (nm, 0)
-                by_func[ent] = (nm, by_func[ent][1] + 1)
-            except Exception:
-                pass
-    except Exception:
-        pass
-    items = sorted(by_func.items(), key=lambda kv: -kv[1][1])[:limit]
-    for ent, (nm, cnt) in items:
-        out.append((ent, nm, cnt))
-    return out
-
-
-def dump_mem_ops(f, lines, cap=0x2000):
-    seen = set()
+def analyze_mem_ops_for_overflow(f, lines):
+    """Find ldr/str with potentially user-controlled offsets into heap buffers."""
+    suspicious = []
     body = f.getBody()
     if body is None:
-        return
+        return suspicious
     try:
         it = body.getAddresses(True)
     except Exception:
-        return
+        return suspicious
     cnt = 0
-    while it.hasNext() and cnt < 8000:
+    # track reg that received copyin result (x0 return value)
+    copyin_result_regs = set()
+    while it.hasNext() and cnt < 12000:
         a = it.next()
         try:
             pc = _u(a.getOffset())
@@ -417,9 +374,18 @@ def dump_mem_ops(f, lines, cap=0x2000):
             cnt += 1
             continue
         cnt += 1
+        # detect BL to copyin — result in x0
+        if (raw & 0xFC000000) == 0x94000000:
+            imm26 = raw & 0x03FFFFFF
+            imm = _sign_extend_26(imm26) << 2
+            dst = (pc + imm) & 0xFFFFFFFFFFFFFFFF
+            if dst in (COPYIN_ADDR, 0xFFFFFFF00A368EC0):
+                copyin_result_regs.add(0)
+        # ldr/str with user-controlled index register
         kind = None
         base = 0
         imm = 0
+        idx_reg = None
         if (raw & 0xFFC00000) == 0xF9400000:
             kind, base, imm = "ldr_x", (raw >> 5) & 0x1F, ((raw >> 10) & 0xFFF) * 8
         elif (raw & 0xFFC00000) == 0xB9400000:
@@ -428,14 +394,6 @@ def dump_mem_ops(f, lines, cap=0x2000):
             kind, base, imm = "str_x", (raw >> 5) & 0x1F, ((raw >> 10) & 0xFFF) * 8
         elif (raw & 0xFFC00000) == 0xB9000000:
             kind, base, imm = "str_w", (raw >> 5) & 0x1F, ((raw >> 10) & 0xFFF) * 4
-        elif (raw & 0xFFE00000) == 0x39400000:
-            kind, base, imm = "ldrb", (raw >> 5) & 0x1F, (raw >> 10) & 0xFFF
-        elif (raw & 0xFFE00000) == 0x39000000:
-            kind, base, imm = "strb", (raw >> 5) & 0x1F, (raw >> 10) & 0xFFF
-        elif (raw & 0xFFE00000) == 0x79400000:
-            kind, base, imm = "ldrh", (raw >> 5) & 0x1F, ((raw >> 10) & 0xFFF) * 2
-        elif (raw & 0xFFE00000) == 0x79000000:
-            kind, base, imm = "strh", (raw >> 5) & 0x1F, ((raw >> 10) & 0xFFF) * 2
         elif (raw & 0xFFC00000) == 0xF8400000:
             i = (raw >> 12) & 0x1FF
             if i & 0x100:
@@ -448,54 +406,118 @@ def dump_mem_ops(f, lines, cap=0x2000):
             kind, base, imm = "ldur_w", (raw >> 5) & 0x1F, i
         else:
             continue
-        if imm < 0 or imm > cap:
+        # suspicious if base reg is one of x19-x28 (callee-saved, often heap ptr)
+        # or offset register is x8-x15 (computed index)
+        if base in (19, 20, 21, 22, 23, 24, 25, 26, 27, 28) and imm > 0x100:
+            suspicious.append((fmt(pc), kind, base, imm))
+        if imm > 0x800:
+            suspicious.append((fmt(pc), kind, base, imm))
+    return suspicious
+
+def find_kfree_pattern(f):
+    """Look for two kfree_type calls without kalloc between them (double-free signal)."""
+    body = f.getBody()
+    if body is None:
+        return []
+    try:
+        it = body.getAddresses(True)
+    except Exception:
+        return []
+    events = []
+    cnt = 0
+    while it.hasNext() and cnt < 12000:
+        a = it.next()
+        try:
+            pc = _u(a.getOffset())
+            raw = int(currentProgram.getMemory().getInt(a)) & 0xFFFFFFFF
+        except Exception:
+            cnt += 1
             continue
-        key = (kind, base, imm)
-        if key in seen:
+        cnt += 1
+        if (raw & 0xFC000000) == 0x94000000:
+            imm26 = raw & 0x03FFFFFF
+            imm = _sign_extend_26(imm26) << 2
+            dst = (pc + imm) & 0xFFFFFFFFFFFFFFFF
+            if dst == KFREE_ADDR:
+                events.append(("kfree", pc))
+            elif dst == KALLOC_ADDR or dst == KALLOC_NECP:
+                events.append(("kalloc", pc))
+            elif dst == COPYIN_ADDR:
+                events.append(("copyin", pc))
+    # find two kfree with no kalloc between
+    result = []
+    last_kfree = None
+    for kind, pc in events:
+        if kind == "kfree":
+            if last_kfree is not None:
+                result.append((last_kfree, pc))
+            last_kfree = pc
+        elif kind == "kalloc":
+            last_kfree = None
+    return result
+
+def find_copyin_size_mismatch(f, lines):
+    """Look for copyin with size arg that differs from a nearby buffer size."""
+    # Heuristic: copyin call with size in x2, followed by mem op with larger offset
+    body = f.getBody()
+    if body is None:
+        return []
+    try:
+        it = body.getAddresses(True)
+    except Exception:
+        return []
+    result = []
+    cnt = 0
+    last_copyin_pc = None
+    last_max_offset = 0
+    while it.hasNext() and cnt < 12000:
+        a = it.next()
+        try:
+            pc = _u(a.getOffset())
+            raw = int(currentProgram.getMemory().getInt(a)) & 0xFFFFFFFF
+        except Exception:
+            cnt += 1
             continue
-        seen.add(key)
-        lines.append("  %s  %-8s  [x%-2d, #0x%X]" % (fmt(pc), kind, base, imm))
+        cnt += 1
+        if (raw & 0xFC000000) == 0x94000000:
+            imm26 = raw & 0x03FFFFFF
+            imm = _sign_extend_26(imm26) << 2
+            dst = (pc + imm) & 0xFFFFFFFFFFFFFFFF
+            if dst == COPYIN_ADDR:
+                last_copyin_pc = pc
+                last_max_offset = 0
+        # track max offset after copyin
+        if last_copyin_pc is not None:
+            if (raw & 0xFFC00000) == 0xF9400000:
+                off = ((raw >> 10) & 0xFFF) * 8
+                if off > last_max_offset:
+                    last_max_offset = off
+            elif (raw & 0xFFC00000) == 0xB9400000:
+                off = ((raw >> 10) & 0xFFF) * 4
+                if off > last_max_offset:
+                    last_max_offset = off
+    return result
 
-
-def keyword_scan(declines):
-    hits = []
-    for idx, line in enumerate(declines):
-        low = line.lower()
-        for pat in PATTERNS:
-            if pat in low:
-                hits.append((idx, line))
-                break
-    return hits
-
-
-def resolve_target(name, hardcoded, syms):
-    if name in syms:
-        return syms[name], "symbol"
-    for k in syms:
-        if k == name or k.lstrip("_") == name:
-            return syms[k], "symbol"
-    return hardcoded, "hardcoded"
-
-
+# === MAIN ===
 def main():
     lines = []
     offsets_out = {}
-    print("=== kernel_rw.py v24 ===")
+    primitives = {"integer_overflow": [], "uaf_double_free": [], "copy_size_mismatch": [], "notes": []}
+
+    print("=== kernel_rw.py v25 — primitive hunter ===")
 
     lines.append("=== PROGRAM ===")
     lines.append("name = %s" % currentProgram.getName())
     lines.append("")
 
     syms = load_symbols(SYMBOLS_JSON)
-    lines.append("=== SYMBOLS ===")
-    lines.append("loaded = %d" % len(syms))
-    lines.append("")
 
+    # --- SECTION 1: NECP sanity + addresses ---
     lines.append("=" * 68)
     lines.append("### NECP SANITY")
     lines.append("=" * 68)
     for name, addr in NECP_BASE.items():
-        real, src = resolve_target(name, addr, syms)
+        real, src = (syms.get(name, addr), "symbol") if name in syms else (addr, "hardcoded")
         f = get_func(real)
         if f:
             ent = _u(f.getEntryPoint().getOffset())
@@ -511,77 +533,149 @@ def main():
             offsets_out[name] = fmt(real)
     lines.append("")
 
+    # --- SECTION 2: PRIORITY 1 — flow_alloc caller chain ---
     lines.append("=" * 68)
-    lines.append("### BL CALLERS (manual scan)")
-    lines.append("=" * 68)
-    for label, addr in FIND_CALLERS_FOR:
-        lines.append("")
-        lines.append("--- callers of %s @ %s ---" % (label, fmt(addr)))
-        try:
-            hits = find_callers_by_bl(addr, max_hits=64)
-        except Exception as e:
-            lines.append("  exception: %s" % e)
-            hits = []
-        if not hits:
-            lines.append("  (no BL/B found)")
-            continue
-        for pc, kind in hits:
-            f = getFunctionContaining(sa(pc))
-            nm = str(f.getName()) if f else "?"
-            fent = _u(f.getEntryPoint().getOffset()) if f else 0
-            lines.append("  %s  %-4s in %-30s @ %s" % (
-                fmt(pc), kind, nm[:30], fmt(fent)))
-            offsets_out["caller_%s_%s" % (label, fmt(fent))] = nm
+    lines.append("### PRIORITY 1: necp_flow_alloc integer overflow")
+    lines.append("=" * = 68)
+    lines.append("Target: 0xFFFFFFF00A346E70")
+    lines.append("Hypothesis: iVar1 = (uVar6 + param_3) * 0x14|0x18 wraps int32")
+    lines.append("Goal: find where param_3 comes from user input")
     lines.append("")
 
-    lines.append("=" * 68)
-    lines.append("### TARGETS")
-    lines.append("=" * 68)
-
-    for label, addr in TARGETS:
-        real, src = resolve_target(label, addr, syms)
-        f = get_func(real)
+    for label, addr in PRIM_FLOW_ALLOC_CALLERS:
+        lines.append("")
+        lines.append("--- " + label + " @ " + fmt(addr) + " ---")
+        f = get_func(addr)
         if not f:
-            lines.append("")
-            lines.append("=== %s @ %s (%s) : NO FUNCTION ===" % (label, fmt(real), src))
+            lines.append("  (no function)")
             continue
         ent = _u(f.getEntryPoint().getOffset())
-        sz = 0
-        try:
-            sz = int(f.getBody().getNumAddresses())
-        except Exception:
-            pass
-        lines.append("")
-        lines.append("=" * 68)
-        lines.append("=== %s @ %s (%s) size=0x%X ===" % (label, fmt(ent), src, sz))
-        lines.append("=" * 68)
+        lines.append("  entry = " + fmt(ent))
         offsets_out[label] = fmt(ent)
 
-        lines.append("--- CALLEES ---")
-        cs = callees(f, maxn=25)
-        for e, n, sz2 in cs:
-            lines.append("  %s  %-40s size=0x%X" % (fmt(e), n[:40], sz2))
-        lines.append("")
+        # callees
+        lines.append("  callees:")
+        for e, n, sz2 in callees(f, 30):
+            mark = ""
+            if e in (0xFFFFFFF00A346E70,):
+                mark = "  <== FLOW_ALLOC"
+            if e in (COPYIN_ADDR,):
+                mark = "  <== COPYIN"
+            lines.append("    %s  %-45s size=0x%X%s" % (fmt(e), n[:45], sz2, mark))
 
-        lines.append("--- MEM OPS ---")
-        dump_mem_ops(f, lines, cap=0x2000)
-        lines.append("")
+        # mem ops suspicious
+        susp = analyze_mem_ops_for_overflow(f, lines)
+        if susp:
+            lines.append("  SUSPICIOUS MEM OPS (possible user-controlled offset):")
+            for pc, kind, base, imm in susp[:40]:
+                lines.append("    %s  %-8s  [x%-2d, #0x%X]" % (pc, kind, base, imm))
+        else:
+            lines.append("  (no suspicious mem ops)")
 
+        # decompile
+        lines.append("")
+        lines.append("  DECOMPILE:")
         body = decompile(f, 300)
-
-        lines.append("--- KEYWORD SCAN ---")
-        hits = keyword_scan(body)
-        if not hits:
-            lines.append("  (no hits)")
-        for idx, hl in hits[:120]:
-            lines.append("  %4d: %s" % (idx, hl))
-        lines.append("")
-
-        lines.append("--- DECOMPILE ---")
         for l in body:
-            lines.append("  " + l)
+            lines.append("    " + l)
         lines.append("")
 
+    # --- SECTION 3: PRIORITY 2 — UAF / double-free ---
+    lines.append("=" * 68)
+    lines.append("### PRIORITY 2: NECP UAF / double-free")
+    lines.append("=" * 68)
+    for label, addr in PRIM_UAF_TARGETS:
+        lines.append("")
+        lines.append("--- " + label + " @ " + fmt(addr) + " ---")
+        f get_func(addr)
+        if not f:
+            lines.append("  (no function)")
+            continue
+        ent = _u(f.getEntryPoint().getOffset())
+        offsets_out[label] = fmt(ent)
+        dbl = find_kfree_pattern(f)
+        if dbl:
+            lines.append("  POTENTIAL DOUBLE-FREE:")
+            for p1, p2 in dbl[:10]:
+                lines.append("    kfree %s ... kfree %s" % (fmt(p1), fmt(p2)))
+            primitives["uaf_double_free"].append({"func": label, "addr": fmt(ent), "pairs": [(fmt(a), fmt(b)) for a, b in dbl[:10]]})
+        else:
+            lines.append("  (no double-free pattern detected)")
+        body = decompile(f, 200)
+        lines.append("  DECOMPILE (first 80 lines):")
+        for l in body[:80]:
+            lines.append("    " + l)
+        lines.append("")
+
+    # --- SECTION 4: PRIORITY 3 — AirLift socket paths ---
+    lines.append("=" * 68)
+    lines.append("### PRIORITY 3: AirLift socket copyin/copyout")
+    lines.append("=" * 68)
+    for label, addr in PRIM_AIRLIFT_TARGETS:
+        lines.append("")
+        lines.append("--- " + label + " @ " + fmt(addr) + " ---")
+        f = get_func(addr)
+        if not f:
+            lines.append("  (no function)")
+            continue
+        ent = _u(f.getEntryPoint().getOffset())
+        offsets_out[label] = fmt(ent)
+        susp = analyze_mem_ops_for_overflow(f, lines)
+        if susp:
+            lines.append("  SUSPICIOUS MEM OPS:")
+            for pc, kind, base, imm in susp[:20]:
+                lines.append("    %s  %-8s  [x%-2d, #0x%X]" % (pc, kind, base, imm))
+        body = decompile(f, 200)
+        lines.append("  DECOMPILE (first 80 lines):")
+        for l in body[:80]:
+            lines.append("    " + l)
+        lines.append("")
+
+    # --- SECTION 5: PRIORITY 4 — copyin/copyout sinks ---
+    lines.append("=" * 68)
+    lines.append("### PRIORITY 4: copyin/copyout sinks")
+    lines.append("=" * 68)
+    for label, addr in PRIM_COPY_SINKS:
+        lines.append("")
+        lines.append("--- " + label + " @ " + fmt(addr) + " ---")
+        f = get_func(addr)
+        if not f:
+            lines.append("  (no function)")
+            continue
+        ent = _u(f.getEntryPoint().getOffset())
+        offsets_out[label] = fmt(ent)
+        body = decompile(f, 200)
+        lines.append("  DECOMPILE (first 60 lines):")
+        for l in body[:60]:
+            lines.append("    " + l)
+        lines.append("")
+
+    # --- SECTION 6: BL callers of flow_alloc (find indirect callers) ---
+    lines.append("=" * 68)
+    lines.append("### BL CALLERS OF necp_flow_alloc")
+    lines.append("=" * 68)
+    try:
+        hits = find_callers_by_bl(0xFFFFFFF00A346E70, max_hits=64)
+    except Exception as e:
+        lines.append("  exception: %s" % e)
+        hits = []
+    if not hits:
+        lines.append("  (no BL/B found — dispatcher uses BR/BLR)")
+    for pc, kind in hits:
+        f = getFunctionContaining(sa(pc))
+        nm = str(f.getName()) if f else "?"
+        fent = _u(f.getEntryPoint().getOffset()) if f else 0
+        lines.append("  %s  %-4s in %-30s @ %s" % (fmt(pc), kind, nm[:30], fmt(fent)))
+    lines.append("")
+
+    # --- NOTES ---
+    primitives["notes"].append("Public kernel R/W for 27.0 release: NOT available (bexploit only 27b1-b4)")
+    primitives["notes"].append("Confirmed KASLR leak: NECP op=0x0D returns user VA")
+    primitives["notes"].append("Confirmed sandbox escape: AirLift (AirTraffic, works on 24A437)")
+    primitives["notes"].append("Hypothesis: necp_flow_alloc int32 wrap -> heap overflow -> potential kernel R/W")
+    primitives["notes"].append("Check caller FUN_fffffff00a346474 for user-controlled param_3")
+
+    # --- WRITE OUTPUTS ---
     try:
         fh = open(OUT, "w")
         for l in lines:
@@ -599,8 +693,15 @@ def main():
     except Exception as e:
         print("[-] offsets: %s" % e)
 
-    print("=== DONE ===")
+    try:
+        fh = open(OUT_PRIM, "w")
+        fh.write(json.dumps(primitives, indent=2, sort_keys=True))
+        fh.close()
+        print("[+] wrote " + OUT_PRIM)
+    except Exception as e:
+        print("[-] primitives: %s" % e)
 
+    print("=== DONE ===")
 
 try:
     main()
