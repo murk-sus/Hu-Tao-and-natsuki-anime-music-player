@@ -13,14 +13,15 @@ jobs:
     timeout-minutes: 300
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-java@v4
+      - name: Setup Java
+        uses: actions/setup-java@v4
         with:
           java-version: "25"
           distribution: temurin
 
-      # --- Ghidra + Jython ---
       - name: Cache Ghidra
         id: cache-ghidra
         uses: actions/cache@v4
@@ -28,24 +29,24 @@ jobs:
           path: ${{ github.workspace }}/ghidra
           key: ghidra-12.1.2-jython
 
-      - name: Install Ghidra 12.1.2
+      - name: Install Ghidra
         if: steps.cache-ghidra.outputs.cache-hit != 'true'
+        shell: bash
         run: |
           set -euo pipefail
-          curl -fsSL -o /tmp/g.zip \
-            https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_12.1.2_build/ghidra_12.1.2_PUBLIC_20260605.zip
+          curl -fsSL -o /tmp/g.zip "https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_12.1.2_build/ghidra_12.1.2_PUBLIC_20260605.zip"
           unzip -q /tmp/g.zip -d "$GITHUB_WORKSPACE"
-          mv "$GITHUB_WORKSPACE"/ghidra_12.1.2_PUBLIC "$GITHUB_WORKSPACE/ghidra"
-          JYTHON_ZIP=$(find "$GITHUB_WORKSPACE/ghidra/Extensions/Ghidra" -maxdepth 1 -name '*Jython*.zip' | head -n1)
+          mv "$GITHUB_WORKSPACE/ghidra_12.1.2_PUBLIC" "$GITHUB_WORKSPACE/ghidra"
+          JYTHON_ZIP=$(find "$GITHUB_WORKSPACE/ghidra/Extensions/Ghidra" -maxdepth 1 -name "*Jython*.zip" | head -n1)
           test -n "$JYTHON_ZIP"
           mkdir -p "$GITHUB_WORKSPACE/ghidra/Ghidra/Extensions"
           unzip -q "$JYTHON_ZIP" -d "$GITHUB_WORKSPACE/ghidra/Ghidra/Extensions"
-          echo "GHIDRA_ROOT=$GITHUB_WORKSPACE/ghidra" >> "$GITHUB_ENV"
 
       - name: Set Ghidra env
-        run: echo "GHIDRA_ROOT=$GITHUB_WORKSPACE/ghidra" >> "$GITHUB_ENV"
+        shell: bash
+        run: |
+          echo "GHIDRA_ROOT=$GITHUB_WORKSPACE/ghidra" >> "$GITHUB_ENV"
 
-      # --- ipsw ---
       - name: Cache ipsw
         id: cache-ipsw
         uses: actions/cache@v4
@@ -53,92 +54,90 @@ jobs:
           path: /usr/local/bin/ipsw
           key: ipsw-3.1.716
 
-      - name: Install ipsw 3.1.716
+      - name: Install ipsw
         if: steps.cache-ipsw.outputs.cache-hit != 'true'
+        shell: bash
         run: |
           set -euo pipefail
-          curl -fsSL -o /tmp/ipsw.tar.gz \
-            https://github.com/blacktop/ipsw/releases/download/v3.1.716/ipsw_3.1.716_linux_x86_64.tar.gz
+          curl -fsSL -o /tmp/ipsw.tar.gz "https://github.com/blacktop/ipsw/releases/download/v3.1.716/ipsw_3.1.716_linux_x86_64.tar.gz"
           tar -C /usr/local/bin -xzf /tmp/ipsw.tar.gz ipsw
           ipsw version
 
-      # --- КЛЮЧЕВОЕ: правильный symbolicator ---
-      - name: Cache symbolicator (blacktop)
+      - name: Cache symbolicator
         id: cache-symbolicator
         uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}/symbolicator
           key: symbolicator-v1
 
-      - name: Clone blacktop/symbolicator
+      - name: Clone blacktop symbolicator
         if: steps.cache-symbolicator.outputs.cache-hit != 'true'
+        shell: bash
         run: |
           set -euo pipefail
-          git clone --depth 1 https://github.com/blacktop/symbolicator.git \
-            "$GITHUB_WORKSPACE/symbolicator"
-          echo "=== symbolicator/kernel ==="
+          git clone --depth 1 "https://github.com/blacktop/symbolicator.git" "$GITHUB_WORKSPACE/symbolicator"
           ls -la "$GITHUB_WORKSPACE/symbolicator/kernel" | head -20
 
-      # --- Распаковка kernel ---
       - name: Unpack kernel
+        shell: bash
         run: |
           set -euo pipefail
           mkdir -p kernel
           unzip -o kernel.zip -d kernel
-          K=$(4find kernel -type f \( -
-name 'kernel.raw' -o -name        with 'kernelcache*' \) -print -quit)
-         :
- test -n "$K"
-          echo "K         ERNEL=$K" >> "$GITHUB_ENV"
+          K=$(find kernel -type f -name "kernel.raw" -print -quit)
+          if [ -z "$K" ]; then
+            K=$(find kernel -type f -name "kernelcache*" -print -quit)
+          fi
+          test -n "$K"
+          echo "KERNEL=$K" >> "$GITHUB_ENV"
           echo "KERNEL_NAME=$(basename "$K")" >> "$GITHUB_ENV"
           ls -lh "$K"
 
-      # --- СИМВОЛИКАЦИЯ ЯДРА ---
       - name: Cache symbols
         id: cs
-        uses: actions/cache@v path: ${{ github.workspace }}/symbols.json
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/symbols.json
           key: symbols-${{ hashFiles('kernel.zip') }}
 
-      - name: Symbolicate kernel (signatures + C++)
+      - name: Symbolicate kernel
         if: steps.cs.outputs.cache-hit != 'true'
+        shell: bash
         run: |
-          set -euo pipefail
+          set -uo pipefail
           SIGDIR="$GITHUB_WORKSPACE/symbolicator/kernel"
-          echo "Signatures dir: $SIGDIR"
+          echo "=== Signatures dir ==="
           ls -la "$SIGDIR" | head -10
 
-          # Шаг 1: сигнатуры
           echo "=== Step 1: signature-based symbolication ==="
           ipsw kernel sym "$KERNEL" --json --signatures "$SIGDIR" 2>&1 | tee /tmp/sym1.log || true
 
-          # Шаг 2: C++ runtime recovery (для IOKit и XNU классов)
           echo "=== Step 2: C++ runtime recovery ==="
           ipsw kernel cpp "$KERNEL" --json 2>&1 | tee /tmp/sym2.log || true
 
-          # Собираем все JSON, которые создал ipsw
           echo "=== Collecting JSON outputs ==="
-          find . -name '*_symbols.json' -o -name '*symbols*.json' | head -20
-          SRC=$(find . -name '*_symbols.json' -o -name '*symbols*.json' | head -n1)
+          find . -type f -name "*symbols*.json" | head -20
+          SRC=$(find . -type f -name "*symbols*.json" | head -n1)
           if [ -z "$SRC" ] || [ ! -f "$SRC" ]; then
             echo "No symbols JSON produced"
-            echo '[]' > "$GITHUB_WORKSPACE/symbols.json"
+            echo "[]" > "$GITHUB_WORKSPACE/symbols.json"
           else
             cp "$SRC" "$GITHUB_WORKSPACE/symbols.json"
           fi
           echo "symbols.json size: $(wc -c < "$GITHUB_WORKSPACE/symbols.json") bytes"
 
-      # --- Ghidra project ---
-      - name: Cache project
+      - name: Cache ghidra project
         id: cp
         uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}/ghidra_project
           key: ghidra-project-${{ hashFiles('kernel.zip') }}
 
-      - name: Warm (cached project)
-        id: w
+      - name: Warm run
+        id: warm
         if: steps.cp.outputs.cache-hit == 'true'
         continue-on-error: true
+        shell: bash
         env:
           _JAVA_OPTIONS: "-Xmx8g -Djava.awt.headless=true"
           SYMBOLS_JSON: ${{ github.workspace }}/symbols.json
@@ -151,9 +150,10 @@ name 'kernel.raw' -o -name        with 'kernelcache*' \) -print -quit)
             -scriptPath "$GITHUB_WORKSPACE/scripts" \
             2>&1 | tee kernel.log || true
 
-      - name: Cold (fresh import)
-        if: steps.cp.outputs.cache-hit != 'true' || steps.w.outcome != 'success'
+      - name: Cold run
+        if: steps.cp.outputs.cache-hit != 'true' || steps.warm.outcome != 'success'
         continue-on-error: true
+        shell: bash
         env:
           _JAVA_OPTIONS: "-Xmx8g -Djava.awt.headless=true"
           SYMBOLS_JSON: ${{ github.workspace }}/symbols.json
@@ -172,12 +172,14 @@ name 'kernel.raw' -o -name        with 'kernelcache*' \) -print -quit)
 
       - name: Placeholder
         if: always()
+        shell: bash
         run: |
-          [ -f result.txt ] || echo 'script crashed' > result.txt
-          [ -f offsets.json ] || echo '{}' > offsets.json
+          [ -f result.txt ] || echo "script crashed" > result.txt
+          [ -f offsets.json ] || echo "{}" > offsets.json
           ls -la
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
         if: always()
         with:
           name: kernel-${{ github.sha }}
