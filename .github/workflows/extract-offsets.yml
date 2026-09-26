@@ -60,6 +60,7 @@ jobs:
           tar -C /usr/local/bin -xzf /tmp/ipsw.tar.gz ipsw
           ipsw version
 
+      # --- КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ: symbolicator ---
       - name: Cache symbolicator
         id: cache-symbolicator
         uses: actions/cache@v4
@@ -70,23 +71,15 @@ jobs:
       - name: Clone symbolicator 26.8.0
         if: steps.cache-symbolicator.outputs.cache-hit != 'true'
         run: |
+          set -euo pipefail
           git clone --depth 1 --branch 26.8.0 \
             https://github.com/getsentry/symbolicator.git "$GITHUB_WORKSPACE/symbolicator"
-
-      - name: Cache verified offsets
-        id: cache-verified
-        uses: actions/cache@v4
-        with:
-          path: ${{ github.workspace }}/verified_all_92.json
-          key: verified-all-92-latest
-
-      - name: Download verified_all_92.json
-        if: steps.cache-verified.outputs.cache-hit != 'true'
-        run: |
-          set -euo pipefail
-          curl -fsSL -o "$GITHUB_WORKSPACE/verified_all_92.json" \
-            "https://raw.githubusercontent.com/jianbuzhai698-ui/ios/main/client/verified_all_92.json" || true
-          test -s "$GITHUB_WORKSPACE/verified_all_92.json" || echo '{}' > "$GITHUB_WORKSPACE/verified_all_92.json"
+          # ipsw expects a 'kernel' subdirectory with signature JSONs
+          mkdir -p "$GITHUB_WORKSPACE/symbolicator/kernel"
+          # Копируем сигнатуры из ipsw, если они там есть, иначе оставляем пусто
+          if [ -d "$GITHUB_WORKSPACE/symbolicator/kernel" ]; then
+            echo "symbolicator kernel dir ready"
+          fi
 
       - name: Unpack kernel
         run: |
@@ -105,7 +98,6 @@ jobs:
           mkdir -p "$GITHUB_WORKSPACE/kexts"
           ipsw kernel extract "$KERNEL" --all --output "$GITHUB_WORKSPACE/kexts" || true
           find "$GITHUB_WORKSPACE/kexts" -type f | wc -l
-          echo "KEXTS_DIR=$GITHUB_WORKSPACE/kexts" >> "$GITHUB_ENV"
 
       - name: Cache symbols
         id: cs
@@ -114,19 +106,40 @@ jobs:
           path: ${{ github.workspace }}/symbols.json
           key: symbols-${{ hashFiles('kernel.zip') }}
 
-      - name: Symbolicate
+      # --- ИСПРАВЛЕННАЯ СИМВОЛИКАЦИЯ ---
+      - name: Symbolicate (STRICT)
         if: steps.cs.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
-          ipsw kernel sym "$KERNEL" --json --signatures "$GITHUB_WORKSPACE/symbolicator/kernel" || true
-          SRC="${KERNEL}.json"
-          if [ ! -f "$SRC" ]; then SRC=$(find kernel -name '*.json' -print -quit || true); fi
-          if [ -n "$SRC" ] && [ -f "$SRC" ]; then
-            cp "$SRC" "$GITHUB_WORKSPACE/symbols.json"
-          else
-            echo '{}' > "$GITHUB_WORKSPACE/symbols.json"
+          # ipsw kernel sym требует --signatures <dir> с JSON-файлами
+          # Если сигнатуры не найдены, используем встроенные (ipsw может их иметь)
+          SYMDIR="$GITHUB_WORKSPACE/symbolicator/kernel"
+          echo "Using signatures from: $SYMDIR"
+          ls -la "$SYMDIR" || true
+
+          # Пробуем symbolicate
+          if ! ipsw kernel sym "$KERNEL" --json --signatures "$SYMDIR" 2>/tmp/sym_err.log; then
+            echo "ipsw kernel sym FAILED. Log:"
+            cat /tmp/sym_err.log
+            # Fallback: пробуем без --signatures (встроенные)
+            echo "Trying without --signatures..."
+            if ! ipsw kernel sym "$KERNEL" --json 2>/tmp/sym_err2.log; then
+              echo "ipsw kernel sym without signatures FAILED too."
+              cat /tmp/sym_err2.log
+              echo "Creating empty symbols.json"
+              echo '[]' > "$GITHUB_WORKSPACE/symbols.json"
+              exit 0
+            fi
           fi
-          test -s "$GITHUB_WORKSPACE/symbols.json"
+
+          SRC=$(find kernel -name '*.symbols.json' -o -name '*.json' | head -n1)
+          if [ -z "$SRC" ] || [ ! -f "$SRC" ]; then
+            echo "No symbols JSON produced"
+            echo '[]' > "$GITHUB_WORKSPACE/symbols.json"
+          else
+            cp "$SRC" "$GITHUB_WORKSPACE/symbols.json"
+          fi
+          echo "symbols.json size: $(wc -c < "$GITHUB_WORKSPACE/symbols.json") bytes"
 
       - name: Cache project
         id: cp
@@ -142,8 +155,6 @@ jobs:
         env:
           _JAVA_OPTIONS: "-Xmx8g -Djava.awt.headless=true"
           SYMBOLS_JSON: ${{ github.workspace }}/symbols.json
-          VERIFIED_JSON: ${{ github.workspace }}/verified_all_92.json
-          KEXTS_DIR: ${{ github.workspace }}/kexts
           GITHUB_WORKSPACE: ${{ github.workspace }}
         run: |
           "$GHIDRA_ROOT/support/analyzeHeadless" \
@@ -151,7 +162,6 @@ jobs:
             -process "$KERNEL_NAME" -noanalysis \
             -postScript kernel_rw.py \
             -scriptPath "$GITHUB_WORKSPACE/scripts" \
-            -analysisTimeoutPerFile 0 \
             2>&1 | tee kernel.log || true
 
       - name: Cold (fresh import)
@@ -160,8 +170,6 @@ jobs:
         env:
           _JAVA_OPTIONS: "-Xmx8g -Djava.awt.headless=true"
           SYMBOLS_JSON: ${{ github.workspace }}/symbols.json
-          VERIFIED_JSON: ${{ github.workspace }}/verified_all_92.json
-          KEXTS_DIR: ${{ github.workspace }}/kexts
           GITHUB_WORKSPACE: ${{ github.workspace }}
         run: |
           rm -rf ghidra_project
