@@ -133,18 +133,11 @@ jobs:
           test -f "$GITHUB_WORKSPACE/scripts/kernel_rw.py"
           python3 -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "$GITHUB_WORKSPACE/scripts/kernel_rw.py"
 
-      - uses: actions/cache@v4
-        id: cache-symbols
-        with:
-          path: ${{ github.workspace }}/symbols.json
-          key: symbols-24A437-v10
-
       - name: Symbolicate
-        if: steps.cache-symbols.outputs.cache-hit != 'true'
         run: |
           set -uo pipefail
           OUT="$GITHUB_WORKSPACE/symbols.json"
-          echo "[]" > "$OUT"
+          rm -f "$OUT"
 
           count_entries() {
             jq 'if type=="array" then length elif type=="object" then (keys|length) else 0 end' "$1" 2>/dev/null || echo 0
@@ -223,6 +216,7 @@ jobs:
             exit 1
           fi
 
+          test -f "$OUT"
           jq empty "$OUT"
           CNT=$(count_entries "$OUT")
           SZ=$(wc -c < "$OUT")
@@ -247,7 +241,9 @@ jobs:
           set -euo pipefail
           echo "cache-project: ${{ steps.cache-project.outputs.cache-hit }}"
           test -f "$SYMBOLS_JSON"
-          test "$(wc -c < "$SYMBOLS_JSON")" -gt 3
+          SZ=$(wc -c < "$SYMBOLS_JSON")
+          echo "symbols.json: $SZ bytes"
+          test "$SZ" -gt 10
           JOBS=$(nproc)
           echo "jobs: $JOBS"
           if [ "${{ steps.cache-project.outputs.cache-hit }}" = "true" ]; then
