@@ -36,6 +36,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          echo "=== [Ghidra] Downloading ==="
           curl -fsSL -o /tmp/g.zip "https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_12.1.2_build/ghidra_12.1.2_PUBLIC_20260605.zip"
           unzip -q /tmp/g.zip -d "$GITHUB_WORKSPACE"
           mv "$GITHUB_WORKSPACE/ghidra_12.1.2_PUBLIC" "$GITHUB_WORKSPACE/ghidra"
@@ -43,7 +44,7 @@ jobs:
           test -n "$JYTHON_ZIP"
           mkdir -p "$GITHUB_WORKSPACE/ghidra/Ghidra/Extensions"
           unzip -q "$JYTHON_ZIP" -d "$GITHUB_WORKSPACE/ghidra/Ghidra/Extensions"
-          echo "GHIDRA_ROOT=$GITHUB_WORKSPACE/ghidra" >> "$GITHUB_ENV"
+          echo "=== [Ghidra] Installed: $GITHUB_WORKSPACE/ghidra ==="
 
       - name: Set Ghidra env
         shell: bash
@@ -62,8 +63,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          echo "=== [ipsw] Downloading ==="
           curl -fsSL -o /tmp/ipsw.tar.gz "https://github.com/blacktop/ipsw/releases/download/v3.1.716/ipsw_3.1.716_linux_x86_64.tar.gz"
           tar -C /usr/local/bin -xzf /tmp/ipsw.tar.gz ipsw
+          echo "=== [ipsw] Version ==="
           ipsw version
 
       # ---------- symbolicator ----------
@@ -79,9 +82,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          echo "=== [symbolicator] Cloning ==="
           git clone --depth 1 "https://github.com/blacktop/symbolicator.git" "$GITHUB_WORKSPACE/symbolicator"
-          echo "=== symbolicator/kernel ==="
-          ls -1 "$GITHUB_WORKSPACE/symbolicator/kernel" | head -40
+          echo "=== [symbolicator] Available versions ==="
+          ls -1 "$GITHUB_WORKSPACE/symbolicator/kernel" || true
 
       - name: Resolve signatures dir for iOS 27.0
         id: sigs
@@ -90,27 +94,31 @@ jobs:
           set -uo pipefail
           ROOT="$GITHUB_WORKSPACE/symbolicator/kernel"
 
-          echo "=== Available version dirs in $ROOT ==="
+          echo "=== [Sigs] Available version dirs ==="
           ls -1 "$ROOT" || true
 
-          # Приоритет: 27.0 → 27.2 → любая 27.x
           for VER in "27.0" "27.2" "27.1" "27.3"; do
             if [ -d "$ROOT/$VER" ]; then
-              echo "=== Selected signatures version: $VER ==="
+              echo "=== [Sigs] Selected: $VER ==="
               ls -la "$ROOT/$VER" | head -20
               JSON_COUNT=$(find "$ROOT/$VER" -name "*.json" | wc -l)
-              echo "JSON files in $VER: $JSON_COUNT"
+              echo "=== [Sigs] JSON files in $VER: $JSON_COUNT ==="
               echo "SIGDIR=$ROOT/$VER" >> "$GITHUB_ENV"
               echo "SIG_VER=$VER" >> "$GITHUB_ENV"
               exit 0
             fi
           done
 
-          # Fallback: корень symbolicator/kernel (если ipsw умеет рекурсивно)
-          echo "=== No version-specific dir found — using root $ROOT ==="
-          find "$ROOT" -name "*.json" | head -20
-          echo "SIGDIR=$ROOT" >> "$GITHUB_ENV"
-          echo "SIG_VER=root" >> "$GITHUB_ENV"
+          LATEST=$(ls -1 "$ROOT" 2>/dev/null | sort -V | tail -n1)
+          if [ -n "$LATEST" ] && [ -d "$ROOT/$LATEST" ]; then
+            echo "=== [Sigs] Fallback: $LATEST ==="
+            echo "SIGDIR=$ROOT/$LATEST" >> "$GITHUB_ENV"
+            echo "SIG_VER=$LATEST" >> "$GITHUB_ENV"
+            exit 0
+          fi
+
+          echo "FATAL: no signature version dirs found"
+          exit 1
 
       # ---------- kernelcache ----------
       - name: Cache kernelcache
@@ -126,7 +134,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p ipsw kernelcache
-          echo "=== Downloading IPSW ==="
+          echo "=== [IPSW] Downloading ==="
           ipsw download ipsw --device iPhone14,5 --build 24A437 --output ipsw 2>&1 | tee /tmp/dl.log || true
           IPSW=$(find ipsw -name "*.ipsw" -type f | head -n1)
           if [ -z "$IPSW" ]; then
@@ -135,11 +143,12 @@ jobs:
             exit 1
           fi
           ls -lh "$IPSW"
-          echo "=== Extracting kernelcache ==="
+          echo "=== [Kernel] Extracting ==="
           ipsw extract --kernel "$IPSW" --output kernelcache
-          echo "=== Removing non-kernelcache files ==="
+          echo "=== [Kernel] Removing non-kernelcache ==="
           find kernelcache -type f ! -name "kernelcache*" -print -delete
           find kernelcache -type d -empty -delete
+          echo "=== [Kernel] Final files ==="
           find kernelcache -type f -exec ls -lh {} \;
 
       - name: Resolve kernelcache path
@@ -153,40 +162,37 @@ jobs:
             ls -la "$GITHUB_WORKSPACE/kernelcache" || true
             exit 1
           fi
-          echo "=== kernelcache ==="
+          echo "=== [Kernel] Path: $KERNEL ==="
           file "$KERNEL"
           ls -lh "$KERNEL"
           echo "KERNEL=$KERNEL" >> "$GITHUB_ENV"
           echo "KERNEL_NAME=$(basename "$KERNEL")" >> "$GITHUB_ENV"
 
-      # ---------- декомпрессия (только если сжат) ----------
       - name: Decompress kernelcache (only if compressed)
         shell: bash
         run: |
           set -uo pipefail
           FTYPE=$(file "$KERNEL")
-          echo "file output: $FTYPE"
+          echo "=== [Kernel] file: $FTYPE ==="
 
           if echo "$FTYPE" | grep -q "Mach-O"; then
-            echo "=== kernelcache is already decompressed Mach-O — skipping ==="
+            echo "=== [Kernel] Already Mach-O — skipping decompression ==="
             exit 0
           fi
 
-          echo "=== kernelcache appears compressed — decompressing ==="
+          echo "=== [Kernel] Compressed — decompressing ==="
           OUTDIR="$GITHUB_WORKSPACE/kernelcache_decompressed"
           mkdir -p "$OUTDIR"
           OUTNAME="$OUTDIR/$(basename "$KERNEL")"
-
-          # -o = output FILE (не директория!)
           ipsw kernel dec "$KERNEL" -o "$OUTNAME" 2>&1 | tee /tmp/dec.log || true
 
           if [ ! -s "$OUTNAME" ]; then
-            echo "WARNING: decompression failed, using original kernelcache"
+            echo "WARNING: decompression failed"
             cat /tmp/dec.log || true
             exit 0
           fi
 
-          echo "=== Decompressed ==="
+          echo "=== [Kernel] Decompressed ==="
           file "$OUTNAME"
           ls -lh "$OUTNAME"
           echo "KERNEL=$OUTNAME" >> "$GITHUB_ENV"
@@ -200,7 +206,7 @@ jobs:
           path: ${{ github.workspace }}/symbols.json
           key: symbols-${{ hashFiles('kernelcache/**') }}
 
-      - name: Symbolicate kernel (blacktop signatures)
+      - name: Symbolicate kernel (blacktop signatures + built-in tables)
         if: steps.cache-symbols.outputs.cache-hit != 'true'
         shell: bash
         run: |
@@ -213,7 +219,7 @@ jobs:
           echo "=========================================="
 
           echo ""
-          echo "=== Running: ipsw kernel symbolicate --signatures $SIGDIR --json ==="
+          echo "=== [Sym] Running: ipsw kernel symbolicate --signatures $SIGDIR --json ==="
           ipsw kernel symbolicate \
             --signatures "$SIGDIR" \
             --json \
@@ -222,20 +228,16 @@ jobs:
             2>&1 | tee /tmp/sym_full.log || true
 
           echo ""
-          echo "=== Tail of symbolicate log (last 40 lines) ==="
-          tail -n 40 /tmp/sym_full.log || true
-
-          echo ""
-          echo "=== Built-in table markers ==="
+          echo "=== [Sym] Built-in table markers ==="
           grep -iE "bsd_syscall_table|mach_trap_table|mig_kern_subsystem|Found .* table" \
-            /tmp/sym_full.log || echo "(no markers — symbolicate did not find built-in tables)"
+            /tmp/sym_full.log || echo "(no markers found)"
 
           echo ""
-          echo "=== Found addresses in log (count) ==="
+          echo "=== [Sym] Addresses found in log (count) ==="
           grep -cE "0x[0-9A-Fa-f]{10,}" /tmp/sym_full.log || echo "0"
 
           echo ""
-          echo "=== Searching for symbols JSON outputs ==="
+          echo "=== [Sym] Searching for *.symbols.json ==="
           find . -type f -name "*.symbols.json" 2>/dev/null | head -5 || true
           find . -type f -name "*symbols*.json" 2>/dev/null | head -5 || true
 
@@ -246,15 +248,25 @@ jobs:
 
           if [ -n "$SRC" ] && [ -s "$SRC" ]; then
             cp "$SRC" "$GITHUB_WORKSPACE/symbols.json"
-            echo "=== copied $SRC -> symbols.json ==="
+            echo "=== [Sym] Copied $SRC -> symbols.json ==="
           else
-            echo "=== No *.symbols.json found ==="
-            echo "[]" > "$GITHUB_WORKSPACE/symbols.json"
+            echo "=== [Sym] No *.symbols.json found — trying --output ==="
+            ipsw kernel symbolicate \
+              --signatures "$SIGDIR" \
+              --json \
+              -v \
+              --output "$GITHUB_WORKSPACE/symbols.json" \
+              "$KERNEL" \
+              2>&1 | tee /tmp/sym_fallback.log || true
+            if [ ! -s "$GITHUB_WORKSPACE/symbols.json" ]; then
+              echo "=== [Sym] Fallback produced nothing — writing [] ==="
+              echo "[]" > "$GITHUB_WORKSPACE/symbols.json"
+            fi
           fi
 
           echo ""
-          echo "=== symbols.json size: $(wc -c < "$GITHUB_WORKSPACE/symbols.json" 2>/dev/null || echo 0) bytes ==="
-          echo "=== symbols.json head (first 1500 bytes) ==="
+          echo "=== [Sym] symbols.json size: $(wc -c < "$GITHUB_WORKSPACE/symbols.json" 2>/dev/null || echo 0) bytes ==="
+          echo "=== [Sym] symbols.json head (first 1500 bytes) ==="
           head -c 1500 "$GITHUB_WORKSPACE/symbols.json" 2>/dev/null || true
           echo ""
 
@@ -276,6 +288,7 @@ jobs:
           SYMBOLS_JSON: ${{ github.workspace }}/symbols.json
           GITHUB_WORKSPACE: ${{ github.workspace }}
         run: |
+          echo "=== [Ghidra] Warm run: processing cached project ==="
           "$GHIDRA_ROOT/support/analyzeHeadless" \
             "$GITHUB_WORKSPACE/ghidra_project" KernelProject \
             -process "$KERNEL_NAME" -noanalysis \
@@ -292,6 +305,7 @@ jobs:
           SYMBOLS_JSON: ${{ github.workspace }}/symbols.json
           GITHUB_WORKSPACE: ${{ github.workspace }}
         run: |
+          echo "=== [Ghidra] Cold run: importing kernelcache ==="
           rm -rf ghidra_project
           mkdir -p ghidra_project
           "$GHIDRA_ROOT/support/analyzeHeadless" \
@@ -306,13 +320,21 @@ jobs:
             -max-cpu 4 \
             2>&1 | tee kernel.log || true
 
-      - name: Placeholder
+      - name: Collect artifacts (clean)
         if: always()
         shell: bash
         run: |
-          [ -f result.txt ] || echo "script crashed" > result.txt
-          [ -f offsets.json ] || echo "{}" > offsets.json
-          ls -la
+          echo "=== [Artifacts] Collecting clean outputs ==="
+          mkdir -p artifacts
+          [ -f result.txt ] && cp result.txt artifacts/ && echo "  result.txt: $(wc -c < result.txt) bytes" || echo "  result.txt: missing"
+          [ -f offsets.json ] && cp offsets.json artifacts/ && echo "  offsets.json: $(wc -c < offsets.json) bytes" || echo "  offsets.json: missing"
+          [ -f kernel.log ] && cp kernel.log artifacts/ && echo "  kernel.log: $(wc -c < kernel.log) bytes" || echo "  kernel.log: missing"
+          [ -f symbols.json ] && cp symbols.json artifacts/ && echo "  symbols.json: $(wc -c < symbols.json) bytes" || echo "  symbols.json: missing"
+
+          # Удаляем всё, что не нужно в артефактах
+          rm -rf ghidra_project kernelcache kernelcache_decompressed symbolicator ipsw 2>/dev/null || true
+          echo "=== [Artifacts] Final contents ==="
+          ls -la artifacts/
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -320,10 +342,10 @@ jobs:
         with:
           name: kernel-offsets-${{ github.sha }}
           path: |
-            result.txt
-            offsets.json
-            kernel.log
-            symbols.json
+            artifacts/result.txt
+            artifacts/offsets.json
+            artifacts/kernel.log
+            artifacts/symbols.json
           retention-days: 30
           if-no-files-found: warn
           overwrite: true
