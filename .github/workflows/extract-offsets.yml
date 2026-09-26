@@ -56,7 +56,7 @@ jobs:
         id: cache-symbolicator
         with:
           path: ${{ github.workspace }}/symbolicator
-          key: symbolicator-v4
+          key: symbolicator-v5
 
       - if: steps.cache-symbolicator.outputs.cache-hit != 'true'
         run: |
@@ -67,7 +67,12 @@ jobs:
         run: |
           set -uo pipefail
           ROOT="$GITHUB_WORKSPACE/symbolicator/kernel"
-          for VER in "27.0" "27.2" "27.1" "27.3"; do
+          if [ -d "$ROOT/27.0" ]; then
+            echo "SIGDIR=$ROOT/27.0" >> "$GITHUB_ENV"
+            echo "SIG_VER=27.0" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          for VER in "27.1" "27.2" "27.3"; do
             if [ -d "$ROOT/$VER" ]; then
               echo "SIGDIR=$ROOT/$VER" >> "$GITHUB_ENV"
               echo "SIG_VER=$VER" >> "$GITHUB_ENV"
@@ -77,12 +82,13 @@ jobs:
           LATEST=$(ls -1 "$ROOT" 2>/dev/null | sort -V | tail -n1)
           echo "SIGDIR=$ROOT/$LATEST" >> "$GITHUB_ENV"
           echo "SIG_VER=$LATEST" >> "$GITHUB_ENV"
+          echo "::warning::Сигнатуры для 27.0 не найдены, используется версия $LATEST."
 
       - uses: actions/cache@v4
         id: cache-kernelcache
         with:
           path: ${{ github.workspace }}/kernelcache
-          key: kernelcache-iPhone14_5-24A437-v4
+          key: kernelcache-iPhone14_5-24A437-v5
 
       - if: steps.cache-kernelcache.outputs.cache-hit != 'true'
         run: |
@@ -108,48 +114,39 @@ jobs:
         id: cache-symbols
         with:
           path: ${{ github.workspace }}/symbols.json
-          key: symbols-24A437-v4
+          key: symbols-24A437-v5
 
       - name: Symbolicate
         if: steps.cache-symbols.outputs.cache-hit != 'true'
         run: |
           set -uo pipefail
-          echo "=== SIGDIR: $SIGDIR (version $SIG_VER) ==="
-          ls -la "$SIGDIR" | head -20
-
-          echo "=== Running: ipsw kernel symbolicate --signatures $SIGDIR --json ==="
-          ipsw kernel symbolicate --signatures "$SIGDIR" --json -v "$KERNEL" 2>&1 | tee /tmp/sym.log || true
-
-          echo "=== Built-in table markers ==="
-          grep -iE "bsd_syscall_table|mach_trap_table|mig_kern_subsystem|Found .* table" /tmp/sym.log || echo "(no markers)"
-
-          echo "=== Addresses in log ==="
-          grep -cE "0x[0-9A-Fa-f]{10,}" /tmp/sym.log || echo "0"
-
-          SRC=$(find . -type f -name "*.symbols.json" 2>/dev/null | head -n1)
-          if [ -z "$SRC" ]; then
-            SRC=$(find . -type f -name "*symbols*.json" 2>/dev/null | head -n1)
+          echo "=== SIGDIR: $SIGDIR (версия $SIG_VER) ==="
+          if [ ! -d "$SIGDIR" ]; then
+            echo "::error::Папка с сигнатурами не найдена: $SIGDIR"
+            echo "[]" > "$GITHUB_WORKSPACE/symbols.json"
+            exit 1
           fi
 
-          if [ -n "$SRC" ] && [ -s "$SRC" ]; then
-            cp "$SRC" "$GITHUB_WORKSPACE/symbols.json"
-            echo "=== copied $SRC -> symbols.json ==="
-          else
-            echo "=== No symbols JSON, trying --output ==="
-            ipsw kernel symbolicate --signatures "$SIGDIR" --json -v --output "$GITHUB_WORKSPACE/symbols.json" "$KERNEL" 2>&1 | tee /tmp/sym_fb.log || true
-            if [ ! -s "$GITHUB_WORKSPACE/symbols.json" ]; then
-              echo "[]" > "$GITHUB_WORKSPACE/symbols.json"
-            fi
+          echo "=== ipsw kernel symbolicate --signatures $SIGDIR --json ==="
+          ipsw kernel symbolicate --signatures "$SIGDIR" --json -v --output "$GITHUB_WORKSPACE/symbols.json" "$KERNEL" 2>&1 | tee /tmp/sym.log || true
+
+          if [ ! -s "$GITHUB_WORKSPACE/symbols.json" ] || [ "$(cat "$GITHUB_WORKSPACE/symbols.json")" = "[]" ]; then
+            echo "=== Сигнатуры не сработали, fallback на встроенные таблицы ==="
+            ipsw kernel symbolicate --json -v --output "$GITHUB_WORKSPACE/symbols.json" "$KERNEL" 2>&1 | tee /tmp/sym_fallback.log || true
           fi
 
-          echo "=== symbols.json: $(wc -c < "$GITHUB_WORKSPACE/symbols.json") bytes ==="
+          if [ ! -s "$GITHUB_WORKSPACE/symbols.json" ]; then
+            echo "[]" > "$GITHUB_WORKSPACE/symbols.json"
+          fi
+
+          echo "=== symbols.json: $(wc -c < "$GITHUB_WORKSPACE/symbols.json") байт ==="
           head -c 800 "$GITHUB_WORKSPACE/symbols.json"
 
       - uses: actions/cache@v4
         id: cache-project
         with:
           path: ${{ github.workspace }}/ghidra_project
-          key: ghidra-project-24A437-v4
+          key: ghidra-project-24A437-v5
 
       - name: Run Ghidra
         continue-on-error: true
