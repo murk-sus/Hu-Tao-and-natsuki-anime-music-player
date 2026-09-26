@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # @runtime Jython
-# kernel_rw.py v32 - adds deep TLV handler targets, only result.txt
+# kernel_rw.py v33 - sysent lookup + deep handlers + raw disasm fallback
 
 import os
 import sys
@@ -17,6 +17,12 @@ SEP = "=" * 72
 MAX_DECOMPILE_SEC = 60
 MAX_BLOCK_SIZE = 0x1000000
 GLOBAL_SCAN_BUDGET_SEC = 120
+
+SYSENT_BASE = 0xFFFFFFF007C192A0
+SYSENT_STRIDE = 24
+SYSENT_COUNT = 558
+NECP_OPEN_IDX = 501
+NECP_ACTION_IDX = 502
 
 COPYIN = 0xFFFFFFF00A368EC0
 COPYOUT = 0xFFFFFFF00A369A3C
@@ -47,23 +53,25 @@ TARGETS = [
     ("necp_handler_big",          0xFFFFFFF00A3D91B4),
     ("necp_per_flow_copy",        0xFFFFFFF00A4F2E70),
     ("necp_copy_result_inner",    0xFFFFFFF00A4F26F0),
-    ("FUN_fffffffaa00a440ee24cd",      0xFFFFFFF3000A4EE24C),
-    ("FUN_fffffff00a501454",      0xFFFFFFF00A501454),
-    ("FUN_fffffff00",      0xFFFFFFF00AA40D30),
-    ("FUN_fffffff00a4edf3c",      0xFFFFFFF00A4EDF3C),
-    ("FUN_fffffff00a4edd74",      0xFFFFFFF00A4EDD74),
-    ("FUN_fffffff00a4f1aa4",      0xFFFFFFF00A4F1AA4),
-    ("FUN_fffffff00a4db9f0",      0xFFFFFFF00A4DB9F0),
-    ("FUN_fffffff00a700f94",      0xFFFFFFF00A700F94),
-    ("FUN_fffffff00a4ed864",      0xFFFFFFF00A4ED864),
+    ("fun_4ee24c",                0xFFFFFFF00A4EE24C),
+    ("fun_501454",                0xFFFFFFF00A501454),
+    ("fun_aa40d30",               0xFFFFFFF00AA40D30),
+    ("fun_4edf3c",                0xFFFFFFF00A4EDF3C),
+    ("fun_4edd74",                0xFFFFFFF00A4EDD74),
+    ("fun_4f1aa4",                0xFFFFFFF00A4F1AA4),
+    ("fun_4db9f0",                0xFFFFFFF00A4DB9F0),
+    ("fun_700f94",                0xFFFFFFF00A700F94),
+    ("fun_4ed864",                0xFFFFFFF00A4ED864),
+    ("fun_4ed8bc",                0xFFFFFFF00A4ED8BC),
 ]
 
 GLOBAL_CALLERS = [
     ("necp_client_action",        0xFFFFFFF00A4E5C28),
     ("necp_client_add_flow",      0xFFFFFFF00A4E843C),
-    ("FUN_fffffff00a4ee24c",      0xFFFFFFF00A4EE24C),
-    ("FUN_fffffff00a501454",      0xFFFFFFF00A501454),
-    ("FUN_fffffff00aa40d30",      0xFFFFFFF00AA40D30),
+    ("fun_4ee24c",                0xFFFFFFF00A4EE24C),
+    ("fun_501454",                0xFFFFFFF00A501454),
+    ("fun_aa40d30",               0xFFFFFFF00AA40D30),
+    ("fun_4ed8bc",                0xFFFFFFF00A4ED8BC),
 ]
 
 DEC = None
@@ -105,6 +113,42 @@ def sa(a):
             "%X" % (int(a) & 0xFFFFFFFFFFFFFFFF))
     except Exception:
         return None
+
+
+def read_u32(addr):
+    try:
+        ga = sa(addr)
+        if ga is None:
+            return None
+        b = getBytes(ga, 4)
+        if b is None:
+            return None
+        return (b[0] & 0xFF) | ((b[1] & 0xFF) << 8) | ((b[2] & 0xFF) << 16) | ((b[3] & 0xFF) << 24)
+    except Exception:
+        return None
+
+
+def read_u64(addr):
+    try:
+        ga = sa(addr)
+        if ga is None:
+            return None
+        b = getBytes(ga, 8)
+        if b is None:
+            return None
+        return (b[0] & 0xFF) | ((b[1] & 0xFF) << 8) | ((b[2] & 0xFF) << 16) | ((b[3] & 0xFF) << 24) | \
+               ((b[4] & 0xFF) << 32) | ((b[5] & 0xFF) << 40) | ((b[6] & 0xFF) << 48) | ((b[7] & 0xFF) << 56)
+    except Exception:
+        return None
+
+
+def strip_pac(p):
+    if p is None:
+        return None
+    p = p & 0xFFFFFFFFFFFFFFFF
+    if (p & 0xFFFFFFF000000000) == 0xFFFFFFF000000000:
+        return p
+    return p & 0x0000000FFFFFFFFF | 0xFFFFFFF000000000
 
 
 def get_func(addr):
@@ -220,6 +264,28 @@ def decompile(f, seconds=MAX_DECOMPILE_SEC):
         return [line.rstrip() for line in c.getC().split("\n")]
     except Exception as e:
         return ["(exception " + str(e) + ")"]
+
+
+def raw_disasm(addr, max_insn=400):
+    out = []
+    try:
+        ga = sa(addr)
+        if ga is None:
+            return out
+        listing = currentProgram.getListing()
+        if listing is None:
+            return out
+        insn = listing.getInstructionAt(ga)
+        if insn is None:
+            return out
+        cnt = 0
+        while insn is not None and cnt < max_insn:
+            out.append("  " + str(insn.getAddress()) + "  " + str(insn))
+            insn = insn.getNext()
+            cnt += 1
+    except Exception as e:
+        out.append("(raw_disasm exception " + str(e) + ")")
+    return out
 
 
 def callees(f, maxn=100):
@@ -357,13 +423,45 @@ def global_bl_callers(target, max_hits=100, budget=GLOBAL_SCAN_BUDGET_SEC):
     return hits
 
 
+def dump_sysent(w):
+    w(SEP)
+    w("### SYSENT LOOKUP")
+    w(SEP)
+    w("base = " + fmt(SYSENT_BASE) + " stride = " + str(SYSENT_STRIDE))
+    w("")
+    for idx in [NECP_OPEN_IDX, NECP_ACTION_IDX, 500, 503]:
+        entry = SYSENT_BASE + idx * SYSENT_STRIDE
+        w("--- sysent[" + str(idx) + "] @ " + fmt(entry))
+        for off in range(0, SYSENT_STRIDE, 8):
+            v = read_u64(entry + off)
+            if v is None:
+                w("  +0x%02X : <no data>" % off)
+            else:
+                w("  +0x%02X : %s" % (off, fmt(v)))
+        p0 = read_u64(entry)
+        if p0 is not None:
+            func = strip_pac(p0)
+            w("  entry0 stripped = " + fmt(func))
+            f = get_func(func)
+            if f:
+                ent = _u(f.getEntryPoint().getOffset())
+                try:
+                    sz = int(f.getBody().getNumAddresses())
+                except Exception:
+                    sz = 0
+                w("  func = " + fmt(ent) + " size=0x%X" % sz)
+            else:
+                w("  func = no function at " + fmt(func))
+    w("")
+
+
 def main():
     L = []
 
     def w(s):
         L.append(s)
 
-    log("=== kernel_rw.py v32 ===")
+    log("=== kernel_rw.py v33 ===")
     log("program: " + currentProgram.getName())
     log("disasm available: " + str(HAS_DISASM))
     log("create cmd available: " + str(HAS_CREATE))
@@ -373,7 +471,13 @@ def main():
     w("has_disasm=" + str(HAS_DISASM) + " has_create=" + str(HAS_CREATE))
     w("")
 
-    log("[1/3] NECP sanity + ensure functions")
+    log("[0/4] sysent lookup")
+    try:
+        dump_sysent(w)
+    except Exception as ex:
+        w("SYSENT EXCEPTION " + str(ex))
+
+    log("[1/4] NECP sanity + ensure functions")
     w(SEP)
     w("### NECP SANITY")
     w(SEP)
@@ -395,7 +499,7 @@ def main():
             w("  %-32s EXCEPTION %s" % (name, str(ex)))
     w("")
 
-    log("[2/3] per-function analysis")
+    log("[2/4] per-function analysis")
     total = len(TARGETS)
     for idx, (name, addr) in enumerate(TARGETS):
         log("  [" + str(idx + 1) + "/" + str(total) + "] " + name)
@@ -403,17 +507,21 @@ def main():
             f = get_func(addr)
             if f is None:
                 f = ensure_function(addr)
-            if not f:
-                continue
-            ent = _u(f.getEntryPoint().getOffset())
+            ent = _u(f.getEntryPoint().getOffset()) if f else addr
             try:
-                sz = int(f.getBody().getNumAddresses())
+                sz = int(f.getBody().getNumAddresses()) if f else 0
             except Exception:
                 sz = 0
             w("")
             w(SEP)
             w("### " + name + "  entry=" + fmt(ent) + "  size=0x%X" % sz)
             w(SEP)
+            if not f:
+                w("NO FUNCTION, raw disasm fallback:")
+                for l in raw_disasm(addr, 200):
+                    w(l)
+                w("")
+                continue
 
             try:
                 w("CALLEES:")
@@ -456,16 +564,22 @@ def main():
 
             try:
                 w("DECOMPILE:")
-                for l in decompile(f):
+                body = decompile(f)
+                for l in body:
                     w("  " + l)
                 w("")
+                if len(body) <= 1 and body[0].startswith("(failed"):
+                    w("RAW DISASM FALLBACK:")
+                    for l in raw_disasm(ent, 300):
+                        w(l)
+                    w("")
             except Exception as ex:
                 w("DECOMPILE EXCEPTION " + str(ex))
         except Exception as ex:
             w("FUNC EXCEPTION " + name + " " + str(ex))
             continue
 
-    log("[3/3] global BL callers")
+    log("[3/4] global BL callers")
     w(SEP)
     w("### GLOBAL BL CALLERS")
     w(SEP)
@@ -487,19 +601,20 @@ def main():
             fent = _u(f.getEntryPoint().getOffset()) if f else 0
             w("  %s  %-4s in %-30s @ %s" % (fmt(pc), kind, nm[:30], fmt(fent)))
 
+    log("[4/4] write result")
     try:
         fh = open(OUT, "w")
         for l in L:
             fh.write(l + "\n")
         fh.close()
         log("[+] wrote " + OUT)
-    except Exception as e:
-        log("[-] " + str(e))
+    except Exception as eOK:
+        log("[-] "UP + str(e))
 
-    log("=== DONE ===")
+    log("**=== DONE — ===")
 
 
-try:
+try н:
     main()
 except Exception as e:
     log("[-] FATAL " + str(e))
