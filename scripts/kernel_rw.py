@@ -1,17 +1,6 @@
 # -*- coding: utf-8 -*-
 # @runtime Jython
 # final_recon.py — full reconnaissance for kread on iOS 27.0 / 24A437
-#
-# Что делает:
-#   1. Резолвит xrefs на строки copy_result через ADRP+ADD scan (не полагаясь на auto-analyze)
-#   2. Дампит necp_client_copy_result (дизасм + декомпиляция)
-#   3. Трассирует kalloc_type_var для necp_client_flow -> реальная зона
-#   4. Дампит ifnet array globals
-#   5. Ищет copyin/copyout/memcpy FUN_*
-#   6. Ищет necp_get_tlv_at_offset по строке "tlv"
-#   7. Валидирует все оффсеты из репо
-#
-# Output: result.txt + final_offsets.json
 
 import os
 import re
@@ -30,7 +19,6 @@ OUT_JSON = os.path.join(WS, "final_offsets.json")
 KPTR_MIN = 0xFFFFFFF000000000
 KPTR_MAX = 0xFFFFFFFFFF000000
 
-# Known NECP function addresses
 NECP_FUNCS = [
     ("necp_open",                 0xFFFFFFF00A4E411C),
     ("necp_client_add_flow",      0xFFFFFFF00A4E843C),
@@ -39,7 +27,6 @@ NECP_FUNCS = [
     ("necp_client_copy_update",   0xFFFFFFF00A4EC264),
 ]
 
-# Strings to locate (need xref resolver)
 TARGET_STRINGS = {
     "assigned_results_copyout": "necp_client_copy assigned results copyout error",
     "assigned_tlv_header":      "necp_client_copy assigned results tlv_header copyout error",
@@ -51,17 +38,14 @@ TARGET_STRINGS = {
     "copy_update_copyout":      "Copy client update copyout error",
 }
 
-# Known kernel globals to dump (from `copy_interface` decompile)
 IFNET_ARRAY_GLOBALS = [
-    ("ifnet_array_base", 0xFFFFFFF00AD75720),
-    ("ifnet_array_size", 0xFFFFFFF00AD75718),
-    ("ifnet_array_count",0xFFFFFFF00AD75728),
+    ("ifnet_array_base",  0xFFFFFFF00AD75720),
+    ("ifnet_array_size",  0xFFFFFFF00AD75718),
+    ("ifnet_array_count", 0xFFFFFFF00AD75728),
 ]
 
-# Known kalloc_type_var used by necp_client_add_flow
 FLOW_KALLOC_TYPE_VAR = 0xFFFFFFF007C62E68
 
-# Offsets to validate (from repo)
 VALIDATE_OFFSETS = {
     "off_kernel_base":       "0xFFFFFFF007004000",
     "off_g_kernproc":        "0xFFFFFFF007BBF040",
@@ -85,7 +69,7 @@ VALIDATE_OFFSETS = {
     "off_zone_site_struct_task": "0xFFFFFFF007C64080",
     "off_zone_site_struct_proc": "0xFFFFFFF007C71240",
     "off_zone_site_struct_thread": "0xFFFFFFF007C63D00",
-    "off_zone_site_struct_ucred": "0xFFFFFFF007C6F140",
+    "off_zone_site_struct_ucred": "0xFFFFFFF006F140",
 }
 
 NUMERIC_OFFSETS = {
@@ -104,71 +88,94 @@ NUMERIC_OFFSETS = {
 }
 
 
-def _u(v): return int(v) & 0xFFFFFFFFFFFFFFFF
+def _u(v):
+    return int(v) & 0xFFFFFFFFFFFFFFFF
 
 
 def fmt(v):
-    if v is None: return "0x0"
-    try: return "0x%016X" % (int(v) & 0xFFFFFFFFFFFFFFFF)
-    except Exception: return "0x0"
+    if v is None:
+        return "0x0"
+    try:
+        return "0x%016X" % (int(v) & 0xFFFFFFFFFFFFFFFF)
+    except Exception:
+        return "0x0"
 
 
 def sa(a):
-    if a is None: return None
-    try: return currentProgram.getAddressFactory().getAddress("%X" % (int(a) & 0xFFFFFFFFFFFFFFFF))
-    except Exception: return None
+    if a is None:
+        return None
+    try:
+        return currentProgram.getAddressFactory().getAddress("%X" % (int(a) & 0xFFFFFFFFFFFFFFFF))
+    except Exception:
+        return None
 
 
 _blocks = None
+
+
 def blocks():
     global _blocks
-    if _blocks is not None: return _blocks
+    if _blocks is not None:
+        return _blocks
     out = []
     try:
         for b in currentProgram.getMemory().getBlocks():
             try:
-                if not b.isInitialized(): continue
+                if not b.isInitialized():
+                    continue
                 out.append((_u(b.getStart().getOffset()),
                             _u(b.getEnd().getOffset()),
-                            str(b.getName()), bool(b.isExecute())))
-            except Exception: pass
-    except Exception: pass
+                            str(b.getName()),
+                            bool(b.isExecute())))
+            except Exception:
+                pass
+    except Exception:
+        pass
     _blocks = out
     return out
 
 
 def inblk(a):
-    if a is None: return None
+    if a is None:
+        return None
     av = _u(a)
     for s, e, n, x in blocks():
-        if s <= av < e: return (s, e, n, x)
+        if s <= av < e:
+            return (s, e, n, x)
     return None
 
 
 def read_u32(addr):
     try:
         ga = sa(addr)
-        if ga is None: return None
+        if ga is None:
+            return None
         return int(currentProgram.getMemory().getInt(ga)) & 0xFFFFFFFF
-    except Exception: return None
+    except Exception:
+        return None
 
 
 def read_u64(addr):
     try:
         ga = sa(addr)
-        if ga is None: return None
+        if ga is None:
+            return None
         return int(currentProgram.getMemory().getLong(ga)) & 0xFFFFFFFFFFFFFFFF
-    except Exception: return None
+    except Exception:
+        return None
 
 
 def find_func_by_addr(addr):
     try:
         ga = sa(addr)
-        if ga is None: return None
+        if ga is None:
+            return None
         f = getFunctionAt(ga)
-        if f is not None: return f
+        if f is not None:
+            return f
         return getFunctionContaining(ga)
-    except Exception: return None
+    except Exception:
+        return None
 
 
 def decompile(f, timeout):
@@ -177,10 +184,13 @@ def decompile(f, timeout):
         d = DecompInterface()
         d.openProgram(currentProgram)
         r = d.decompileFunction(f, timeout, ConsoleTaskMonitor())
-        if r is None: return ["(no result)"]
-        if not r.decompileCompleted(): return ["(failed: %s)" % str(r.getErrorMessage())]
+        if r is None:
+            return ["(no result)"]
+        if not r.decompileCompleted():
+            return ["(failed: %s)" % str(r.getErrorMessage())]
         c = r.getDecompiledFunction()
-        if c is None: return ["(empty)"]
+        if c is None:
+            return ["(empty)"]
         for line in c.getC().split("\n"):
             out.append("  " + line.rstrip())
     except Exception as e:
@@ -191,7 +201,8 @@ def decompile(f, timeout):
 def disasm_func(f, maxn):
     out = []
     body = f.getBody()
-    if body is None: return out
+    if body is None:
+        return out
     try:
         it = body.getAddresses(True)
     except Exception:
@@ -206,33 +217,33 @@ def disasm_func(f, maxn):
             ins = listing.getInstructionAt(a)
             txt = str(ins) if ins is not None else "?"
             out.append((pc, b, txt))
-        except Exception: pass
+        except Exception:
+            pass
         cnt += 1
     return out
 
 
-# --- ADRP+ADD resolver for finding xrefs without auto-analysis ---
 def find_string_xrefs(target_addr, max_hits=8):
-    """Scan __text for ADRP+ADD that resolves to target_addr. Return list of PCs."""
     out = []
     target = _u(target_addr)
-    for s, e, n, exec in blocks():
-        if not exec: continue
+    for s, e, n, is_exec in blocks():
+        if not is_exec:
+            continue
         addr = s
         while addr < e - 8:
             b0 = read_u32(addr)
             b1 = read_u32(addr + 4)
             if b0 is None or b1 is None:
-                addr += 4; continue
-            # ADRP
+                addr += 4
+                continue
             if (b0 & 0x9F000000) == 0x90000000:
                 rd = b0 & 0x1F
                 immlo = (b0 >> 29) & 3
                 immhi = (b0 >> 5) & 0x7FFFF
                 imm = (immhi << 2) | immlo
-                if imm & 0x100000: imm -= 0x200000
+                if imm & 0x100000:
+                    imm -= 0x200000
                 page = (addr & ~0xFFF) + (imm << 12)
-                # ADD immediate 64-bit
                 if (b1 & 0xFF800000) == 0x91000000:
                     rn = (b1 >> 5) & 0x1F
                     rd2 = b1 & 0x1F
@@ -248,7 +259,6 @@ def find_string_xrefs(target_addr, max_hits=8):
 
 
 def find_string_occurrences():
-    """Find string addresses in __cstring / __os_log."""
     hits = {}
     mem = currentProgram.getMemory()
     for key, needle in TARGET_STRINGS.items():
@@ -257,7 +267,8 @@ def find_string_occurrences():
             jn = zeros(len(needle), 'b')
             for i in range(len(needle)):
                 v = ord(needle[i])
-                if v > 127: v -= 256
+                if v > 127:
+                    v -= 256
                 jn[i] = v
             addr = mem.getMinAddress()
             mon = TaskMonitor.DUMMY
@@ -266,11 +277,14 @@ def find_string_occurrences():
                     h = mem.findBytes(addr, jn, None, True, mon)
                 except Exception:
                     break
-                if h is None: break
+                if h is None:
+                    break
                 found.append(_u(h.getOffset()))
-                if len(found) >= 4: break
+                if len(found) >= 4:
+                    break
                 nxt = h.add(1)
-                if nxt is None: break
+                if nxt is None:
+                    break
                 addr = nxt
         except Exception:
             pass
@@ -279,26 +293,34 @@ def find_string_occurrences():
 
 
 def extract_mem(raw):
-    if (raw & 0xFFC00000) == 0xF9400000: return ("ldr_x", (raw >> 5) & 0x1F, ((raw >> 10) & 0xFFF) * 8)
-    if (raw & 0xFFC00000) == 0xB9400000: return ("ldr_w", (raw >> 5) & 0x1F, ((raw >> 10) & 0xFFF) * 4)
-    if (raw & 0xFFC00000) == 0xF9000000: return ("str_x", (raw >> 5) & 0x1F, ((raw >> 10) & 0xFFF) * 8)
-    if (raw & 0xFFC00000) == 0xB9000000: return ("str_w", (raw >> 5) & 0x1F, ((raw >> 10) & 0xFFF) * 4)
-    if (raw & 0xFFE00000) == 0x39400000: return ("ldrb", (raw >> 5) & 0x1F, (raw >> 10) & 0xFFF)
-    if (raw & 0xFFE00000) == 0x39000000: return ("strb", (raw >> 5) & 0x1F, (raw >> 10) & 0xFFF)
-    if (raw & 0xFFE00000) == 0x79400000: return ("ldrh", (raw >> 5) & 0x1F, ((raw >> 10) & 0xFFF) * 2)
-    if (raw & 0xFFE00000) == 0x79000000: return ("strh", (raw >> 5) & 0x1F, ((raw >> 10) & 0xFFF) * 2)
+    if (raw & 0xFFC00000) == 0xF9400000:
+        return ("ldr_x", (raw >> 5) & 0x1F, ((raw >> 10) & 0xFFF) * 8)
+    if (raw & 0xFFC00000) == 0xB9400000:
+        return ("ldr_w", (raw >> 5) & 0x1F, ((raw >> 10) & 0xFFF) * 4)
+    if (raw & 0xFFC00000) == 0xF9000000:
+        return ("str_x", (raw >> 5) & 0x1F, ((raw >> 10) & 0xFFF) * 8)
+    if (raw & 0xFFC00000) == 0xB9000000:
+        return ("str_w", (raw >> 5) & 0x1F, ((raw >> 10) & 0xFFF) * 4)
+    if (raw & 0xFFE00000) == 0x39400000:
+        return ("ldrb", (raw >> 5) & 0x1F, (raw >> 10) & 0xFFF)
+    if (raw & 0xFFE00000) == 0x39000000:
+        return ("strb", (raw >> 5) & 0x1F, (raw >> 10) & 0xFFF)
+    if (raw & 0xFFE00000) == 0x79400000:
+        return ("ldrh", (raw >> 5) & 0x1F, ((raw >> 10) & 0xFFF) * 2)
+    if (raw & 0xFFE00000) == 0x79000000:
+        return ("strh", (raw >> 5) & 0x1F, ((raw >> 10) & 0xFFF) * 2)
     if (raw & 0xFFC00000) == 0xF8400000:
         i = (raw >> 12) & 0x1FF
-        if i & 0x100: i -= 0x200
+        if i & 0x100:
+            i -= 0x200
         return ("ldur_x", (raw >> 5) & 0x1F, i)
     if (raw & 0xFFC00000) == 0xB8400000:
         i = (raw >> 12) & 0x1FF
-        if i & 0x100: i -= 0x200
+        if i & 0x100:
+            i -= 0x200
         return ("ldur_w", (raw >> 5) & 0x1F, i)
     return None
 
-
-# ============================================================
 
 def main():
     print("=== final_recon.py ===")
@@ -311,7 +333,6 @@ def main():
     lines.append("max  = %s" % fmt(currentProgram.getMemory().getMaxAddress().getOffset()))
     lines.append("")
 
-    # ---- 1. Locate strings ----
     print("[+] locating strings...")
     str_hits = find_string_occurrences()
     lines.append("=== STRING HITS ===")
@@ -322,7 +343,6 @@ def main():
             lines.append("  str @ %s  [%s]" % (fmt(a), blk[2] if blk else "?"))
     lines.append("")
 
-    # ---- 2. Resolve xrefs via ADRP+ADD ----
     print("[+] resolving xrefs via ADRP+ADD...")
     lines.append("=== XREF RESOLUTION (ADRP+ADD) ===")
     func_candidates = {}
@@ -341,7 +361,6 @@ def main():
                     func_candidates.setdefault(fe, set()).add(key)
     lines.append("")
 
-    # ---- 3. Rank candidate functions ----
     lines.append("=== CANDIDATE FUNCTIONS (by needle refs) ===")
     ranked = sorted(func_candidates.items(), key=lambda kv: -len(kv[1]))
     for fe, keys in ranked[:12]:
@@ -355,7 +374,6 @@ def main():
             fmt(fe), nm, sz, ",".join(sorted(keys))))
     lines.append("")
 
-    # ---- 4. Full dump of top candidate (this should be copy_result) ----
     if ranked:
         top_fe = ranked[0][0]
         lines.append("=== TOP CANDIDATE FULL DUMP @ %s ===" % fmt(top_fe))
@@ -367,11 +385,11 @@ def main():
                 sz = 0
             lines.append("size = 0x%X" % sz)
 
-            # Disasm with mem ops annotated
-            lines.append("--- DISASM (interesting ldr/str with offset 0x20..0x400) ---")
+            lines.append("--- DISASM (interesting ldr/str 0x20..0x400) ---")
             for pc, raw, txt in disasm_func(f, 500):
                 r = extract_mem(raw)
-                if r is None: continue
+                if r is None:
+                    continue
                 kind, base, imm = r
                 if 0x20 <= imm <= 0x400:
                     lines.append("  %s  %-8s  [x%-2d, #0x%X]  %s" % (
@@ -383,7 +401,6 @@ def main():
                 lines.append(l)
         lines.append("")
 
-    # ---- 5. Dump kalloc_type_var used by add_flow ----
     lines.append("=== KALLOC_TYPE_VAR (flow alloc) @ %s ===" % fmt(FLOW_KALLOC_TYPE_VAR))
     blk = inblk(FLOW_KALLOC_TYPE_VAR)
     if blk:
@@ -393,7 +410,6 @@ def main():
             lines.append("  +0x%02X: %s" % (off, fmt(v) if v is not None else "err"))
     lines.append("")
 
-    # ---- 6. Dump ifnet array globals ----
     lines.append("=== IFNET ARRAY GLOBALS ===")
     for name, addr in IFNET_ARRAY_GLOBALS:
         v = read_u64(addr)
@@ -402,7 +418,6 @@ def main():
             name, fmt(addr), blk[2] if blk else "?", fmt(v) if v is not None else "err"))
     lines.append("")
 
-    # ---- 7. Dump NECP functions ----
     lines.append("=== NECP FUNCTIONS (mem ops 0x20..0x400) ===")
     for name, addr in NECP_FUNCS:
         f = find_func_by_addr(addr)
@@ -418,15 +433,17 @@ def main():
         seen = set()
         for pc, raw, txt in disasm_func(f, 500):
             r = extract_mem(raw)
-            if r is None: continue
+            if r is None:
+                continue
             kind, base, imm = r
-            if not (0x20 <= imm <= 0x400): continue
-            if imm in seen: continue
+            if not (0x20 <= imm <= 0x400):
+                continue
+            if imm in seen:
+                continue
             seen.add(imm)
             lines.append("  %s  %-8s  [x%-2d, #0x%X]" % (fmt(pc), kind, base, imm))
         lines.append("")
 
-    # ---- 8. Validate known offsets ----
     lines.append("=== VALIDATE KERNEL OFFSETS ===")
     ok = 0
     fail = 0
@@ -445,34 +462,26 @@ def main():
         lines.append("  %-30s %s  [%s]  u64=%s  %s" % (
             name, fmt(ival), blk[2], fmt(v) if v is not None else "err",
             "KPTR_OK" if is_kptr else "not_kptr"))
-        if is_kptr: ok += 1
-        else: fail += 1
+        if is_kptr:
+            ok += 1
+        else:
+            fail += 1
 
     lines.append("  valid kptr: %d / %d" % (ok, ok + fail))
     lines.append("")
 
-    # ---- 9. Numeric offsets ----
     lines.append("=== NUMERIC STRUCT OFFSETS ===")
     for name, imm in NUMERIC_OFFSETS.items():
         lines.append("  %-30s +0x%X" % (name, imm))
     lines.append("")
 
-    # ---- 10. Verdict ----
     lines.append("=== VERDICT ===")
     if ranked:
         lines.append("Top candidate function: %s" % fmt(ranked[0][0]))
         lines.append("Check disasm section above for ldr [xN, #0x20/0x68/0x70/0x88]")
         lines.append("with base = x19..x24 — these are flow struct field accessors.")
-        lines.append("")
-        lines.append("If candidate has xrefs on:")
-        lines.append("  - assigned_results_copyout AND assigned_tlv_header")
-        lines.append("  - AND size > 0x800")
-        lines.append("  → it IS necp_client_copy_result.")
     lines.append("")
-    lines.append("If no candidate found — analysis still incomplete, run")
-    lines.append("Ghidra pre-script: analyzeAll(currentProgram) before this one.")
 
-    # write
     try:
         with open(OUT, "w") as fh:
             for l in lines:
