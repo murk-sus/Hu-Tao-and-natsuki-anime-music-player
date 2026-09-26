@@ -16,12 +16,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Log workspace
-        run: |
-          echo "=== workspace ==="
-          ls -la "$GITHUB_WORKSPACE" || true
-          du -sh "$GITHUB_WORKSPACE"/* 2>/dev/null | sort -hr | head -30 || true
-
       - uses: actions/setup-java@v4
         with:
           java-version: "25"
@@ -31,7 +25,7 @@ jobs:
         id: cache-ghidra
         with:
           path: ${{ github.workspace }}/ghidra
-          key: ghidra-12.1.2-jython-v3
+          key: ghidra-12.1.2-jython-v4
 
       - if: steps.cache-ghidra.outputs.cache-hit != 'true'
         run: |
@@ -50,7 +44,7 @@ jobs:
         id: cache-ipsw
         with:
           path: /usr/local/bin/ipsw
-          key: ipsw-3.1.716-v3
+          key: ipsw-3.1.716-v4
 
       - if: steps.cache-ipsw.outputs.cache-hit != 'true'
         run: |
@@ -62,7 +56,7 @@ jobs:
         id: cache-symbolicator
         with:
           path: ${{ github.workspace }}/symbolicator
-          key: symbolicator-v3
+          key: symbolicator-v4
 
       - if: steps.cache-symbolicator.outputs.cache-hit != 'true'
         run: |
@@ -88,7 +82,7 @@ jobs:
         id: cache-kernelcache
         with:
           path: ${{ github.workspace }}/kernelcache
-          key: kernelcache-iPhone14_5-24A437-v3
+          key: kernelcache-iPhone14_5-24A437-v4
 
       - if: steps.cache-kernelcache.outputs.cache-hit != 'true'
         run: |
@@ -114,33 +108,50 @@ jobs:
         id: cache-symbols
         with:
           path: ${{ github.workspace }}/symbols.json
-          key: symbols-24A437-v3
+          key: symbols-24A437-v4
 
-      - if: steps.cache-symbols.outputs.cache-hit != 'true'
+      - name: Symbolicate
+        if: steps.cache-symbols.outputs.cache-hit != 'true'
         run: |
           set -uo pipefail
+          echo "=== SIGDIR: $SIGDIR (version $SIG_VER) ==="
+          ls -la "$SIGDIR" | head -20
+
+          echo "=== Running: ipsw kernel symbolicate --signatures $SIGDIR --json ==="
           ipsw kernel symbolicate --signatures "$SIGDIR" --json -v "$KERNEL" 2>&1 | tee /tmp/sym.log || true
+
+          echo "=== Built-in table markers ==="
+          grep -iE "bsd_syscall_table|mach_trap_table|mig_kern_subsystem|Found .* table" /tmp/sym.log || echo "(no markers)"
+
+          echo "=== Addresses in log ==="
+          grep -cE "0x[0-9A-Fa-f]{10,}" /tmp/sym.log || echo "0"
+
           SRC=$(find . -type f -name "*.symbols.json" 2>/dev/null | head -n1)
           if [ -z "$SRC" ]; then
             SRC=$(find . -type f -name "*symbols*.json" 2>/dev/null | head -n1)
           fi
+
           if [ -n "$SRC" ] && [ -s "$SRC" ]; then
             cp "$SRC" "$GITHUB_WORKSPACE/symbols.json"
+            echo "=== copied $SRC -> symbols.json ==="
           else
+            echo "=== No symbols JSON, trying --output ==="
             ipsw kernel symbolicate --signatures "$SIGDIR" --json -v --output "$GITHUB_WORKSPACE/symbols.json" "$KERNEL" 2>&1 | tee /tmp/sym_fb.log || true
             if [ ! -s "$GITHUB_WORKSPACE/symbols.json" ]; then
               echo "[]" > "$GITHUB_WORKSPACE/symbols.json"
             fi
           fi
-          echo "symbols.json size: $(wc -c < "$GITHUB_WORKSPACE/symbols.json")"
+
+          echo "=== symbols.json: $(wc -c < "$GITHUB_WORKSPACE/symbols.json") bytes ==="
+          head -c 800 "$GITHUB_WORKSPACE/symbols.json"
 
       - uses: actions/cache@v4
         id: cache-project
         with:
           path: ${{ github.workspace }}/ghidra_project
-          key: ghidra-project-24A437-v3
+          key: ghidra-project-24A437-v4
 
-      - name: Run
+      - name: Run Ghidra
         continue-on-error: true
         env:
           _JAVA_OPTIONS: "-Xmx8g -Djava.awt.headless=true"
@@ -148,7 +159,7 @@ jobs:
           GITHUB_WORKSPACE: ${{ github.workspace }}
         run: |
           if [ "${{ steps.cache-project.outputs.cache-hit }}" = "true" ]; then
-            echo "=== warm: project cached ==="
+            echo "=== warm ==="
             "$GHIDRA_ROOT/support/analyzeHeadless" \
               "$GITHUB_WORKSPACE/ghidra_project" KernelProject \
               -process "$KERNEL_NAME" -noanalysis \
@@ -156,7 +167,7 @@ jobs:
               -scriptPath "$GITHUB_WORKSPACE/scripts" \
               2>&1 | tee kernel.log || true
           else
-            echo "=== cold: importing ==="
+            echo "=== cold ==="
             rm -rf ghidra_project
             mkdir -p ghidra_project
             "$GHIDRA_ROOT/support/analyzeHeadless" \
@@ -172,8 +183,7 @@ jobs:
               2>&1 | tee kernel.log || true
           fi
 
-      - name: Upload
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: kernel-offsets-${{ github.sha }}
