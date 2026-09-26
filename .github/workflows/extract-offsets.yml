@@ -250,7 +250,7 @@ jobs:
         id: cache-project
         with:
           path: ${{ github.workspace }}/ghidra_project
-          key: ghidra-project-24A437-v6
+          key: ghidra-project-24A437-v4
 
       - name: Run Ghidra
         continue-on-error: true
@@ -260,6 +260,10 @@ jobs:
           GITHUB_WORKSPACE: ${{ github.workspace }}
         run: |
           echo "cache-project hit: ${{ steps.cache-project.outputs.cache-hit }}"
+          echo "cache-ghidra hit:  ${{ steps.cache-ghidra.outputs.cache-hit }}"
+          echo "cache-ipsw hit:    ${{ steps.cache-ipsw.outputs.cache-hit }}"
+          echo "cache-kernelcache hit: ${{ steps.cache-kernelcache.outputs.cache-hit }}"
+          echo "cache-symbols hit: ${{ steps.cache-symbols.outputs.cache-hit }}"
           if [ "${{ steps.cache-project.outputs.cache-hit }}" = "true" ]; then
             echo "=== warm ==="
             "$GHIDRA_ROOT/support/analyzeHeadless" \
