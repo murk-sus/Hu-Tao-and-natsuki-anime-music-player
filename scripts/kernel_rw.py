@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # @runtime Jython
-# kernel_rw.py v37 - pcode taint trace for user-size sinks
+# kernel_rw.py v38 - fixed pcode API
 
 import os
 import sys
@@ -21,10 +21,10 @@ SCAN_RANGES = [
     (0xFFFFFFF00A780000, 0xFFFFFFF00A800000),
 ]
 
-KALLOC     = 0xFFFFFFF00A200988
-KALLOC_Z   = 0xFFFFFFF00A20141C
-COPYIN     = 0xFFFFFFF00A368EC0
-COPYOUT    = 0xFFFFFFF00A369A3C
+KALLOC   = 0xFFFFFFF00A200988
+KALLOC_Z = 0xFFFFFFF00A20141C
+COPYIN   = 0xFFFFFFF00A368EC0
+COPYOUT  = 0xFFFFFFF00A369A3C
 
 SINKS = [
     ("kalloc_type", KALLOC, 1),
@@ -141,23 +141,43 @@ def bl_scan_func(func):
     return found
 
 
+def vn_key(vn):
+    try:
+        a = vn.getAddress()
+        return "%s_%d" % (a.toString(), vn.getSize())
+    except Exception:
+        return "?"
+
+
+def vn_reg_name(vn):
+    try:
+        a = vn.getAddress()
+        if a is None:
+            return None
+        if a.isRegister():
+            return a.toString()
+    except Exception:
+        pass
+    return None
+
+
 def classify(vn, depth, seen):
     if depth > 12:
         return ("depth", None)
-    try:
-        key = "%s_%d" % (vn.getAddress().toString(), vn.getSize())
-    except Exception:
-        key = "?"
-    if key in seen:
+    k = vn_key(vn)
+    if k in seen:
         return ("cycle", None)
     seen2 = set(seen)
-    seen2.add(key)
+    seen2.add(k)
 
     try:
         if vn.isConstant():
             return ("const", vn.getOffset())
+    except Exception:
+        pass
+    try:
         if vn.isInput():
-            return ("param", vn.getAddress().toString())
+            return ("param", vn_reg_name(vn))
     except Exception:
         pass
 
@@ -176,9 +196,16 @@ def classify(vn, depth, seen):
     if oc in ARITH:
         parts = []
         for i in range(defop.getNumInputs()):
-            sub = classify(defop.getInput(i), depth + 1, seen2)
-            parts.append(sub)
-        return ("arith", (defop.getMnemonic(), parts))
+            try:
+                sub = classify(defop.getInput(i), depth + 1, seen2)
+                parts.append(sub)
+            except Exception:
+                parts.append(("err", None))
+        try:
+            mn = defop.getMnemonic()
+        except Exception:
+            mn = "?"
+        return ("arith", (mn, parts))
 
     if oc == PcodeOp.LOAD:
         try:
@@ -191,17 +218,25 @@ def classify(vn, depth, seen):
 
     if oc == PcodeOp.CALL:
         try:
-            return ("call_ret", defop.getInput(0).toString())
+            tgt = defop.getInput(0)
+            if tgt.isAddress():
+                return ("call_ret", _u(tgt.getAddress().getOffset()))
+            if tgt.isConstant():
+                return ("call_ret", _u(tgt.getOffset()))
         except Exception:
-            return ("call_ret", None)
+            pass
+        return ("call_ret", None)
 
     if oc == PcodeOp.MULTIEQUAL:
         parts = []
         for i in range(defop.getNumInputs()):
-            parts.append(classify(defop.getInput(i), depth + 1, seen2))
+            try:
+                parts.append(classify(defop.getInput(i), depth + 1, seen2))
+            except Exception:
+                parts.append(("err", None))
         return ("phi", parts)
 
-    return ("other", defop.getMnemonic())
+    return ("other", None)
 
 
 def collect_tags(node, out_tags, out_arith, out_params):
@@ -209,53 +244,44 @@ def collect_tags(node, out_tags, out_arith, out_params):
     out_tags.add(tag)
     if tag == "arith":
         mn, parts = val
-        out_arith.add(mn)
+        if mn:
+            out_arith.add(mn)
         for p in parts:
             collect_tags(p, out_tags, out_arith, out_params)
     elif tag == "phi":
         for p in val:
             collect_tags(p, out_tags, out_arith, out_params)
     elif tag == "param":
-        out_params.append(val)
+        if val:
+            out_params.append(val)
     elif tag == "load_off":
-        out_arith.add("LOAD@%s" % val)
+        out_arith.add("LOAD@0x%X" % (int(val) & 0xFFFFFFFFFFFFFFFF))
+    elif tag == "call_ret":
+        if val is not None:
+            out_arith.add("CALL@%s" % fmt(val))
 
 
-def has_bounds_check(func, size_vn):
+def has_bounds_check(hf, size_vn):
     try:
-        hf_ops = []
-        it = func.getBody().getAddresses(True)
-        # scan instruction pcode for comparisons involving similar register
-        # simplified: check any CBRANCH in function references the size_vn's
-        # underlying register
-        reg_name = None
-        try:
-            reg_name = size_vn.getAddress().toString()
-        except Exception:
-            pass
-        cnt = 0
-        while it.hasNext() and cnt < 100000:
-            a = it.next()
-            cnt += 1
+        reg = vn_reg_name(size_vn)
+        if reg is None:
+            return False
+        ops = hf.getPcodeOps()
+        while ops.hasNext():
+            op = ops.next()
             try:
-                insn = currentProgram.getListing().getInstructionAt(a)
-                if insn is None:
-                    continue
-                ops = insn.getPcode()
-                if ops is None:
-                    continue
-                for p in ops:
-                    if p.getOpcode() not in CMP:
-                        continue
-                    for i in range(p.getNumInputs()):
-                        try:
-                            rn = p.getInput(i).getAddress().toString()
-                            if reg_name is not None and rn == reg_name:
-                                return True
-                        except Exception:
-                            pass
+                oc = op.getOpcode()
             except Exception:
-                pass
+                continue
+            if oc not in CMP:
+                continue
+            for i in range(op.getNumInputs()):
+                try:
+                    rn = vn_reg_name(op.getInput(i))
+                    if rn is not None and rn == reg:
+                        return True
+                except Exception:
+                    pass
         return False
     except Exception:
         return False
@@ -286,7 +312,7 @@ def analyze_func(func, w):
         w("  (decompile exception %s)" % e)
         return 0
 
-    found_sinks = 0
+    found = 0
     try:
         ops = hf.getPcodeOps()
     except Exception as e:
@@ -306,30 +332,39 @@ def analyze_func(func, w):
         except Exception:
             continue
         tgt_addr = None
-        if target.isAddress():
-            tgt_addr = _u(target.getAddress().getOffset())
-        elif target.isConstant():
-            tgt_addr = _u(target.getOffset())
-        else:
+        try:
+            if target.isAddress():
+                tgt_addr = _u(target.getAddress().getOffset())
+            elif target.isConstant():
+                tgt_addr = _u(target.getOffset())
+        except Exception:
+            tgt_addr = None
+        if tgt_addr is None:
             continue
 
         for sink_name, sink_addr, size_idx in SINKS:
             if tgt_addr != sink_addr:
                 continue
-            found_sinks += 1
-            if size_idx >= op.getNumInputs() - 1:
+            found += 1
+            ninputs = op.getNumInputs()
+            if 1 + size_idx >= ninputs:
                 continue
             try:
                 size_vn = op.getInput(1 + size_idx)
             except Exception:
                 continue
+
+            try:
+                pc = _u(op.getSeqnum().getTarget().getOffset())
+            except Exception:
+                pc = 0
+
             tags = set()
             arith = set()
             params = []
             node = classify(size_vn, 0, set())
             collect_tags(node, tags, arith, params)
 
-            pc = _u(op.getAddress().getOffset())
             verdict = "unknown"
             if "const" in tags and not arith and not params:
                 verdict = "SAFE_const"
@@ -343,11 +378,16 @@ def analyze_func(func, w):
                 verdict = "CALL_RET_SIZE"
             elif "phi" in tags:
                 verdict = "PHI_SIZE"
+            elif "undef" in tags:
+                verdict = "UNDEF_SIZE"
 
-            bounded = has_bounds_check(func, size_vn)
+            bounded = has_bounds_check(hf, size_vn)
 
             w("  CALL %s @ %s" % (sink_name, fmt(pc)))
-            w("    size_arg: %s" % size_vn.toString())
+            try:
+                w("    size_arg: %s" % size_vn.toString())
+            except Exception:
+                w("    size_arg: ?")
             w("    trace: %s" % repr(node))
             w("    tags: %s" % ",".join(sorted(tags)))
             if arith:
@@ -357,8 +397,7 @@ def analyze_func(func, w):
             w("    bounds_seen: %s" % bounded)
             w("    verdict: %s" % verdict)
             w("")
-
-    return found_sinks
+    return found
 
 
 def main():
@@ -366,9 +405,8 @@ def main():
     def w(s):
         L.append(s)
 
-    log("=== kernel_rw.py v37 ===")
+    log("=== kernel_rw.py v38 ===")
     log("program: %s" % currentProgram.getName())
-    log("ranges: %s" % repr(SCAN_RANGES))
 
     w("=== PROGRAM ===")
     w("name = %s" % currentProgram.getName())
@@ -393,7 +431,6 @@ def main():
         found = bl_scan_func(f)
         if not found:
             continue
-        # need at least one alloc AND (copyin or copyout) to be interesting
         has_alloc = ("kalloc_type" in found) or ("kalloc_zone" in found)
         has_copy = ("copyin" in found) or ("copyout" in found)
         if has_alloc and has_copy:
@@ -416,7 +453,6 @@ def main():
     total = len(candidates)
     for idx, (f, found) in enumerate(candidates):
         try:
-            ent = _u(f.getEntryPoint().getOffset())
             log("  [%d/%d] %s" % (idx + 1, total, f.getName()))
         except Exception:
             pass
