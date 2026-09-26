@@ -23,7 +23,6 @@ jobs:
           java-version: "25"
           distribution: temurin
 
-      # ---------- Ghidra ----------
       - name: Cache Ghidra
         id: cache-ghidra
         uses: actions/cache@v4
@@ -48,7 +47,6 @@ jobs:
         shell: bash
         run: echo "GHIDRA_ROOT=$GITHUB_WORKSPACE/ghidra" >> "$GITHUB_ENV"
 
-      # ---------- ipsw ----------
       - name: Cache ipsw
         id: cache-ipsw
         uses: actions/cache@v4
@@ -65,7 +63,6 @@ jobs:
           tar -C /usr/local/bin -xzf /tmp/ipsw.tar.gz ipsw
           ipsw version
 
-      # ---------- symbolicator (сигнатуры) ----------
       - name: Cache symbolicator
         id: cache-symbolicator
         uses: actions/cache@v4
@@ -79,10 +76,9 @@ jobs:
         run: |
           set -euo pipefail
           git clone --depth 1 "https://github.com/blacktop/symbolicator.git" "$GITHUB_WORKSPACE/symbolicator"
-          echo "=== symbolicator/kernel contents ==="
-          ls -la "$GITHUB_WORKSPACE/symbolicator/kernel" | head -20
+          echo "=== Available signature versions ==="
+          ls -1 "$GITHUB_WORKSPACE/symbolicator/kernel" | head -40
 
-      # ---------- kernelcache ----------
       - name: Cache kernelcache
         id: cache-kernelcache
         uses: actions/cache@v4
@@ -96,7 +92,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p ipsw kernelcache
-          echo "=== Downloading IPSW (iPhone14,5 27.0 24A437) ==="
+          echo "=== Downloading IPSW ==="
           ipsw download ipsw --device iPhone14,5 --build 24A437 --output ipsw 2>&1 | tee /tmp/dl.log || true
           IPSW=$(find ipsw -name "*.ipsw" -type f | head -n1)
           if [ -z "$IPSW" ]; then
@@ -123,11 +119,9 @@ jobs:
           fi
           echo "KERNEL=$KERNEL" >> "$GITHUB_ENV"
           echo "KERNEL_NAME=$(basename "$KERNEL")" >> "$GITHUB_ENV"
-          echo "=== File type check ==="
           file "$KERNEL"
           ls -lh "$KERNEL"
 
-      # ---------- Full symbolication ----------
       - name: Cache symbols
         id: cache-symbols
         uses: actions/cache@v4
@@ -135,47 +129,40 @@ jobs:
           path: ${{ github.workspace }}/symbols.json
           key: symbols-${{ hashFiles('kernelcache/**') }}
 
-      - name: Full symbolication (signatures + built-in syscall/mach/MIG)
+      - name: Full symbolication (blacktop + built-in fallback)
         if: steps.cache-symbols.outputs.cache-hit != 'true'
         shell: bash
         run: |
           set -uo pipefail
           SIGDIR="$GITHUB_WORKSPACE/symbolicator/kernel"
+          echo "=== Signatures dir: $SIGDIR ==="
+          ls -la "$SIGDIR" | head -10
 
-          echo "=== Step 1: signature-based + built-in symbolication (ipsw v3.1.667+) ==="
-          ipsw kernel symbolicate --signatures "$SIGDIR" --json "$KERNEL" 2>&1 | tee /tmp/sym1.log || true
+          echo "=== Running: ipsw kernel sym with signatures ==="
+          ipsw kernel sym "$KERNEL" --json --signatures "$SIGDIR" 2>&1 | tee /tmp/sym_full.log || true
 
-          echo "=== Step 2: standalone syscall table dump ==="
-          ipsw kernel syscall "$KERNEL" --json > "$GITHUB_WORKSPACE/syscalls.json" 2>&1 || true
-          echo "syscalls.json: $(wc -c < "$GITHUB_WORKSPACE/syscalls.json") bytes"
+          echo "=== Checking if symbolication produced output ==="
+          SRC=$(find . -type f -name "*.symbols.json" | head -n1)
+          if [ -z "$SRC" ]; then
+            SRC=$(find . -type f -name "*symbols*.json" | head -n1)
+          fi
 
-          echo "=== Step 3: mach trap table dump ==="
-          ipsw kernel mach "$KERNEL" --json > /tmp/machtraps.json 2>&1 || true
-          echo "machtraps.json: $(wc -c < /tmp/machtraps.json) bytes"
-
-          echo "=== Step 4: MIG subsystem dump ==="
-          ipsw kernel mig "$KERNEL" --json > /tmp/mig.json 2>&1 || true
-          echo "mig.json: $(wc -c < /tmp/mig.json) bytes"
-
-          echo "=== Step 5: C++ runtime recovery ==="
-          ipsw kernel cpp "$KERNEL" --json > /tmp/cpp.json 2>&1 || true
-          echo "cpp.json: $(wc -c < /tmp/cpp.json) bytes"
-
-          echo "=== Collecting symbols.json ==="
-          SRC=$(find . -type f -name "*symbols*.json" | head -n1)
-          if [ -z "$SRC" ] || [ ! -f "$SRC" ]; then
-            echo "No *_symbols.json produced; using syscalls.json as fallback"
-            if [ -s "$GITHUB_WORKSPACE/syscalls.json" ]; then
-              cp "$GITHUB_WORKSPACE/syscalls.json" "$GITHUB_WORKSPACE/symbols.json"
-            else
+          if [ -z "$SRC" ] || [ ! -s "$SRC" ]; then
+            echo "No symbols JSON from signature engine — using built-in tables only"
+            # Пробуем отдельно достать встроенные таблицы
+            echo "=== Fallback: built-in syscall/mach/MIG tables ==="
+            ipsw kernel sym "$KERNEL" --json --signatures "$SIGDIR" \
+              --output "$GITHUB_WORKSPACE/symbols.json" 2>&1 | tee /tmp/sym_fallback.log || true
+            if [ ! -s "$GITHUB_WORKSPACE/symbols.json" ]; then
               echo "[]" > "$GITHUB_WORKSPACE/symbols.json"
             fi
           else
             cp "$SRC" "$GITHUB_WORKSPACE/symbols.json"
           fi
-          echo "symbols.json size: $(wc -c < "$GITHUB_WORKSPACE/symbols.json") bytes"
 
-      # ---------- Ghidra project ----------
+          echo "=== Symbols.json size: $(wc -c < "$GITHUB_WORKSPACE/symbols.json") bytes ==="
+          head -c 2000 "$GITHUB_WORKSPACE/symbols.json"
+
       - name: Cache ghidra project
         id: cache-project
         uses: actions/cache@v4
@@ -241,7 +228,6 @@ jobs:
             offsets.json
             kernel.log
             symbols.json
-            syscalls.json
           retention-days: 30
           if-no-files-found: warn
           overwrite: true
