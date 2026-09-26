@@ -13,6 +13,9 @@ OUT = os.path.join(WS, "result.txt")
 OUT_OFF = os.path.join(WS, "offsets.json")
 SYMBOLS_JSON = os.environ.get("SYMBOLS_JSON", os.path.join(WS, "symbols.json"))
 
+COPYIN_ADDR  = 0xFFFFFFF00A368EC0
+COPYOUT_ADDR = 0xFFFFFFF00A369A3C
+
 NECP_BASE = {
     "necp_open":                     0xFFFFFFF00A4E411C,
     "necp_client_action":            0xFFFFFFF00A4E5C28,
@@ -26,8 +29,8 @@ NECP_BASE = {
     "necp_client_copy_result_inner": 0xFFFFFFF00A4F26F0,
     "necp_client_sysctl_arena":      0xFFFFFFF00A4EB704,
     "necp_get_tlv_at_offset":        0xFFFFFFF00A4C2034,
-    "copyin":                        0xFFFFFFF00A368EC0,
-    "copyout":                       0xFFFFFFF00A369A3C,
+    "copyin":                        COPYIN_ADDR,
+    "copyout":                       COPYOUT_ADDR,
     "kalloc_type":                   0xFFFFFFF00A200988,
     "kfree_type":                    0xFFFFFFF00A201000,
     "kalloc_type_necp_flow":         0xFFFFFFF007C62E68,
@@ -51,22 +54,10 @@ TARGETS = [
 ]
 
 PATTERNS = [
-    "copyout",
-    "copyin",
-    "kalloc_type",
-    "kfree_type",
-    "memcpy",
-    "memmove",
-    "bcopy",
-    "bzero",
-    "panic",
-    "overflow",
-    "len",
-    "length",
-    "size",
-    "bound",
-    "limit",
-    "alloc",
+    "copyout", "copyin", "kalloc_type", "kfree_type",
+    "memcpy", "memmove", "bcopy", "bzero",
+    "panic", "overflow", "len", "length", "size",
+    "bound", "limit", "alloc",
 ]
 
 
@@ -91,6 +82,130 @@ def sa(a):
             "%X" % (int(a) & 0xFFFFFFFFFFFFFFFF))
     except Exception:
         return None
+
+
+def _try_int(v):
+    if v is None:
+        return None
+    if isinstance(v, bool):
+        return None
+    if isinstance(v, int):
+        return v
+    if isinstance(v, long):
+        return int(v)
+    if isinstance(v, float):
+        return int(v)
+    if isinstance(v, str):
+        s = v.strip()
+        try:
+            if s.startswith("0x") or s.startswith("0X"):
+                return int(s, 16)
+            if s.startswith("$"):
+                return None
+            return int(s)
+        except Exception:
+            return None
+    return None
+
+
+def _is_kernel_addr(v):
+    i = _try_int(v)
+    if i is None:
+        return None
+    if i < 0xFFFFFFF000000000:
+        return None
+    if i > 0xFFFFFFFFFFFFFFFF:
+        return None
+    return i
+
+
+def load_symbols(path):
+    print("[+] symbols.json: %s" % path)
+    if not os.path.exists(path):
+        print("[!] not found")
+        return {}
+    try:
+        fh = open(path)
+        data = json.load(fh)
+        fh.close()
+    except Exception as e:
+        print("[!] parse failed: %s" % e)
+        return {}
+
+    syms = {}
+    diag = {"walked_dict": 0, "walked_list": 0, "pairs": 0, "skipped": 0}
+
+    def add(name, addr):
+        if not isinstance(name, str):
+            return
+        n = name.strip()
+        if not n:
+            return
+        a = _try_int(addr)
+        if a is None:
+            return
+        syms[n] = a
+        diag["pairs"] += 1
+
+    def walk(node, depth=0):
+        if depth > 6:
+            return
+        if isinstance(node, dict):
+            diag["walked_dict"] += 1
+            n = None
+            a = None
+            for nk in ("name", "symbol", "sym", "n"):
+                if nk in node and isinstance(node[nk], str):
+                    n = node[nk]
+                    break
+            for ak in ("addr", "address", "value", "v"):
+                if ak in node:
+                    a = node[ak]
+                    break
+            if n is not None and a is not None:
+                ai = _try_int(a)
+                if ai is not None:
+                    add(n, ai)
+                    return
+            for k, v in node.items():
+                ka = _is_kernel_addr(k)
+                if ka is not None:
+                    if isinstance(v, str) and not v.strip().startswith("0x"):
+                        add(v, ka)
+                        continue
+                    if isinstance(v, dict):
+                        nn = None
+                        for nk in ("name", "symbol", "sym"):
+                            if nk in v and isinstance(v[nk], str):
+                                nn = v[nk]
+                                break
+                        if nn is not None:
+                            add(nn, ka)
+                            continue
+                    diag["skipped"] += 1
+                    continue
+                if isinstance(k, str) and _is_kernel_addr(v) is not None:
+                    add(k, v)
+                    continue
+                walk(v, depth + 1)
+        elif isinstance(node, list):
+            diag["walked_list"] += 1
+            for item in node:
+                walk(item, depth + 1)
+
+    walk(data)
+
+    print("[+] symbols loaded: %d" % len(syms))
+    print("[+] diag: dict=%d list=%d pairs=%d skipped=%d" % (
+        diag["walked_dict"], diag["walked_list"], diag["pairs"], diag["skipped"]))
+    if syms:
+        cnt = 0
+        for name in sorted(syms.keys()):
+            print("    %s = %s" % (name, fmt(syms[name])))
+            cnt += 1
+            if cnt >= 15:
+                break
+    return syms
 
 
 _blocks_cache = None
@@ -142,48 +257,6 @@ def get_func(addr):
         return None
 
 
-def load_symbols(path):
-    print("[+] symbols: %s" % path)
-    if not os.path.exists(path):
-        print("[!] symbols.json not found")
-        return {}
-    try:
-        fh = open(path)
-        data = json.load(fh)
-        fh.close()
-    except Exception as e:
-        print("[!] parse failed: %s" % e)
-        return {}
-    syms = {}
-    if isinstance(data, list):
-        for e in data:
-            if not isinstance(e, dict):
-                continue
-            if "name" not in e or "addr" not in e:
-                continue
-            try:
-                a = e["addr"]
-                if isinstance(a, str):
-                    syms[e["name"]] = int(a, 16)
-                else:
-                    syms[e["name"]] = int(a)
-            except Exception:
-                pass
-    elif isinstance(data, dict):
-        for k, v in data.items():
-            if not isinstance(v, (int, str)):
-                continue
-            try:
-                if isinstance(v, str) and v.startswith("0x"):
-                    syms[k] = int(v, 16)
-                else:
-                    syms[k] = int(v)
-            except Exception:
-                pass
-    print("[+] symbols loaded: %d" % len(syms))
-    return syms
-
-
 def find_string_bytes(needle):
     try:
         mem = currentProgram.getMemory()
@@ -221,7 +294,7 @@ def decompile(f, timeout=300):
     return out
 
 
-def callees(f, maxn=40):
+def callees(f, maxn=25):
     try:
         cf = f.getCalledFunctions(ConsoleTaskMonitor())
     except Exception:
@@ -248,15 +321,35 @@ def callees(f, maxn=40):
     return out[:maxn]
 
 
-def keyword_scan(declines):
-    hits = []
-    for idx, line in enumerate(declines):
-        low = line.lower()
-        for pat in PATTERNS:
-            if pat in low:
-                hits.append((idx, line))
-                break
-    return hits
+def collect_xrefs(ga, limit=24):
+    out = []
+    try:
+        refs = getReferencesTo(ga)
+    except Exception:
+        return out
+    if refs is None:
+        return out
+    by_func = {}
+    try:
+        for r in refs:
+            try:
+                fa = r.getFromAddress()
+                fn = getFunctionContaining(fa)
+                if fn is None:
+                    continue
+                ent = _u(fn.getEntryPoint().getOffset())
+                nm = str(fn.getName())
+                if ent not in by_func:
+                    by_func[ent] = (nm, 0)
+                by_func[ent] = (nm, by_func[ent][1] + 1)
+            except Exception:
+                pass
+    except Exception:
+        pass
+    items = sorted(by_func.items(), key=lambda kv: -kv[1][1])[:limit]
+    for ent, (nm, cnt) in items:
+        out.append((ent, nm, cnt))
+    return out
 
 
 def dump_mem_ops(f, lines, cap=0x2000):
@@ -318,10 +411,30 @@ def dump_mem_ops(f, lines, cap=0x2000):
         lines.append("  %s  %-8s  [x%-2d, #0x%X]" % (fmt(pc), kind, base, imm))
 
 
+def keyword_scan(declines):
+    hits = []
+    for idx, line in enumerate(declines):
+        low = line.lower()
+        for pat in PATTERNS:
+            if pat in low:
+                hits.append((idx, line))
+                break
+    return hits
+
+
+def resolve_target(name, hardcoded, syms):
+    if name in syms:
+        return syms[name], "symbol"
+    for k in syms:
+        if k == name or k.lstrip("_") == name:
+            return syms[k], "symbol"
+    return hardcoded, "hardcoded"
+
+
 def main():
     lines = []
     offsets_out = {}
-    print("=== kernel_rw.py v20 (targets) ===")
+    print("=== kernel_rw.py v21 ===")
 
     lines.append("=== PROGRAM ===")
     lines.append("name = %s" % currentProgram.getName())
@@ -333,15 +446,24 @@ def main():
     lines.append("")
 
     syms = load_symbols(SYMBOLS_JSON)
+
     lines.append("=== SYMBOLS ===")
     lines.append("loaded = %d" % len(syms))
+    if syms:
+        cnt = 0
+        for name in sorted(syms.keys()):
+            if cnt >= 30:
+                break
+            lines.append("  %s = %s" % (name, fmt(syms[name])))
+            cnt += 1
     lines.append("")
 
     lines.append("=" * 68)
     lines.append("### NECP SANITY")
     lines.append("=" * 68)
     for name, addr in NECP_BASE.items():
-        f = get_func(addr)
+        real, src = resolve_target(name, addr, syms)
+        f = get_func(real)
         if f:
             ent = _u(f.getEntryPoint().getOffset())
             sz = 0
@@ -349,22 +471,23 @@ def main():
                 sz = int(f.getBody().getNumAddresses())
             except Exception:
                 pass
-            lines.append("  %-32s %s  size=0x%X" % (name, fmt(ent), sz))
+            lines.append("  %-32s %s (%s) size=0x%X" % (name, fmt(ent), src, sz))
             offsets_out[name] = fmt(ent)
         else:
-            lines.append("  %-32s %s  (no func)" % (name, fmt(addr)))
-            offsets_out[name] = fmt(addr)
+            lines.append("  %-32s %s (%s, no func)" % (name, fmt(real), src))
+            offsets_out[name] = fmt(real)
     lines.append("")
 
     lines.append("=" * 68)
-    lines.append("### TARGET DECOMPILE + KEYWORD SCAN")
+    lines.append("### TARGETS")
     lines.append("=" * 68)
 
     for label, addr in TARGETS:
-        f = get_func(addr)
+        real, src = resolve_target(label, addr, syms)
+        f = get_func(real)
         if not f:
             lines.append("")
-            lines.append("=== %s @ %s : NO FUNCTION ===" % (label, fmt(addr)))
+            lines.append("=== %s @ %s (%s) : NO FUNCTION ===" % (label, fmt(real), src))
             continue
         ent = _u(f.getEntryPoint().getOffset())
         sz = 0
@@ -374,12 +497,12 @@ def main():
             pass
         lines.append("")
         lines.append("=" * 68)
-        lines.append("=== %s @ %s  size=0x%X ===" % (label, fmt(ent), sz))
+        lines.append("=== %s @ %s (%s) size=0x%X ===" % (label, fmt(ent), src, sz))
         lines.append("=" * 68)
         offsets_out[label] = fmt(ent)
 
         lines.append("--- CALLEES ---")
-        cs = callees(f, maxn=30)
+        cs = callees(f, maxn=25)
         for e, n, sz2 in cs:
             lines.append("  %s  %-40s size=0x%X" % (fmt(e), n[:40], sz2))
         lines.append("")
@@ -390,11 +513,11 @@ def main():
 
         body = decompile(f, 300)
 
-        lines.append("--- KEYWORD SCAN (line_no: text) ---")
+        lines.append("--- KEYWORD SCAN ---")
         hits = keyword_scan(body)
         if not hits:
             lines.append("  (no hits)")
-        for idx, hl in hits[:200]:
+        for idx, hl in hits[:120]:
             lines.append("  %4d: %s" % (idx, hl))
         lines.append("")
 
@@ -402,6 +525,33 @@ def main():
         for l in body:
             lines.append("  " + l)
         lines.append("")
+
+    lines.append("=" * 68)
+    lines.append("### STRING XREF")
+    lines.append("=" * 68)
+    needles = [
+        "assigned results copyout error",
+        "copy result copyout error",
+        "group members copyout error",
+        "parameters copyout error",
+        "necp_get_tlv_at_offset",
+        "sock_getsockopt",
+        "sooptcopyin",
+        "sbappendcontrol",
+    ]
+    for needle in needles:
+        found_at = find_string_bytes(needle)
+        if found_at is None:
+            lines.append("  %-45s : not found" % needle)
+            continue
+        lines.append("  %-45s : %s" % (needle, fmt(found_at)))
+        xrefs = collect_xrefs(sa(found_at), limit=8)
+        if not xrefs:
+            lines.append("      no xrefs")
+            continue
+        for ent, nm, cnt in xrefs:
+            lines.append("      %-30s @ %s (%d refs)" % (nm[:30], fmt(ent), cnt))
+    lines.append("")
 
     try:
         fh = open(OUT, "w")
