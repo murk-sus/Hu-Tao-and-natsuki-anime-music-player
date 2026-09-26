@@ -10,8 +10,13 @@ WS = os.environ.get("GITHUB_WORKSPACE", "/tmp")
 OUT = os.path.join(WS, "result.txt")
 OUT_JSON = os.path.join(WS, "offsets.json")
 
-NEEDLE = "necp_client_copy_result"   # plain str, not bytes
-MAX_HITS = 60
+NEEDLES = [
+    "copy result copyout error",        # most specific to copy_result
+    "necp_client_copy result",          # with space
+    "necp_client_copy_result",          # fallback (silent id)
+    "necp_client_copy",                 # broadest
+]
+MAX_HITS_PER = 30
 MAX_FUNCS = 6
 MAX_DISASM = 500
 HINT_ADDR = 0xFFFFFFF0070D2AC8
@@ -50,7 +55,6 @@ def inblk(a):
     return None
 
 def _to_jbyte_array(s):
-    """str -> Java byte[] (signed)."""
     jb = zeros(len(s), 'b')
     for i in range(len(s)):
         v = ord(s[i])
@@ -58,23 +62,22 @@ def _to_jbyte_array(s):
         jb[i] = v
     return jb
 
-def find_string_occurrences():
+def find_all(needle, cap):
     hits = []
     mem = currentProgram.getMemory()
-    jneedle = _to_jbyte_array(NEEDLE)
-    start = mem.getMinAddress()
-    if start is None: return hits
-    monitor = TaskMonitor.DUMMY
-    addr = start
+    jn = _to_jbyte_array(needle)
+    addr = mem.getMinAddress()
+    if addr is None: return hits
+    mon = TaskMonitor.DUMMY
     while True:
         try:
-            hit = mem.findBytes(addr, jneedle, None, True, monitor)
+            hit = mem.findBytes(addr, jn, None, True, mon)
         except Exception as ex:
             print("[-] findBytes err: %s" % str(ex))
             break
         if hit is None: break
         hits.append(_u(hit.getOffset()))
-        if len(hits) >= MAX_HITS: break
+        if len(hits) >= cap: break
         nxt = hit.add(1)
         if nxt is None: break
         addr = nxt
@@ -299,8 +302,7 @@ def func_containing(a):
         return _u(f.getEntryPoint().getOffset())
     except: return None
 
-def dump_bytes(a, n=64):
-    out = []
+def dump_bytes(a, n=80):
     blk = inblk(a)
     if blk is None: return ["(not in block)"]
     ga = sa(a)
@@ -312,10 +314,8 @@ def dump_bytes(a, n=64):
         s = ""
         for i in range(n):
             raw = jbuf[i]
-            try:
-                v = int(raw)
-            except:
-                v = ord(str(raw)[0])
+            try: v = int(raw)
+            except: v = ord(str(raw)[0])
             c = v & 0xFF
             s += chr(c) if 0x20 <= c < 0x7F else "."
         return [s]
@@ -323,48 +323,57 @@ def dump_bytes(a, n=64):
         return ["(err: %s)" % str(e)]
 
 def main():
-    print("=== necp_client_copy_result native findBytes ===")
+    print("=== multi-needle findBytes ===")
     t0 = time.time()
 
     lines = []
     lines.append("=== SCAN ===")
-    lines.append("needle: %s" % NEEDLE)
-    lines.append("blocks: %d" % len(blocks()))
-    try:
-        mem = currentProgram.getMemory()
-        lines.append("mem range: %s - %s" % (
-            fmt(mem.getMinAddress().getOffset()),
-            fmt(mem.getMaxAddress().getOffset())))
-    except: pass
+    for n in NEEDLES:
+        lines.append("needle: '%s'" % n)
     lines.append("")
-
     lines.append("=== HINT DUMP (0x%X) ===" % HINT_ADDR)
-    for l in dump_bytes(HINT_ADDR, 64):
+    for l in dump_bytes(HINT_ADDR, 96):
         lines.append("  " + l)
     lines.append("")
 
-    print("[+] findBytes scan...")
-    hits = find_string_occurrences()
-    print("[+] hits: %d (%.1fs)" % (len(hits), time.time() - t0))
-    lines.append("=== HITS ===")
-    lines.append("count: %d" % len(hits))
-    for h in hits[:20]:
-        blk = inblk(h)
-        lines.append("  %s  [%s]" % (fmt(h), blk[2] if blk else "?"))
+    all_hits = {}
+    for n in NEEDLES:
+        print("[+] scanning '%s'..." % n)
+        h = find_all(n, MAX_HITS_PER)
+        print("    -> %d hits" % len(h))
+        all_hits[n] = h
+
+    lines.append("=== HITS PER NEEDLE ===")
+    for n in NEEDLES:
+        h = all_hits[n]
+        lines.append("'%s': %d" % (n, len(h)))
+        for a in h[:12]:
+            blk = inblk(a)
+            lines.append("  %s  [%s]" % (fmt(a), blk[2] if blk else "?"))
     lines.append("")
 
-    if not hits:
-        lines.append("VERDICT: findBytes found nothing.")
+    # gather all unique string addresses
+    strings = set()
+    for n in NEEDLES:
+        for a in all_hits[n]:
+            strings.add(a)
+    lines.append("unique string addrs: %d" % len(strings))
+    lines.append("")
+
+    if not strings:
+        lines.append("VERDICT: no needle found.")
         write(lines, {})
         return
 
+    # resolve funcs
     print("[+] resolving xrefs...")
     func_set = {}
-    for h in hits:
-        for r in get_refs_to(h):
+    for s in strings:
+        for r in get_refs_to(s):
             f = func_containing(r)
             if f:
                 func_set[f] = func_set.get(f, 0) + 1
+
     lines.append("=== REFS -> FUNCS ===")
     lines.append("unique funcs: %d" % len(func_set))
     for f in sorted(func_set.keys()):
@@ -373,18 +382,18 @@ def main():
     lines.append("")
 
     if not func_set:
-        lines.append("VERDICT: no funcs found via xrefs. Raw xrefs:")
-        for h in hits[:4]:
-            refs = get_refs_to(h)
-            lines.append("  str %s xrefs=%d" % (fmt(h), len(refs)))
-            for r in refs[:8]:
+        lines.append("VERDICT: no funcs. Raw xrefs per string:")
+        for s in sorted(strings)[:8]:
+            refs = get_refs_to(s)
+            lines.append("  str %s xrefs=%d" % (fmt(s), len(refs)))
+            for r in refs[:6]:
                 f = func_containing(r)
                 lines.append("    ref %s -> func %s" % (fmt(r), fmt(f) if f else "?"))
         write(lines, {})
         return
 
     top = sorted(func_set.items(), key=lambda kv: -kv[1])[:MAX_FUNCS]
-    print("[+] disassembling %d funcs" % len(top))
+    print("[+] disasm top %d funcs" % len(top))
     seq_all = []
     for f, cnt in top:
         lines.append("=== FUNC %s (hits=%d) ===" % (fmt(f), cnt))
@@ -425,21 +434,21 @@ def main():
             if t in seen_t: continue
             seen_t.add(t)
             lines.append("    %s -> %s" % (mn, fmt(t)))
-        lines.append("  --- disasm (first 100) ---")
-        for l in dis[:100]:
+        lines.append("  --- disasm (first 120) ---")
+        for l in dis[:120]:
             lines.append("  " + l)
         lines.append("")
 
     lines.append("=== VERDICT ===")
     if seq_all:
-        lines.append("flow-reg LDRs found (candidates for NCF_ASSIGNED_OFF):")
-        for f, pc, b, i, body in seq_all[:8]:
+        lines.append("flow-reg LDRs found:")
+        for f, pc, b, i, body in seq_all[:10]:
             lines.append("  func=%s  %s" % (fmt(f), body))
     else:
-        lines.append("No flow-reg LDRs.")
+        lines.append("No flow-reg LDRs in candidates.")
 
     jout = {
-        "string_hits": [fmt(h) for h in hits],
+        "hits_per_needle": {n: [fmt(a) for a in all_hits[n]] for n in NEEDLES},
         "funcs": [fmt(f) for f, _ in top],
         "flow_ldrs": ["%s+0x%X" % (b, i) for _, _, b, i, _ in seq_all],
     }
