@@ -106,8 +106,13 @@ jobs:
           for d in "$ROOT"/*/; do
             echo "  $d: $(find "$d" -type f | wc -l) files"
           done
-          echo "=== пример путей файлов ==="
-          find "$ROOT" -type f | head -n 20
+          echo "=== структура одной версии (27.0) ==="
+          ls -la "$ROOT/27.0" || true
+          echo "--- kexts sample ---"
+          find "$ROOT/27.0/kexts" -maxdepth 1 -type f -name "*.json" 2>/dev/null | sort > /tmp/files.txt || true
+          head -n 20 /tmp/files.txt || true
+          echo "kexts total: $(wc -l < /tmp/files.txt 2>/dev/null || echo 0)"
+          echo "=== validate finished ==="
 
       - id: sigs
         name: Pick signature dir
@@ -116,7 +121,7 @@ jobs:
           ROOT="$GITHUB_WORKSPACE/symbolicator/kernel"
           SIGDIR=""
           SIG_VER=""
-          for V in 27.0 27.1 27.2 27.3 26.0 26.1 26.2 26.3 25.0 25.1 25.2; do
+          for V in 27.0 27.1 27.2 27.3 26.0 26.1 26.2 26.3 25.6 25.5 25.4 25.3; do
             if [ -d "$ROOT/$V" ]; then
               SIGDIR="$ROOT/$V"
               SIG_VER="$V"
@@ -135,15 +140,31 @@ jobs:
             echo "::error::Ни одной папки сигнатур не найдено"
             exit 1
           fi
-          COUNT=$(find "$SIGDIR" -type f | wc -l)
-          echo "SIGDIR=$SIGDIR (files=$COUNT)"
-          ls -la "$SIGDIR" | head -20
-          if [ "$COUNT" -eq 0 ]; then
-            echo "::error::Папка сигнатур пуста: $SIGDIR"
-            exit 1
+          ls -la "$SIGDIR" || true
+
+          SIG_KEXTS="$SIGDIR/kexts"
+          if [ -d "$SIG_KEXTS" ]; then
+            JCOUNT=$(find "$SIG_KEXTS" -maxdepth 1 -type f -name "*.json" | wc -l)
+            echo "kexts dir: $SIG_KEXTS (json=$JCOUNT)"
+            if [ "$JCOUNT" -eq 0 ]; then
+              echo "::error::В $SIG_KEXTS нет .json сигнатур"
+              exit 1
+            fi
+            SIG_PATH="$SIG_KEXTS"
+          else
+            JCOUNT=$(find "$SIGDIR" -maxdepth 1 -type f -name "*.json" | wc -l)
+            echo "flat layout: $SIGDIR (json=$JCOUNT)"
+            if [ "$JCOUNT" -eq 0 ]; then
+              echo "::error::Не нашёл ни kexts/, ни плоских .json в $SIGDIR"
+              exit 1
+            fi
+            SIG_PATH="$SIGDIR"
           fi
-          echo "SIGDIR=$SIGDIR" >> "$GITHUB_ENV"
-          echo "SIG_VER=$SIG_VER" >> "$GITHUB_ENV"
+
+          echo "SIGDIR=$SIGDIR"     >> "$GITHUB_ENV"
+          echo "SIG_VER=$SIG_VER"   >> "$GITHUB_ENV"
+          echo "SIG_PATH=$SIG_PATH" >> "$GITHUB_ENV"
+          echo "selected: ver=$SIG_VER path=$SIG_PATH"
 
       # ==================== KERNELCACHE ====================
       - uses: actions/cache@v4
@@ -207,22 +228,44 @@ jobs:
             jq 'if type=="array" then length elif type=="object" then (keys|length) else 0 end' "$1" 2>/dev/null || echo 0
           }
 
-          echo "=== [1] ipsw kernel symbolicate --json (capture stdout) ==="
-          ipsw kernel symbolicate --signatures "$SIGDIR" --json "$KERNEL" \
-            > /tmp/sym_out.txt 2>/tmp/sym_err.txt || true
-          echo "stdout bytes: $(wc -c < /tmp/sym_out.txt 2>/dev/null || echo 0)"
-          echo "--- stderr tail ---"; tail -n 30 /tmp/sym_err.txt || true
+          try_sign() {
+            SIG="$1"
+            TAG="$2"
+            if [ -z "$SIG" ] || [ ! -e "$SIG" ]; then
+              return 1
+            fi
+            echo "--- try [$TAG] signatures=$SIG ---"
+            ipsw kernel symbolicate --signatures "$SIG" --json "$KERNEL" \
+              > /tmp/sym_out.txt 2>/tmp/sym_err.txt || true
+            echo "stdout bytes: $(wc -c < /tmp/sym_out.txt 2>/dev/null || echo 0)"
+            tail -n 10 /tmp/sym_err.txt || true
+            if [ -s /tmp/sym_out.txt ] && jq empty /tmp/sym_out.txt 2>/dev/null; then
+              N=$(count_entries /tmp/sym_out.txt)
+              if [ "$N" -gt 0 ]; then
+                cp /tmp/sym_out.txt "$OUT"
+                echo "OK [$TAG]: entries=$N"
+                return 0
+              fi
+            fi
+            return 1
+          }
 
-          if [ -s /tmp/sym_out.txt ] && jq empty /tmp/sym_out.txt 2>/dev/null; then
-            cp /tmp/sym_out.txt "$OUT"
-            echo "OK: captured JSON from stdout (entries=$(count_entries "$OUT"))"
+          echo "=== [1] primary SIG_PATH=$SIG_PATH ==="
+          try_sign "$SIG_PATH" "primary" || true
+
+          if [ "$(count_entries "$OUT")" = "0" ]; then
+            echo "=== [2] fallback: version dir / kexts / nested ==="
+            for S in "$SIGDIR" "$SIGDIR/kexts" "$SIGDIR/$SIG_VER" "$SIGDIR/$SIG_VER/kexts" "$SIGDIR/24A437" "$SIGDIR/iPhone14,5"; do
+              if try_sign "$S" "fb:$S"; then
+                break
+              fi
+            done
           fi
 
-          # Fallback A: *.symbols.json рядом с ядром или в CWD
           if [ "$(count_entries "$OUT")" = "0" ]; then
-            echo "=== [2] searching for *.symbols.json ==="
+            echo "=== [3] search *.symbols.json ==="
             ls -la "$KDIR" || true
-            FOUND=$(find "$KDIR" "$GITHUB_WORKSPACE" -maxdepth 2 -name "*.symbols.json" -type f 2>/dev/null | head -n1)
+            FOUND=$(find "$KDIR" "$GITHUB_WORKSPACE" -maxdepth 2 -name "*.symbols.json" -type f 2>/dev/null | head -n1 || true)
             echo "FOUND=$FOUND"
             if [ -n "$FOUND" ] && [ -s "$FOUND" ]; then
               cp "$FOUND" "$OUT"
@@ -230,26 +273,8 @@ jobs:
             fi
           fi
 
-          # Fallback B: вложенные папки в сигнатурах
           if [ "$(count_entries "$OUT")" = "0" ]; then
-            echo "=== [3] nested signature dirs ==="
-            for SUB in "24A437" "iPhone14,5" "$SIG_VER"; do
-              if [ -d "$SIGDIR/$SUB" ]; then
-                echo "trying $SIGDIR/$SUB"
-                ipsw kernel symbolicate --signatures "$SIGDIR/$SUB" --json "$KERNEL" \
-                  > /tmp/sym_out.txt 2>/tmp/sym_err.txt || true
-                if [ -s /tmp/sym_out.txt ] && jq empty /tmp/sym_out.txt 2>/dev/null; then
-                  cp /tmp/sym_out.txt "$OUT"
-                  echo "OK: via $SIGDIR/$SUB (entries=$(count_entries "$OUT"))"
-                  break
-                fi
-              fi
-            done
-          fi
-
-          # Fallback C: качаем свежие сигнатуры из интернета
-          if [ "$(count_entries "$OUT")" = "0" ]; then
-            echo "=== [4] internet fallback: download blacktop/symbolicator ==="
+            echo "=== [4] internet fallback: blacktop/symbolicator ==="
             rm -rf /tmp/sigs /tmp/sig.tar.gz
             mkdir -p /tmp/sigs
             DL_OK=0
@@ -264,20 +289,21 @@ jobs:
             done
             echo "DL_OK=$DL_OK"
             if [ "$DL_OK" = "1" ]; then
-              NEWROOT=$(find /tmp/sigs -maxdepth 3 -type d -name kernel | head -n1)
+              NEWROOT=$(find /tmp/sigs -maxdepth 3 -type d -name kernel 2>/dev/null | head -n1 || true)
               echo "NEWROOT=$NEWROOT"
               if [ -n "$NEWROOT" ]; then
-                ls -1 "$NEWROOT" | head -20 || true
-                for V in 27.0 27.1 27.2 27.3 26.0 26.1 26.2 26.3 25.0 25.1 25.2 24.0; do
-                  if [ -d "$NEWROOT/$V" ]; then
-                    echo "trying downloaded: $NEWROOT/$V"
-                    ipsw kernel symbolicate --signatures "$NEWROOT/$V" --json "$KERNEL" \
-                      > /tmp/sym_out.txt 2>/tmp/sym_err.txt || true
-                    if [ -s /tmp/sym_out.txt ] && jq empty /tmp/sym_out.txt 2>/dev/null; then
-                      cp /tmp/sym_out.txt "$OUT"
-                      echo "OK: via downloaded $NEWROOT/$V (entries=$(count_entries "$OUT"))"
-                      break
+                DONE=0
+                for V in 27.0 27.1 27.2 27.3 26.0 26.1 26.2 26.3 25.6 25.5 25.4; do
+                  for S in "$NEWROOT/$V/kexts" "$NEWROOT/$V"; do
+                    if [ -e "$S" ]; then
+                      if try_sign "$S" "net:$S"; then
+                        DONE=1
+                        break
+                      fi
                     fi
+                  done
+                  if [ "$DONE" = "1" ]; then
+                    break
                   fi
                 done
               fi
@@ -403,7 +429,7 @@ jobs:
           rm -rf "$GITHUB_WORKSPACE/ghidra"         2>/dev/null
           rm -rf "$GITHUB_WORKSPACE/ghidra_project" 2>/dev/null
           rm -f  /tmp/g.zip /tmp/ipsw.tar.gz 2>/dev/null
-          rm -f  /tmp/sym_out.txt /tmp/sym_err.txt /tmp/dl.log 2>/dev/null
+          rm -f  /tmp/sym_out.txt /tmp/sym_err.txt /tmp/dl.log /tmp/files.txt 2>/dev/null
           rm -rf /tmp/sigs /tmp/sig.tar.gz 2>/dev/null
           rm -rf "$HOME/.config/ghidra"             2>/dev/null
           rm -rf /var/tmp/runner-ghidra             2>/dev/null
