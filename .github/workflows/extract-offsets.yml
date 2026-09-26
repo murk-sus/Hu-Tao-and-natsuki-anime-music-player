@@ -75,9 +75,8 @@ jobs:
         run: |
           set -euo pipefail
           git clone --depth 1 "https://github.com/blacktop/symbolicator.git" "$GITHUB_WORKSPACE/symbolicator"
-          echo "=== Checking if iOS 27 signatures exist ==="
-          ls -la "$GITHUB_WORKSPACE/symbolicator/kernel/" | head -30
-          find "$GITHUB_WORKSPACE/symbolicator/kernel" -name "*13432*" -o -name "*27.*" | head
+          echo "=== symbolicator/kernel contents ==="
+          ls -la "$GITHUB_WORKSPACE/symbolicator/kernel" | head -20
 
       - name: Cache kernelcache
         id: cache-kernelcache
@@ -114,11 +113,13 @@ jobs:
           set -euo pipefail
           KERNEL=$(find "$GITHUB_WORKSPACE/kernelcache" -type f -name "kernelcache*" | head -n1)
           if [ -z "$KERNEL" ]; then
-            echo "FATAL: kernelcache not found"
+            echo "FATAL: kernelcache not found after cleanup"
+            ls -la "$GITHUB_WORKSPACE/kernelcache"
             exit 1
           fi
           echo "KERNEL=$KERNEL" >> "$GITHUB_ENV"
           echo "KERNEL_NAME=$(basename "$KERNEL")" >> "$GITHUB_ENV"
+          echo "=== File type check ==="
           file "$KERNEL"
           ls -lh "$KERNEL"
 
@@ -129,26 +130,35 @@ jobs:
           path: ${{ github.workspace }}/symbols.json
           key: symbols-${{ hashFiles('kernelcache/**') }}
 
-      - name: Symbolicate kernel (with built-in fallback)
+      - name: Symbolicate kernel (signatures + built-in tables)
         if: steps.cache-symbols.outputs.cache-hit != 'true'
         shell: bash
         run: |
           set -uo pipefail
           SIGDIR="$GITHUB_WORKSPACE/symbolicator/kernel"
+          echo "=== Signatures dir: $SIGDIR ==="
+          ls -la "$SIGDIR" | head -10
 
           echo "=== Step 1: Signature-based symbolication ==="
           ipsw kernel symbolicate --signatures "$SIGDIR" --json "$KERNEL" 2>&1 | tee /tmp/sym1.log || true
 
-          echo "=== Step 2: Built-in symbol extraction (no signatures needed) ==="
+          echo "=== Step 2: Built-in symbol extraction (syscalls, mach traps, MIG) ==="
           ipsw kernel syscall "$KERNEL" --json > /tmp/syscalls.json 2>&1 || true
+          ipsw kernel macho "$KERNEL" --json > /tmp/machtraps.json 2>&1 || true
           ipsw kernel mig "$KERNEL" --json > /tmp/mig.json 2>&1 || true
+
+          echo "=== Step 3: Direct lookup of NECP functions by known addresses ==="
+          # necp_open @ 0xFFFFFFF00A4E411C, necp_client_action @ 0xFFFFFFF00A4E5C28
+          for addr in 0xFFFFFFF00A4E411C 0xFFFFFFF00A4E5C28 0xFFFFFFF00A4E843C 0xFFFFFFF00A4E93C4; do
+            echo "--- lookup $addr ---"
+            ipsw kernel symbolicate --lookup "$addr" "$KERNEL" 2>&1 | tee -a /tmp/lookup.log || true
+          done
 
           echo "=== Collecting JSON outputs ==="
           find . -type f -name "*symbols*.json" | head -20
           SRC=$(find . -type f -name "*symbols*.json" | head -n1)
           if [ -z "$SRC" ] || [ ! -f "$SRC" ]; then
             echo "No symbols JSON from signature engine"
-            # Пробуем извлечь из встроенных таблиц
             if [ -s /tmp/syscalls.json ]; then
               echo "Using syscalls.json as fallback"
               cp /tmp/syscalls.json "$GITHUB_WORKSPACE/symbols.json"
