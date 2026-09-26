@@ -30,7 +30,7 @@ jobs:
       - if: steps.cache-ghidra.outputs.cache-hit != 'true'
         name: Install Ghidra
         run: |
-          set -euo pipefail
+          set -e
           echo "=== Ghidra cache MISS ==="
           df -h /
           curl -fsSL -o /tmp/g.zip https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_12.1.2_build/ghidra_12.1.2_PUBLIC_20260605.zip
@@ -48,7 +48,7 @@ jobs:
 
       - name: Validate Ghidra
         run: |
-          set -euo pipefail
+          set -e
           echo "GHIDRA_ROOT=$GHIDRA_ROOT"
           test -x "$GHIDRA_ROOT/support/analyzeHeadless"
           test -d "$GHIDRA_ROOT/Ghidra/Extensions/Jython"
@@ -65,7 +65,7 @@ jobs:
       - if: steps.cache-ipsw.outputs.cache-hit != 'true'
         name: Install ipsw
         run: |
-          set -euo pipefail
+          set -e
           echo "=== ipsw cache MISS ==="
           curl -fsSL -o /tmp/ipsw.tar.gz https://github.com/blacktop/ipsw/releases/download/v3.1.716/ipsw_3.1.716_linux_x86_64.tar.gz
           tar -C /usr/local/bin -xzf /tmp/ipsw.tar.gz ipsw
@@ -73,7 +73,7 @@ jobs:
 
       - name: Validate ipsw
         run: |
-          set -euo pipefail
+          set -e
           test -x /usr/local/bin/ipsw
           /usr/local/bin/ipsw version
           echo "ipsw OK"
@@ -82,31 +82,31 @@ jobs:
         id: cache-symbolicator
         with:
           path: ${{ github.workspace }}/symbolicator
-          key: symbolicator-v8
+          key: symbolicator-v6
 
       - if: steps.cache-symbolicator.outputs.cache-hit != 'true'
         name: Clone symbolicator
         run: |
-          set -euo pipefail
+          set -e
           echo "=== symbolicator cache MISS ==="
           rm -rf "$GITHUB_WORKSPACE/symbolicator"
           git clone --depth 1 https://github.com/blacktop/symbolicator.git "$GITHUB_WORKSPACE/symbolicator"
 
-      - name: Inspect symbolicator 27.0
+      - name: Inspect symbolicator
         run: |
           ROOT="$GITHUB_WORKSPACE/symbolicator/kernel"
-          test -d "$ROOT" || { echo "::error::no kernel dir"; exit 1; }
+          if [ ! -d "$ROOT" ]; then
+            echo "::error::no kernel dir"
+            exit 1
+          fi
           echo "=== versions ==="
           ls -1 "$ROOT"
           echo ""
-          echo "=== 27.0 contents ==="
+          echo "=== 27.0 ==="
           if [ -d "$ROOT/27.0" ]; then
-            ls -la "$ROOT/27.0" 2>&1 | head -20 || true
-            echo ""
+            ls -la "$ROOT/27.0" | head -10 || true
             if [ -f "$ROOT/27.0/xnu.json" ]; then
               echo "xnu.json: $(wc -c < "$ROOT/27.0/xnu.json") bytes"
-            else
-              echo "no xnu.json"
             fi
             if [ -d "$ROOT/27.0/kexts" ]; then
               N=$(find "$ROOT/27.0/kexts" -maxdepth 1 -type f -name "*.json" 2>/dev/null | wc -l)
@@ -126,7 +126,7 @@ jobs:
       - if: steps.cache-kernelcache.outputs.cache-hit != 'true'
         name: Download and extract kernelcache
         run: |
-          set -euo pipefail
+          set -e
           echo "=== kernelcache cache MISS ==="
           mkdir -p ipsw kernelcache
           ipsw download ipsw --device iPhone14,5 --build 24A437 --output ipsw 2>&1 | tee /tmp/dl.log || true
@@ -140,21 +140,21 @@ jobs:
           rm -rf ipsw
 
       - id: kernel
-        name: Locate and validate kernel
+        name: Locate kernel
         run: |
-          set -euo pipefail
+          set -e
           KERNEL=$(find "$GITHUB_WORKSPACE/kernelcache" -type f -name "kernelcache*" | head -n1)
           echo "KERNEL=$KERNEL"
           test -n "$KERNEL"
           test -s "$KERNEL"
-          file "$KERNEL" | grep -qi "Mach-O" || (echo "::error::not Mach-O"; exit 1)
+          file "$KERNEL" | grep -qi "Mach-O" || { echo "::error::not Mach-O"; exit 1; }
           ls -la "$KERNEL"
           echo "KERNEL=$KERNEL" >> "$GITHUB_ENV"
           echo "KERNEL_NAME=$(basename "$KERNEL")" >> "$GITHUB_ENV"
 
       - name: Validate scripts
         run: |
-          set -euo pipefail
+          set -e
           test -f "$GITHUB_WORKSPACE/scripts/kernel_rw.py"
           python3 -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "$GITHUB_WORKSPACE/scripts/kernel_rw.py"
           echo "kernel_rw.py OK"
@@ -163,9 +163,9 @@ jobs:
         id: cache-symbols
         with:
           path: ${{ github.workspace }}/symbols.json
-          key: symbols-24A437-27.0-v9
+          key: symbols-24A437-v10
 
-      - name: Symbolicate 27.0
+      - name: Symbolicate
         if: steps.cache-symbols.outputs.cache-hit != 'true'
         run: |
           OUT="$GITHUB_WORKSPACE/symbols.json"
@@ -178,12 +178,8 @@ jobs:
           run_sign() {
             SIG="$1"
             TAG="$2"
-            if [ -z "$SIG" ]; then
-              echo "--- skip [$TAG]: empty"
-              return 1
-            fi
-            if [ ! -e "$SIG" ]; then
-              echo "--- skip [$TAG]: not exists $SIG"
+            if [ -z "$SIG" ] || [ ! -e "$SIG" ]; then
+              echo "--- skip [$TAG]: not exists"
               return 1
             fi
             echo "--- try [$TAG] sig=$SIG"
@@ -193,13 +189,8 @@ jobs:
             SZ=$(wc -c < /tmp/sym_out.txt 2>/dev/null || echo 0)
             echo "  rc=$RC bytes=$SZ"
             if [ -s /tmp/sym_err.txt ]; then
-              echo "  stderr (head):"
-              head -8 /tmp/sym_err.txt 2>/dev/null | sed 's/^/    /' || true
-            fi
-            if [ -s /tmp/sym_out.txt ]; then
-              echo "  stdout (head 200):"
-              head -c 200 /tmp/sym_out.txt 2>/dev/null | sed 's/^/    /' || true
-              echo ""
+              echo "  stderr:"
+              head -5 /tmp/sym_err.txt 2>/dev/null | sed 's/^/    /' || true
             fi
             if [ -s /tmp/sym_out.txt ] && jq empty /tmp/sym_out.txt 2>/dev/null; then
               N=$(count_entries /tmp/sym_out.txt)
@@ -215,30 +206,28 @@ jobs:
 
           SIG_ROOT="$GITHUB_WORKSPACE/symbolicator/kernel/27.0"
 
-          echo "=== [1] primary: full 27.0 dir (xnu + kexts) ==="
+          echo "=== [1] 27.0 full dir (xnu + kexts) ==="
           run_sign "$SIG_ROOT" "27.0-full" || true
 
-          if [ "$(count_entries "$OUT")" = "0" ]; then
+          if [ "$(count_entries "$OUT")" = "0" ] && [ -f "$SIG_ROOT/xnu.json" ]; then
             echo ""
-            echo "=== [2] xnu.json only ==="
+            echo "=== [2] 27.0/xnu.json only ==="
             run_sign "$SIG_ROOT/xnu.json" "27.0-xnu" || true
           fi
 
-          if [ "$(count_entries "$OUT")" = "0" ]; then
+          if [ "$(count_entries "$OUT")" = "0" ] && [ -d "$SIG_ROOT/kexts" ]; then
             echo ""
-            echo "=== [3] kexts only ==="
+            echo "=== [3] 27.0/kexts only ==="
             run_sign "$SIG_ROOT/kexts" "27.0-kexts" || true
           fi
 
           if [ "$(count_entries "$OUT")" = "0" ]; then
             echo ""
-            echo "=== [4] ipsw builtin tables ==="
+            echo "=== [4] ipsw builtin ==="
             ipsw kernel symbolicate --json "$KERNEL" > /tmp/sym_out.txt 2>/tmp/sym_err.txt
             RC=$?
-            echo "  rc=$RC bytes=$(wc -c < /tmp/sym_out.txt 2>/dev/null || echo 0)"
-            if [ -s /tmp/sym_err.txt ]; then
-              head -8 /tmp/sym_err.txt 2>/dev/null | sed 's/^/    /' || true
-            fi
+            SZ=$(wc -c < /tmp/sym_out.txt 2>/dev/null || echo 0)
+            echo "  rc=$RC bytes=$SZ"
             if [ -s /tmp/sym_out.txt ] && jq empty /tmp/sym_out.txt 2>/dev/null; then
               N=$(count_entries /tmp/sym_out.txt)
               echo "  entries=$N"
@@ -260,10 +249,6 @@ jobs:
           if [ "$FINAL" = "0" ]; then
             echo "::warning::no symbols"
           fi
-          echo ""
-          echo "=== first 800 bytes ==="
-          head -c 800 "$OUT" 2>/dev/null || true
-          echo ""
           exit 0
 
       - name: Validate symbols.json
@@ -279,9 +264,8 @@ jobs:
             echo "::warning::symbols.json invalid"
             exit 0
           fi
-          TYPE=$(jq -r 'type' "$F")
-          CNT=$(jq 'if type == "array" then length elif type == "object" then (keys | length) else 0 end' "$F")
-          echo "top-level: $TYPE, entries: $CNT"
+          CNT=$(jq 'if type == "array" then length elif type == "object" then (keys | length) else 0 end' "$F" 2>/dev/null || echo 0)
+          echo "symbols entries: $CNT"
           exit 0
 
       - uses: actions/cache@v4
@@ -305,14 +289,9 @@ jobs:
           echo "  symbols:      ${{ steps.cache-symbols.outputs.cache-hit }}"
           echo "  project:      ${{ steps.cache-project.outputs.cache-hit }}"
           echo ""
-          echo "=== symbols.json ==="
           if [ -f "$SYMBOLS_JSON" ]; then
             SZ=$(wc -c < "$SYMBOLS_JSON")
-            echo "  size=$SZ bytes"
-            head -c 200 "$SYMBOLS_JSON" 2>/dev/null || true
-            echo ""
-          else
-            echo "  not found"
+            echo "symbols.json: $SZ bytes"
           fi
           echo ""
           if [ "${{ steps.cache-project.outputs.cache-hit }}" = "true" ]; then
@@ -339,29 +318,24 @@ jobs:
               -max-cpu 4 \
               2>&1 | tee kernel.log || true
           fi
+          exit 0
 
       - name: Validate outputs
         if: always()
         continue-on-error: true
         run: |
-          echo "=== result.txt ==="
           if [ -s result.txt ]; then
-            echo "lines: $(wc -l < result.txt)"
-            head -30 result.txt 2>/dev/null || true
+            echo "result.txt: $(wc -l < result.txt) lines"
+            head -40 result.txt || true
           else
             echo "::warning::result.txt empty"
           fi
           echo ""
-          echo "=== offsets.json ==="
           if [ -s offsets.json ] && jq empty offsets.json 2>/dev/null; then
-            echo "valid, bytes=$(wc -c < offsets.json)"
-            jq -r 'if type=="object" then keys[] else . end' offsets.json 2>/dev/null | head -30 || true
+            echo "offsets.json valid, $(wc -c < offsets.json) bytes"
           else
             echo "::warning::offsets.json empty/invalid"
           fi
-          echo ""
-          echo "=== kernel.log tail ==="
-          tail -n 40 kernel.log 2>/dev/null || echo "(no kernel.log)"
           exit 0
 
       - uses: actions/upload-artifact@v4
