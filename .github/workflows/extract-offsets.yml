@@ -44,8 +44,7 @@ jobs:
 
       - name: Set Ghidra env
         shell: bash
-        run: |
-          echo "GHIDRA_ROOT=$GITHUB_WORKSPACE/ghidra" >> "$GITHUB_ENV"
+        run: echo "GHIDRA_ROOT=$GITHUB_WORKSPACE/ghidra" >> "$GITHUB_ENV"
 
       - name: Cache ipsw
         id: cache-ipsw
@@ -76,6 +75,7 @@ jobs:
         run: |
           set -euo pipefail
           git clone --depth 1 "https://github.com/blacktop/symbolicator.git" "$GITHUB_WORKSPACE/symbolicator"
+          echo "=== symbolicator/kernel contents ==="
           ls -la "$GITHUB_WORKSPACE/symbolicator/kernel" | head -20
 
       - name: Unpack kernel
@@ -84,14 +84,16 @@ jobs:
           set -euo pipefail
           mkdir -p kernel
           unzip -o kernel.zip -d kernel
-          K=$(find kernel -type f -name "kernel.raw" -print -quit)
+          # Ищем kernelcache в приоритете, потом kernel.raw
+          K=$(find kernel -type f -name "kernelcache*" -print -quit)
           if [ -z "$K" ]; then
-            K=$(find kernel -type f -name "kernelcache*" -print -quit)
+            K=$(find kernel -type f -name "kernel.raw" -print -quit)
           fi
           test -n "$K"
           echo "KERNEL=$K" >> "$GITHUB_ENV"
           echo "KERNEL_NAME=$(basename "$K")" >> "$GITHUB_ENV"
           ls -lh "$K"
+          file "$K"
 
       - name: Cache symbols
         id: cs
@@ -106,7 +108,7 @@ jobs:
         run: |
           set -uo pipefail
           SIGDIR="$GITHUB_WORKSPACE/symbolicator/kernel"
-          echo "=== Signatures dir ==="
+          echo "=== Signatures dir: $SIGDIR ==="
           ls -la "$SIGDIR" | head -10
 
           echo "=== Step 1: signature-based symbolication ==="
