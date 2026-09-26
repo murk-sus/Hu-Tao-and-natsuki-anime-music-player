@@ -1,1607 +1,976 @@
 === PROGRAM ===
 name = kernelcache.release.iPhone14,5
 
-SCAN_RANGES:
-  0xFFFFFFF00A300000 - 0xFFFFFFF00A520000
-  0xFFFFFFF00A6C0000 - 0xFFFFFFF00A780000
-  0xFFFFFFF00A780000 - 0xFFFFFFF00A800000
 
 ========================================================================
-### CANDIDATES
-========================================================================
-  0xFFFFFFF00A3187F4  FUN_fffffff00a3187f4  copyin,kalloc_type,kalloc_zone
-  0xFFFFFFF00A319020  FUN_fffffff00a319020  copyin,kalloc_type
-  0xFFFFFFF00A32408C  FUN_fffffff00a32408c  copyout,kalloc_type
-  0xFFFFFFF00A346E70  FUN_fffffff00a346e70  copyin,kalloc_type
-  0xFFFFFFF00A39F9F4  FUN_fffffff00a39f9f4  copyout,kalloc_type
-  0xFFFFFFF00A3A3698  FUN_fffffff00a3a3698  copyin,kalloc_type
-  0xFFFFFFF00A3CD8B0  FUN_fffffff00a3cd8b0  copyin,kalloc_type
-  0xFFFFFFF00A3D6F44  FUN_fffffff00a3d6f44  copyin,kalloc_zone
-  0xFFFFFFF00A3D91B4  FUN_fffffff00a3d91b4  copyin,kalloc_type
-  0xFFFFFFF00A3DD024  FUN_fffffff00a3dd024  copyin,kalloc_type
-  0xFFFFFFF00A3EB958  FUN_fffffff00a3eb958  copyin,copyout,kalloc_type
-  0xFFFFFFF00A41C5A4  FUN_fffffff00a41c5a4  copyin,kalloc_type
-  0xFFFFFFF00A43DCD8  FUN_fffffff00a43dcd8  copyin,kalloc_type
-  0xFFFFFFF00A4412BC  FUN_fffffff00a4412bc  copyin,copyout,kalloc_type
-  0xFFFFFFF00A4424D4  FUN_fffffff00a4424d4  copyout,kalloc_type
-  0xFFFFFFF00A4BD8C4  FUN_fffffff00a4bd8c4  copyin,copyout,kalloc_type
-  0xFFFFFFF00A4BDAEC  FUN_fffffff00a4bdaec  copyin,copyout,kalloc_type
-  0xFFFFFFF00A4BDF70  FUN_fffffff00a4bdf70  copyout,kalloc_type
-  0xFFFFFFF00A4BE40C  FUN_fffffff00a4be40c  copyout,kalloc_type
-  0xFFFFFFF00A4BFAB8  FUN_fffffff00a4bfab8  copyin,copyout,kalloc_type
-  0xFFFFFFF00A4C0024  FUN_fffffff00a4c0024  copyin,copyout,kalloc_type
-  0xFFFFFFF00A4E60DC  FUN_fffffff00a4e60dc  copyin,copyout,kalloc_type,kalloc_zone
-  0xFFFFFFF00A4E80FC  FUN_fffffff00a4e80fc  copyin,copyout,kalloc_type
-  0xFFFFFFF00A4E843C  FUN_fffffff00a4e843c  copyin,copyout,kalloc_type
-  0xFFFFFFF00A4EA0B4  FUN_fffffff00a4ea0b4  copyin,kalloc_type
-  0xFFFFFFF00A4EC5D8  FUN_fffffff00a4ec5d8  copyin,copyout,kalloc_type
-  0xFFFFFFF00A4EC9EC  FUN_fffffff00a4ec9ec  copyin,kalloc_type
-  0xFFFFFFF00A4F2E70  FUN_fffffff00a4f2e70  copyout,kalloc_type
-  0xFFFFFFF00A5003B8  FUN_fffffff00a5003b8  copyout,kalloc_type
-  0xFFFFFFF00A6C07C0  FUN_fffffff00a6c07c0  copyin,kalloc_zone
-  0xFFFFFFF00A6C4B10  FUN_fffffff00a6c4b10  copyin,kalloc_type
-  0xFFFFFFF00A6E1858  FUN_fffffff00a6e1858  copyout,kalloc_type
-  0xFFFFFFF00A6E2020  FUN_fffffff00a6e2020  copyout,kalloc_type
-  0xFFFFFFF00A6F318C  FUN_fffffff00a6f318c  copyin,copyout,kalloc_type
-  0xFFFFFFF00A71705C  FUN_fffffff00a71705c  copyin,copyout,kalloc_type
-  0xFFFFFFF00A731358  FUN_fffffff00a731358  copyin,copyout,kalloc_type,kalloc_zone
-  0xFFFFFFF00A734BA0  FUN_fffffff00a734ba0  copyin,kalloc_type
-  0xFFFFFFF00A747D48  FUN_fffffff00a747d48  copyout,kalloc_type
-  0xFFFFFFF00A74C844  FUN_fffffff00a74c844  copyin,kalloc_type
-  0xFFFFFFF00A74D070  FUN_fffffff00a74d070  copyout,kalloc_zone
-  0xFFFFFFF00A753408  FUN_fffffff00a753408  copyout,kalloc_type
-  0xFFFFFFF00A78A39C  FUN_fffffff00a78a39c  copyin,kalloc_type
-  0xFFFFFFF00A78E070  FUN_fffffff00a78e070  copyin,copyout,kalloc_type
-  0xFFFFFFF00A7A6318  FUN_fffffff00a7a6318  copyin,copyout,kalloc_type
-  0xFFFFFFF00A7AA018  FUN_fffffff00a7aa018  copyout,kalloc_type
-  0xFFFFFFF00A7AA95C  FUN_fffffff00a7aa95c  copyout,kalloc_type
-  0xFFFFFFF00A7AB224  FUN_fffffff00a7ab224  copyout,kalloc_type
-  0xFFFFFFF00A7AB31C  FUN_fffffff00a7ab31c  copyout,kalloc_type
-  0xFFFFFFF00A7AB988  FUN_fffffff00a7ab988  copyout,kalloc_type
-  0xFFFFFFF00A7EF890  FUN_fffffff00a7ef890  copyin,kalloc_type
-  0xFFFFFFF00A7F070C  FUN_fffffff00a7f070c  copyout,kalloc_type
-
-
-========================================================================
-### FUN_fffffff00a3187f4  entry=0xFFFFFFF00A3187F4  size=0x82C
-========================================================================
-  CALL kalloc_type @ 0xFFFFFFF00A318A98
-    size_arg: (register, 0x4020, 8)
-    trace: ('param', None)
-    tags: param
-    bounds_seen: False
-    verdict: PARAM_SIZE
-
-  CALL copyin @ 0xFFFFFFF00A318AB4
-    size_arg: (register, 0x4020, 8)
-    trace: ('param', None)
-    tags: param
-    bounds_seen: False
-    verdict: PARAM_SIZE
-
-  CALL kalloc_zone @ 0xFFFFFFF00A318BDC
-    size_arg: (const, 0x8000, 8)
-    trace: ('const', 32768L)
-    tags: const
-    bounds_seen: False
-    verdict: SAFE_const
-
-
-========================================================================
-### FUN_fffffff00a319020  entry=0xFFFFFFF00A319020  size=0x224
-========================================================================
-  CALL copyin @ 0xFFFFFFF00A31908C
-    size_arg: (const, 0xe0, 8)
-    trace: ('const', 224L)
-    tags: const
-    bounds_seen: False
-    verdict: SAFE_const
-
-  CALL kalloc_type @ 0xFFFFFFF00A3190F4
-    size_arg: (register, 0x40a0, 8)
-    trace: ('arith', (u'INT_LEFT', [('other', None), ('const', 5L)]))
-    tags: arith,const,other
-    arith: INT_LEFT
-    bounds_seen: False
-    verdict: ARITH_SIZE
-
-  CALL copyin @ 0xFFFFFFF00A319114
-    size_arg: (register, 0x40a0, 8)
-    trace: ('arith', (u'INT_LEFT', [('other', None), ('const', 5L)]))
-    tags: arith,const,other
-    arith: INT_LEFT
-    bounds_seen: False
-    verdict: ARITH_SIZE
-
-  CALL kalloc_type @ 0xFFFFFFF00A319144
-    size_arg: (register, 0x4008, 8)
-    trace: ('arith', (u'INT_MULT', [('other', None), ('const', 24L)]))
-    tags: arith,const,other
-    arith: INT_MULT
-    bounds_seen: False
-    verdict: ARITH_SIZE
-
-
-========================================================================
-### FUN_fffffff00a32408c  entry=0xFFFFFFF00A32408C  size=0x540
-========================================================================
-  CALL kalloc_type @ 0xFFFFFFF00A3241BC
-    size_arg: (register, 0x40b8, 8)
-    trace: ('arith', (u'INT_LEFT', [('arith', (u'INT_RIGHT', [('phi', [('other', None), ('cycle', None)]), ('arith', (u'INT_AND', [('phi', [('cycle', None), ('cycle', None)]), ('const', 63L)]))])), ('const', 5L)]))
-    tags: arith,const,cycle,other,phi
-    arith: INT_AND,INT_LEFT,INT_RIGHT
-    bounds_seen: False
-    verdict: ARITH_SIZE
-
-  CALL kalloc_type @ 0xFFFFFFF00A3241D8
-    size_arg: (register, 0x40e0, 8)
-    trace: ('arith', (u'INT_LEFT', [('arith', (u'INT_RIGHT', [('phi', [('other', None), ('cycle', None)]), ('arith', (u'INT_AND', [('phi', [('cycle', None), ('cycle', None)]), ('const', 63L)]))])), ('const', 2L)]))
-    tags: arith,const,cycle,other,phi
-    arith: INT_AND,INT_LEFT,INT_RIGHT
-    bounds_seen: False
-    verdict: ARITH_SIZE
-
-  CALL copyout @ 0xFFFFFFF00A3242B0
-    size_arg: (unique, 0x3b500, 8)
-    trace: ('phi', [('other', None), ('other', None)])
-    tags: other,phi
-    bounds_seen: False
-    verdict: PHI_SIZE
-
-
-========================================================================
-### FUN_fffffff00a346e70  entry=0xFFFFFFF00A346E70  size=0x198
-========================================================================
-  CALL copyin @ 0xFFFFFFF00A346ED8
-    size_arg: (const, 0xb0, 8)
-    trace: ('const', 176L)
-    tags: const
-    bounds_seen: False
-    verdict: SAFE_const
-
-  CALL copyin @ 0xFFFFFFF00A346F30
-    size_arg: (const, 0x158, 8)
-    trace: ('const', 344L)
-    tags: const
-    bounds_seen: False
-    verdict: SAFE_const
-
-  CALL kalloc_type @ 0xFFFFFFF00A346F74
-    size_arg: (unique, 0x55e00, 4)
-    trace: ('arith', (u'INT_MULT', [('arith', (u'INT_ADD', [('phi', [('other', None), ('other', None)]), ('param', None)])), ('phi', [('other', None), ('other', None)])]))
-    tags: arith,other,param,phi
-    arith: INT_ADD,INT_MULT
-    bounds_seen: False
-    verdict: PARAM_SIZE
-
-  CALL copyin @ 0xFFFFFFF00A346F8C
-    size_arg: (unique, 0x55e00, 4)
-    trace: ('arith', (u'INT_MULT', [('phi', [('other', None), ('other', None)]), ('phi', [('other', None), ('other', None)])]))
-    tags: arith,other,phi
-    arith: INT_MULT
-    bounds_seen: False
-    verdict: ARITH_SIZE
-
-
-========================================================================
-### FUN_fffffff00a39f9f4  entry=0xFFFFFFF00A39F9F4  size=0x2318
-========================================================================
-  CALL copyout @ 0xFFFFFFF00A3A04B4
-    size_arg: (const, 0x4, 8)
-    trace: ('const', 4L)
-    tags: const
-    bounds_seen: False
-    verdict: SAFE_const
-
-  CALL kalloc_type @ 0xFFFFFFF00A3A04D8
-    size_arg: (unique, 0x24100, 8)
-    trace: ('arith', (u'INT_ADD', [('phi', [('cycle', None), ('cycle', None)]), ('phi', [('cycle', None), ('cycle', None)])]))
-    tags: arith,cycle,phi
-    arith: INT_ADD
-    bounds_seen: False
-    verdict: ARITH_SIZE
-
-
-========================================================================
-### FUN_fffffff00a3a3698  entry=0xFFFFFFF00A3A3698  size=0x9DC
-========================================================================
-  CALL copyin @ 0xFFFFFFF00A3A379C
-    size_arg: (const, 0x18, 8)
-    trace: ('const', 24L)
-    tags: const
-    bounds_seen: False
-    verdict: SAFE_const
-
-  CALL kalloc_type @ 0xFFFFFFF00A3A38F0
-    size_arg: (register, 0x4008, 8)
-    trace: ('load_dyn', None)
-    tags: load_dyn
-    bounds_seen: False
-    verdict: FIELD_SIZE
-
-  CALL copyin @ 0xFFFFFFF00A3A3908
-    size_arg: (unique, 0x48700, 8)
-    trace: ('load_dyn', None)
-    tags: load_dyn
-    bounds_seen: False
-    verdict: FIELD_SIZE
-
-
-========================================================================
-### FUN_fffffff00a3cd8b0  entry=0xFFFFFFF00A3CD8B0  size=0x18C
-========================================================================
-  CALL kalloc_type @ 0xFFFFFFF00A3CD90C
-    size_arg: (unique, 0x22f00, 4)
-    trace: ('arith', (u'INT_ADD', [('other', None), ('const', 1L)]))
-    tags: arith,const,other
-    arith: INT_ADD
-    bounds_seen: False
-    verdict: ARITH_SIZE
-
-  CALL copyin @ 0xFFFFFFF00A3CD924
-    size_arg: (register, 0x40b8, 8)
-    trace: ('arith', (u'INT_MULT', [('arith', (u'INT_ZEXT', [('param', None)])), ('arith', (u'INT_ZEXT', [('param', None)]))]))
-    tags: arith,param
-    arith: INT_MULT,INT_ZEXT
-    bounds_seen: False
-    verdict: PARAM_SIZE
-
-
-========================================================================
-### FUN_fffffff00a3d6f44  entry=0xFFFFFFF00A3D6F44  size=0x15BC
-========================================================================
-  CALL kalloc_zone @ 0xFFFFFFF00A3D70F0
-    size_arg: (const, 0x4, 8)
-    trace: ('const', 4L)
-    tags: const
-    bounds_seen: False
-    verdict: SAFE_const
-
-  CALL copyin @ 0xFFFFFFF00A3D7384
-    size_arg: (const, 0x4, 8)
-    trace: ('const', 4L)
-    tags: const
-    bounds_seen: False
-    verdict: SAFE_const
-
-  CALL copyin @ 0xFFFFFFF00A3D73D4
-    size_arg: (const, 0x8, 8)
-    trace: ('const', 8L)
-    tags: const
-    bounds_seen: False
-    verdict: SAFE_const
-
-
-========================================================================
-### FUN_fffffff00a3d91b4  entry=0xFFFFFFF00A3D91B4  size=0x790
-========================================================================
-  CALL copyin @ 0xFFFFFFF00A3D93A8
-    size_arg: (const, 0x8, 8)
-    trace: ('const', 8L)
-    tags: const
-    bounds_seen: False
-    verdict: SAFE_const
-
-  CALL copyin @ 0xFFFFFFF00A3D9450
-    size_arg: (const, 0x10, 8)
-    trace: ('const', 16L)
-    tags: const
-    bounds_seen: False
-    verdict: SAFE_const
-
-  CALL copyin @ 0xFFFFFFF00A3D9498
-    size_arg: (const, 0xc, 8)
-    trace: ('const', 12L)
-    tags: const
-    bounds_seen: False
-    verdict: SAFE_const
-
-  CALL kalloc_type @ 0xFFFFFFF00A3D94C8
-    size_arg: (unique, 0x10000d2e, 8)
-    trace: ('phi', [('other', None), ('arith', (u'INT_AND', [('other', None), ('const', 4294967295L)]))])
-    tags: arith,const,other,phi
-    arith: INT_AND
-    bounds_seen: False
-    verdict: PHI_SIZE
-
-  CALL copyin @ 0xFFFFFFF00A3D9508
-    size_arg: (const, 0x10, 8)
-    trace: ('const', 16L)
-    tags: const
-    bounds_seen: False
-    verdict: SAFE_const
-
-
-========================================================================
-### FUN_fffffff00a3dd024  entry=0xFFFFFFF00A3DD024  size=0x26C
-========================================================================
-  CALL kalloc_type @ 0xFFFFFFF00A3DD118
-    size_arg: (unique, 0x48f00, 4)
-    trace: ('load_dyn', None)
-    tags: load_dyn
-    bounds_seen: False
-    verdict: FIELD_SIZE
-
-  CALL copyin @ 0xFFFFFFF00A3DD130
-    size_arg: (unique, 0x48f00, 4)
-    trace: ('load_dyn', None)
-    tags: load_dyn
-    bounds_seen: False
-    verdict: FIELD_SIZE
-
-  CALL kalloc_type @ 0xFFFFFFF00A3DD1F8
-    size_arg: (register, 0x40a0, 8)
-    trace: ('arith', (u'INT_LEFT', [('phi', [('cycle', None), ('phi', [('cycle', None), ('cycle', None)]), ('phi', [('cycle', None), ('cycle', None)])]), ('const', 3L)]))
-    tags: arith,const,cycle,phi
-    arith: INT_LEFT
-    bounds_seen: False
-    verdict: ARITH_SIZE
-
-
-========================================================================
-### FUN_fffffff00a3eb958  entry=0xFFFFFFF00A3EB958  size=0xA58
-========================================================================
-  CALL kalloc_type @ 0xFFFFFFF00A3EBB68
-    size_arg: (register, 0x40a8, 4)
-    trace: ('phi', [('cycle', None), ('cycle', None)])
-    tags: cycle,phi
-    bounds_seen: False
-    verdict: PHI_SIZE
-
-  CALL copyin @ 0xFFFFFFF00A3EBC00
-    size_arg: (register, 0x40a8, 4)
-    trace: ('phi', [('cycle', None), ('cycle', None)])
-    tags: cycle,phi
-    bounds_seen: False
-    verdict: PHI_SIZE
-
-  CALL copyout @ 0xFFFFFFF00A3EC184
-    size_arg: (register, 0x40a8, 4)
-    trace: ('phi', [('cycle', None), ('cycle', None)])
-    tags: cycle,phi
-    bounds_seen: False
-    verdict: PHI_SIZE
-
-
-========================================================================
-### FUN_fffffff00a41c5a4  entry=0xFFFFFFF00A41C5A4  size=0x1C0
-========================================================================
-  CALL kalloc_type @ 0xFFFFFFF00A41C634
-    size_arg: (register, 0x40c0, 8)
-    trace: ('arith', (u'INT_ZEXT', [('arith', (u'INT_LEFT', [('other', None), ('const', 3L)]))]))
-    tags: arith,const,other
-    arith: INT_LEFT,INT_ZEXT
-    bounds_seen: False
-    verdict: ARITH_SIZE
-
-  CALL copyin @ 0xFFFFFFF00A41C6D4
-    size_arg: (register, 0x40c0, 8)
-    trace: ('arith', (u'INT_ZEXT', [('arith', (u'INT_LEFT', [('other', None), ('const', 3L)]))]))
-    tags: arith,const,other
-    arith: INT_LEFT,INT_ZEXT
-    bounds_seen: False
-    verdict: ARITH_SIZE
-
-
-========================================================================
-### FUN_fffffff00a43dcd8  entry=0xFFFFFFF00A43DCD8  size=0x224
-========================================================================
-  CALL kalloc_type @ 0xFFFFFFF00A43DDBC
-    size_arg: (register, 0x4098, 8)
-    trace: ('arith', (u'INT_MULT', [('arith', (u'INT_ZEXT', [('load_dyn', None)])), ('const', 4L)]))
-    tags: arith,const,load_dyn
-    arith: INT_MULT,INT_ZEXT
-    bounds_seen: False
-    verdict: ARITH_SIZE
-
-  CALL copyin @ 0xFFFFFFF00A43DE20
-    size_arg: (register, 0x4098, 8)
-    trace: ('arith', (u'INT_MULT', [('arith', (u'INT_ZEXT', [('load_dyn', None)])), ('const', 4L)]))
-    tags: arith,const,load_dyn
-    arith: INT_MULT,INT_ZEXT
-    bounds_seen: False
-    verdict: ARITH_SIZE
-
-
-========================================================================
-### FUN_fffffff00a4412bc  entry=0xFFFFFFF00A4412BC  size=0x3EC
-========================================================================
-  CALL kalloc_type @ 0xFFFFFFF00A441478
-    size_arg: (register, 0x4008, 8)
-    trace: ('arith', (u'INT_LEFT', [('arith', (u'INT_SEXT', [('load_dyn', None)])), ('const', 2L)]))
-    tags: arith,const,load_dyn
-    arith: INT_LEFT,INT_SEXT
-    bounds_seen: False
-    verdict: ARITH_SIZE
-
-
-========================================================================
-### FUN_fffffff00a4424d4  entry=0xFFFFFFF00A4424D4  size=0x100
-========================================================================
-  CALL kalloc_type @ 0xFFFFFFF00A442540
-    size_arg: (unique, 0x7ff00, 8)
-    trace: ('arith', (u'INT_LEFT', [('arith', (u'INT_ZEXT', [('phi', [('other', None), ('other', None)])])), ('const', 2L)]))
-    tags: arith,const,other,phi
-    arith: INT_LEFT,INT_ZEXT
-    bounds_seen: False
-    verdict: ARITH_SIZE
-
-  CALL copyout @ 0xFFFFFFF00A442588
-    size_arg: (unique, 0x7ff00, 8)
-    trace: ('arith', (u'INT_LEFT', [('arith', (u'INT_ZEXT', [('phi', [('other', None), ('other', None)])])), ('const', 2L)]))
-    tags: arith,const,other,phi
-    arith: INT_LEFT,INT_ZEXT
-    bounds_seen: False
-    verdict: ARITH_SIZE
-
-
-========================================================================
-### FUN_fffffff00a4bd8c4  entry=0xFFFFFFF00A4BD8C4  size=0x228
-========================================================================
-  CALL kalloc_type @ 0xFFFFFFF00A4BD934
-    size_arg: (register, 0x40a8, 8)
-    trace: ('load_dyn', None)
-    tags: load_dyn
-    bounds_seen: False
-    verdict: FIELD_SIZE
-
-  CALL copyout @ 0xFFFFFFF00A4BDA9C
-    size_arg: (const, 0x4, 8)
-    trace: ('const', 4L)
-    tags: const
-    bounds_seen: False
-    verdict: SAFE_const
-
-
-========================================================================
-### FUN_fffffff00a4bdaec  entry=0xFFFFFFF00A4BDAEC  size=0x2E8
-========================================================================
-  CALL copyin @ 0xFFFFFFF00A4BDB3C
-    size_arg: (const, 0x4, 8)
-    trace: ('const', 4L)
-    tags: const
-    bounds_seen: False
-    verdict: SAFE_const
-
-  CALL kalloc_type @ 0xFFFFFFF00A4BDCE0
-    size_arg: (register, 0x40a0, 8)
-    trace: ('arith', (u'INT_ZEXT', [('arith', (u'INT_ADD', [('arith', (u'INT_ADD', [('load_dyn', None), ('phi', [('other', None), ('other', None)])])), ('const', 9L)]))]))
-    tags: arith,const,load_dyn,other,phi
-    arith: INT_ADD,INT_ZEXT
-    bounds_seen: False
-    verdict: ARITH_SIZE
-
-  CALL copyout @ 0xFFFFFFF00A4BDD80
-    size_arg: (register, 0x40a0, 8)
-    trace: ('arith', (u'INT_ZEXT', [('arith', (u'INT_ADD', [('arith', (u'INT_ADD', [('load_dyn', None), ('phi', [('other', None), ('other', None)])])), ('const', 9L)]))]))
-    tags: arith,const,load_dyn,other,phi
-    arith: INT_ADD,INT_ZEXT
-    bounds_seen: False
-    verdict: ARITH_SIZE
-
-
-========================================================================
-### FUN_fffffff00a4bdf70  entry=0xFFFFFFF00A4BDF70  size=0x218
-========================================================================
-  CALL kalloc_type @ 0xFFFFFFF00A4BE028
-    size_arg: (register, 0x40a0, 8)
-    trace: ('arith', (u'INT_ZEXT', [('arith', (u'INT_MULT', [('phi', [('arith', (u'INT_ADD', [('cycle', None), ('arith', (u'INT_AND', [('arith', (u'INT_XOR', [('arith', (u'INT_ZEXT', [('load_dyn', None)])), ('const', 4294967295L)])), ('const', 1L)]))])), ('cycle', None)]), ('const', 9L)]))]))
-    tags: arith,const,cycle,load_dyn,phi
-    arith: INT_ADD,INT_AND,INT_MULT,INT_XOR,INT_ZEXT
-    bounds_seen: False
-    verdict: ARITH_SIZE
-
-  CALL copyout @ 0xFFFFFFF00A4BE138
-    size_arg: (register, 0x40a0, 8)
-    trace: ('arith', (u'INT_ZEXT', [('arith', (u'INT_MULT', [('phi', [('arith', (u'INT_ADD', [('cycle', None), ('arith', (u'INT_AND', [('arith', (u'INT_XOR', [('arith', (u'INT_ZEXT', [('load_dyn', None)])), ('const', 4294967295L)])), ('const', 1L)]))])), ('cycle', None)]), ('const', 9L)]))]))
-    tags: arith,const,cycle,load_dyn,phi
-    arith: INT_ADD,INT_AND,INT_MULT,INT_XOR,INT_ZEXT
-    bounds_seen: False
-    verdict: ARITH_SIZE
-
-
-========================================================================
-### FUN_fffffff00a4be40c  entry=0xFFFFFFF00A4BE40C  size=0x16AC
-========================================================================
-  CALL kalloc_type @ 0xFFFFFFF00A4BE540
-    size_arg: (register, 0x40a0, 8)
-    trace: ('load_dyn', None)
-    tags: load_dyn
-    bounds_seen: False
-    verdict: FIELD_SIZE
-
-  CALL kalloc_type @ 0xFFFFFFF00A4BEA7C
-    size_arg: (register, 0x4008, 8)
-    trace: ('arith', (u'INT_ZEXT', [('arith', (u'INT_ADD', [('arith', (u'INT_ADD', [('cycle', None), ('const', 42L)])), ('arith', (u'INT_ADD', [('phi', [('other', None), ('other', None), ('other', None)]), ('arith', (u'INT_MULT', [('phi', [('cycle', None), ('cycle', None), ('arith', (u'INT_ADD', [('cycle', None), ('const', 1L)]))]), ('const', 6L)]))]))]))]))
-    tags: arith,const,cycle,other,phi
-    arith: INT_ADD,INT_MULT,INT_ZEXT
-    bounds_seen: False
-    verdict: ARITH_SIZE
-
-  CALL kalloc_type @ 0xFFFFFFF00A4BEBE0
-    size_arg: (register, 0x4040, 8)
-    trace: ('arith', (u'INT_ZEXT', [('arith', (u'INT_ADD', [('phi', [('other', None), ('other', None), ('other', None)]), ('arith', (u'INT_MULT', [('phi', [('cycle', None), ('arith', (u'INT_ADD', [('cycle', None), ('phi', [('cycle', None), ('arith', (u'INT_ADD', [('cycle', None), ('const', 1L)]))])])), ('arith', (u'INT_ADD', [('arith', (u'INT_ADD', [('cycle', None), ('phi', [('cycle', None), ('arith', (u'INT_ADD', [('cycle', None), ('const', 1L)]))])])), ('const', 1L)]))]), ('const', 6L)]))]))]))
-    tags: arith,const,cycle,other,phi
-    arith: INT_ADD,INT_MULT,INT_ZEXT
-    bounds_seen: False
-    verdict: ARITH_SIZE
-
-  CALL copyout @ 0xFFFFFFF00A4BF920
-    size_arg: (unique, 0x23700, 8)
-    trace: ('arith', (u'INT_ADD', [('phi', [('cycle', None), ('cycle', None), ('cycle', None)]), ('const', 4L)]))
-    tags: arith,const,cycle,phi
-    arith: INT_ADD
-    bounds_seen: False
-    verdict: ARITH_SIZE
-
-
-========================================================================
-### FUN_fffffff00a4bfab8  entry=0xFFFFFFF00A4BFAB8  size=0x2E4
-========================================================================
-  CALL kalloc_type @ 0xFFFFFFF00A4BFB2C
-    size_arg: (register, 0x40a0, 8)
-    trace: ('load_dyn', None)
-    tags: load_dyn
-    bounds_seen: False
-    verdict: FIELD_SIZE
-
-  CALL copyin @ 0xFFFFFFF00A4BFB58
-    size_arg: (register, 0x40a0, 8)
-    trace: ('load_dyn', None)
-    tags: load_dyn
-    bounds_seen: False
-    verdict: FIELD_SIZE
-
-  CALL copyout @ 0xFFFFFFF00A4BFCE0
-    size_arg: (const, 0x4, 8)
-    trace: ('const', 4L)
-    tags: const
-    bounds_seen: False
-    verdict: SAFE_const
-
-
-========================================================================
-### FUN_fffffff00a4c0024  entry=0xFFFFFFF00A4C0024  size=0x2EC
-========================================================================
-  CALL kalloc_type @ 0xFFFFFFF00A4C00A0
-    size_arg: (register, 0x40a0, 8)
-    trace: ('load_dyn', None)
-    tags: load_dyn
-    bounds_seen: False
-    verdict: FIELD_SIZE
-
-  CALL copyin @ 0xFFFFFFF00A4C00CC
-    size_arg: (register, 0x40a0, 8)
-    trace: ('load_dyn', None)
-    tags: load_dyn
-    bounds_seen: False
-    verdict: FIELD_SIZE
-
-  CALL copyout @ 0xFFFFFFF00A4C0268
-    size_arg: (const, 0x4, 8)
-    trace: ('const', 4L)
-    tags: const
-    bounds_seen: False
-    verdict: SAFE_const
-
-
-========================================================================
-### FUN_fffffff00a4e60dc  entry=0xFFFFFFF00A4E60DC  size=0x107C
-========================================================================
-  CALL kalloc_zone @ 0xFFFFFFF00A4E6188
-    size_arg: (const, 0x8004, 8)
-    trace: ('const', 32772L)
-    tags: const
-    bounds_seen: False
-    verdict: SAFE_const
-
-  CALL kalloc_type @ 0xFFFFFFF00A4E61A4
-    size_arg: (register, 0x40d0, 8)
-    trace: ('load_dyn', None)
-    tags: load_dyn
-    bounds_seen: False
-    verdict: FIELD_SIZE
-
-  CALL copyin @ 0xFFFFFFF00A4E62DC
-    size_arg: (register, 0x40d0, 8)
-    trace: ('load_dyn', None)
-    tags: load_dyn
-    bounds_seen: False
-    verdict: FIELD_SIZE
-
-  CALL copyout @ 0xFFFFFFF00A4E6410
-    size_arg: (const, 0x10, 8)
-    trace: ('const', 16L)
-    tags: const
-    bounds_seen: False
-    verdict: SAFE_const
-
-
-========================================================================
-### FUN_fffffff00a4e80fc  entry=0xFFFFFFF00A4E80FC  size=0x340
-========================================================================
-  CALL copyin @ 0xFFFFFFF00A4E81B8
-    size_arg: (const, 0x4, 8)
-    trace: ('const', 4L)
-    tags: const
-    bounds_seen: False
-    verdict: SAFE_const
-
-  CALL kalloc_type @ 0xFFFFFFF00A4E8204
-    size_arg: (register, 0x4098, 8)
-    trace: ('arith', (u'INT_MULT', [('arith', (u'INT_ZEXT', [('other', None)])), ('const', 16L)]))
-    tags: arith,const,other
-    arith: INT_MULT,INT_ZEXT
-    bounds_seen: False
-    verdict: ARITH_SIZE
-
-  CALL copyout @ 0xFFFFFFF00A4E835C
-    size_arg: (const, 0x4, 8)
-    trace: ('const', 4L)
-    tags: const
-    bounds_seen: False
-    verdict: SAFE_const
-
-  CALL copyout @ 0xFFFFFFF00A4E83EC
-    size_arg: (register, 0x4098, 8)
-    trace: ('arith', (u'INT_MULT', [('arith', (u'INT_ZEXT', [('other', None)])), ('const', 16L)]))
-    tags: arith,const,other
-    arith: INT_MULT,INT_ZEXT
-    bounds_seen: False
-    verdict: ARITH_SIZE
-
-
-========================================================================
-### FUN_fffffff00a4e843c  entry=0xFFFFFFF00A4E843C  size=0xF88
-========================================================================
-  CALL copyin @ 0xFFFFFFF00A4E8504
-    size_arg: (const, 0x10, 8)
-    trace: ('const', 16L)
-    tags: const
-    bounds_seen: False
-    verdict: SAFE_const
-
-  CALL copyin @ 0xFFFFFFF00A4E8644
-    size_arg: (register, 0x4098, 8)
-    trace: ('load_dyn', None)
-    tags: load_dyn
-    bounds_seen: False
-    verdict: FIELD_SIZE
-
-  CALL kalloc_type @ 0xFFFFFFF00A4E8690
-    size_arg: (register, 0x4098, 8)
-    trace: ('load_dyn', None)
-    tags: load_dyn
-    bounds_seen: False
-    verdict: FIELD_SIZE
-
-  CALL copyin @ 0xFFFFFFF00A4E86C0
-    size_arg: (register, 0x4098, 8)
-    trace: ('load_dyn', None)
-    tags: load_dyn
-    bounds_seen: False
-    verdict: FIELD_SIZE
-
-  CALL copyout @ 0xFFFFFFF00A4E9110
-    size_arg: (register, 0x4098, 8)
-    trace: ('load_dyn', None)
-    tags: load_dyn
-    bounds_seen: False
-    verdict: FIELD_SIZE
-
-
-========================================================================
-### FUN_fffffff00a4ea0b4  entry=0xFFFFFFF00A4EA0B4  size=0x6C4
-========================================================================
-  CALL copyin @ 0xFFFFFFF00A4EA128
-    size_arg: (const, 0x10, 8)
-    trace: ('const', 16L)
-    tags: const
-    bounds_seen: False
-    verdict: SAFE_const
-
-  CALL kalloc_type @ 0xFFFFFFF00A4EA230
-    size_arg: (register, 0x40a0, 8)
-    trace: ('load_dyn', None)
-    tags: load_dyn
-    bounds_seen: False
-    verdict: FIELD_SIZE
-
-  CALL copyin @ 0xFFFFFFF00A4EA274
-    size_arg: (register, 0x40a0, 8)
-    trace: ('load_dyn', None)
-    tags: load_dyn
-    bounds_seen: False
-    verdict: FIELD_SIZE
-
-
-========================================================================
-### FUN_fffffff00a4ec5d8  entry=0xFFFFFFF00A4EC5D8  size=0x414
-========================================================================
-  CALL kalloc_type @ 0xFFFFFFF00A4EC748
-    size_arg: (register, 0x40a0, 8)
-    trace: ('load_dyn', None)
-    tags: load_dyn
-    bounds_seen: False
-    verdict: FIELD_SIZE
-
-  CALL copyin @ 0xFFFFFFF00A4EC788
-    size_arg: (register, 0x40a0, 8)
-    trace: ('load_dyn', None)
-    tags: load_dyn
-    bounds_seen: False
-    verdict: FIELD_SIZE
-
-  CALL copyout @ 0xFFFFFFF00A4EC924
-    size_arg: (const, 0x20, 8)
-    trace: ('const', 32L)
-    tags: const
-    bounds_seen: False
-    verdict: SAFE_const
-
-
-========================================================================
-### FUN_fffffff00a4ec9ec  entry=0xFFFFFFF00A4EC9EC  size=0x260
-========================================================================
-  CALL kalloc_type @ 0xFFFFFFF00A4ECB40
-    size_arg: (register, 0x40a0, 8)
-    trace: ('load_dyn', None)
-    tags: load_dyn
-    bounds_seen: False
-    verdict: FIELD_SIZE
-
-  CALL copyin @ 0xFFFFFFF00A4ECB70
-    size_arg: (register, 0x40a0, 8)
-    trace: ('load_dyn', None)
-    tags: load_dyn
-    bounds_seen: False
-    verdict: FIELD_SIZE
-
-
-========================================================================
-### FUN_fffffff00a4f2e70  entry=0xFFFFFFF00A4F2E70  size=0x7E4
-========================================================================
-  CALL copyout @ 0xFFFFFFF00A4F31AC
-    size_arg: (register, 0x40d0, 8)
-    trace: ('phi', [('cycle', None), ('arith', (u'INT_ADD', [('phi', [('cycle', None), ('cycle', None), ('cycle', None)]), ('const', 78L)])), ('cycle', None), ('other', None), ('other', None)])
-    tags: arith,const,cycle,other,phi
-    arith: INT_ADD
-    bounds_seen: False
-    verdict: ARITH_SIZE
-
-  CALL copyout @ 0xFFFFFFF00A4F3244
-    size_arg: (const, 0x11, 8)
-    trace: ('const', 17L)
-    tags: const
-    bounds_seen: False
-    verdict: SAFE_const
-
-  CALL copyout @ 0xFFFFFFF00A4F32AC
-    size_arg: (register, 0x40d8, 8)
-    trace: ('phi', [('cycle', None), ('cycle', None), ('cycle', None)])
-    tags: cycle,phi
-    bounds_seen: False
-    verdict: PHI_SIZE
-
-  CALL copyout @ 0xFFFFFFF00A4F3314
-    size_arg: (const, 0x9, 8)
-    trace: ('const', 9L)
-    tags: const
-    bounds_seen: False
-    verdict: SAFE_const
-
-  CALL kalloc_type @ 0xFFFFFFF00A4F3364
-    size_arg: (unique, 0x3b500, 8)
-    trace: ('phi', [('other', None), ('other', None)])
-    tags: other,phi
-    bounds_seen: False
-    verdict: PHI_SIZE
-
-
-========================================================================
-### FUN_fffffff00a5003b8  entry=0xFFFFFFF00A5003B8  size=0x6A4
-========================================================================
-  CALL kalloc_type @ 0xFFFFFFF00A5004F4
-    size_arg: (register, 0x40a0, 8)
-    trace: ('arith', (u'INT_ZEXT', [('load_dyn', None)]))
-    tags: arith,load_dyn
-    arith: INT_ZEXT
-    bounds_seen: False
-    verdict: FIELD_SIZE
-
-  CALL kalloc_type @ 0xFFFFFFF00A50072C
-    size_arg: (register, 0x40a0, 8)
-    trace: ('arith', (u'INT_ZEXT', [('load_dyn', None)]))
-    tags: arith,load_dyn
-    arith: INT_ZEXT
-    bounds_seen: False
-    verdict: FIELD_SIZE
-
-
-========================================================================
-### FUN_fffffff00a6c07c0  entry=0xFFFFFFF00A6C07C0  size=0x4A8
-========================================================================
-  CALL kalloc_zone @ 0xFFFFFFF00A6C07FC
-    size_arg: (const, 0x8004, 8)
-    trace: ('const', 32772L)
-    tags: const
-    bounds_seen: False
-    verdict: SAFE_const
-
-  CALL copyin @ 0xFFFFFFF00A6C0880
-    size_arg: (const, 0x38, 8)
-    trace: ('const', 56L)
-    tags: const
-    bounds_seen: False
-    verdict: SAFE_const
-
-  CALL copyin @ 0xFFFFFFF00A6C08E4
-    size_arg: (const, 0x50, 8)
-    trace: ('const', 80L)
-    tags: const
-    bounds_seen: False
-    verdict: SAFE_const
-
-
-========================================================================
-### FUN_fffffff00a6c4b10  entry=0xFFFFFFF00A6C4B10  size=0x148
-========================================================================
-  CALL copyin @ 0xFFFFFFF00A6C4B4C
-    size_arg: (const, 0x2c, 8)
-    trace: ('const', 44L)
-    tags: const
-    bounds_seen: False
-    verdict: SAFE_const
-
-  CALL kalloc_type @ 0xFFFFFFF00A6C4BC0
-    size_arg: (register, 0x4008, 4)
-    trace: ('phi', [('arith', (u'INT_ADD', [('arith', (u'INT_MULT', [('other', None), ('const', 24L)])), ('const', 44L)])), ('cycle', None)])
-    tags: arith,const,cycle,other,phi
-    arith: INT_ADD,INT_MULT
-    bounds_seen: False
-    verdict: ARITH_SIZE
-
-  CALL copyin @ 0xFFFFFFF00A6C4C1C
-    size_arg: (register, 0x4010, 8)
-    trace: ('arith', (u'INT_MULT', [('phi', [('cycle', None), ('cycle', None)]), ('const', 24L)]))
-    tags: arith,const,cycle,phi
-    arith: INT_MULT
-    bounds_seen: False
-    verdict: ARITH_SIZE
-
-
-========================================================================
-### FUN_fffffff00a6e1858  entry=0xFFFFFFF00A6E1858  size=0x27C
-========================================================================
-  CALL kalloc_type @ 0xFFFFFFF00A6E18D8
-    size_arg: (unique, 0x4fd00, 4)
-    trace: ('arith', (u'INT_LEFT', [('phi', [('arith', (u'INT_RIGHT', [('param', None), ('const', 3L)])), ('cycle', None)]), ('const', 3L)]))
-    tags: arith,const,cycle,param,phi
-    arith: INT_LEFT,INT_RIGHT
-    bounds_seen: False
-    verdict: PARAM_SIZE
-
-  CALL copyout @ 0xFFFFFFF00A6E1958
-    size_arg: (unique, 0x4fd00, 4)
-    trace: ('arith', (u'INT_LEFT', [('phi', [('other', None), ('other', None)]), ('const', 3L)]))
-    tags: arith,const,other,phi
-    arith: INT_LEFT
-    bounds_seen: False
-    verdict: ARITH_SIZE
-
-
-========================================================================
-### FUN_fffffff00a6e2020  entry=0xFFFFFFF00A6E2020  size=0x314
-========================================================================
-  CALL kalloc_type @ 0xFFFFFFF00A6E208C
-    size_arg: (register, 0x40a0, 8)
-    trace: ('arith', (u'INT_MULT', [('arith', (u'INT_ZEXT', [('phi', [('other', None), ('other', None)])])), ('const', 104L)]))
-    tags: arith,const,other,phi
-    arith: INT_MULT,INT_ZEXT
-    bounds_seen: False
-    verdict: ARITH_SIZE
-
-  CALL copyout @ 0xFFFFFFF00A6E22CC
-    size_arg: (register, 0x4010, 8)
-    trace: ('arith', (u'INT_MULT', [('phi', [('other', None), ('other', None)]), ('const', 104L)]))
-    tags: arith,const,other,phi
-    arith: INT_MULT
-    bounds_seen: False
-    verdict: ARITH_SIZE
-
-
-========================================================================
-### FUN_fffffff00a6f318c  entry=0xFFFFFFF00A6F318C  size=0xE2C
-========================================================================
-  CALL kalloc_type @ 0xFFFFFFF00A6F3228
-    size_arg: (const, 0x320, 8)
-    trace: ('const', 800L)
-    tags: const
-    bounds_seen: False
-    verdict: SAFE_const
-
-  CALL kalloc_type @ 0xFFFFFFF00A6F32D8
-    size_arg: (const, 0x5000, 8)
-    trace: ('const', 20480L)
-    tags: const
-    bounds_seen: False
-    verdict: SAFE_const
-
-  CALL copyout @ 0xFFFFFFF00A6F343C
-    size_arg: (unique, 0x4fd00, 4)
-    trace: ('arith', (u'INT_MULT', [('call_ret', 18446744005159837732L), ('const', 8L)]))
-    tags: arith,call_ret,const
-    arith: CALL@0xFFFFFFF00A1E6024,INT_MULT
-    bounds_seen: False
-    verdict: ARITH_SIZE
-
-  CALL copyout @ 0xFFFFFFF00A6F3488
-    size_arg: (const, 0x4, 8)
-    trace: ('const', 4L)
-    tags: const
-    bounds_seen: False
-    verdict: SAFE_const
-
-  CALL copyout @ 0xFFFFFFF00A6F3520
-    size_arg: (unique, 0x4fd00, 4)
-    trace: ('arith', (u'INT_MULT', [('call_ret', 18446744005159837732L), ('const', 8L)]))
-    tags: arith,call_ret,const
-    arith: CALL@0xFFFFFFF00A1E6024,INT_MULT
-    bounds_seen: False
-    verdict: ARITH_SIZE
-
-  CALL copyin @ 0xFFFFFFF00A6F3590
-    size_arg: (const, 0xb0, 8)
-    trace: ('const', 176L)
-    tags: const
-    bounds_seen: False
-    verdict: SAFE_const
-
-  CALL copyin @ 0xFFFFFFF00A6F362C
-    size_arg: (const, 0x158, 8)
-    trace: ('const', 344L)
-    tags: const
-    bounds_seen: False
-    verdict: SAFE_const
-
-  CALL copyout @ 0xFFFFFFF00A6F369C
-    size_arg: (register, 0x4010, 8)
-    trace: ('phi', [('cycle', None), ('cycle', None)])
-    tags: cycle,phi
-    bounds_seen: False
-    verdict: PHI_SIZE
-
-  CALL copyin @ 0xFFFFFFF00A6F37AC
-    size_arg: (unique, 0x55e00, 4)
-    trace: ('arith', (u'INT_MULT', [('phi', [('other', None), ('cycle', None), ('cycle', None), ('other', None)]), ('arith', (u'INT_ADD', [('arith', (u'INT_AND', [('load_dyn', None), ('const', 4L)])), ('const', 20L)]))]))
-    tags: arith,const,cycle,load_dyn,other,phi
-    arith: INT_ADD,INT_AND,INT_MULT
-    bounds_seen: False
-    verdict: ARITH_SIZE
-
-  CALL copyout @ 0xFFFFFFF00A6F38FC
-    size_arg: (const, 0x4, 8)
-    trace: ('const', 4L)
-    tags: const
-    bounds_seen: False
-    verdict: SAFE_const
-
-  CALL copyout @ 0xFFFFFFF00A6F393C
-    size_arg: (const, 0x4, 8)
-    trace: ('const', 4L)
-    tags: const
-    bounds_seen: False
-    verdict: SAFE_const
-
-  CALL copyout @ 0xFFFFFFF00A6F3984
-    size_arg: (const, 0x11, 8)
-    trace: ('const', 17L)
-    tags: const
-    bounds_seen: False
-    verdict: SAFE_const
-
-  CALL copyout @ 0xFFFFFFF00A6F39F0
-    size_arg: (const, 0x10, 8)
-    trace: ('const', 16L)
-    tags: const
-    bounds_seen: False
-    verdict: SAFE_const
-
-  CALL copyout @ 0xFFFFFFF00A6F3A68
-    size_arg: (const, 0x60, 8)
-    trace: ('const', 96L)
-    tags: const
-    bounds_seen: False
-    verdict: SAFE_const
-
-  CALL copyout @ 0xFFFFFFF00A6F3AC0
-    size_arg: (const, 0x4, 8)
-    trace: ('const', 4L)
-    tags: const
-    bounds_seen: False
-    verdict: SAFE_const
-
-  CALL copyout @ 0xFFFFFFF00A6F3B3C
-    size_arg: (const, 0x400, 8)
-    trace: ('const', 1024L)
-    tags: const
-    bounds_seen: False
-    verdict: SAFE_const
-
-  CALL copyout @ 0xFFFFFFF00A6F3BB0
-    size_arg: (const, 0x4, 8)
-    trace: ('const', 4L)
-    tags: const
-    bounds_seen: False
-    verdict: SAFE_const
-
-  CALL copyout @ 0xFFFFFFF00A6F3BF0
-    size_arg: (const, 0x4, 8)
-    trace: ('const', 4L)
-    tags: const
-    bounds_seen: False
-    verdict: SAFE_const
-
-  CALL copyout @ 0xFFFFFFF00A6F3C40
-    size_arg: (const, 0x4, 8)
-    trace: ('const', 4L)
-    tags: const
-    bounds_seen: False
-    verdict: SAFE_const
-
-  CALL copyout @ 0xFFFFFFF00A6F3CA0
-    size_arg: (const, 0x4, 8)
-    trace: ('const', 4L)
-    tags: const
-    bounds_seen: False
-    verdict: SAFE_const
-
-  CALL copyout @ 0xFFFFFFF00A6F3CE0
-    size_arg: (const, 0x4, 8)
-    trace: ('const', 4L)
-    tags: const
-    bounds_seen: False
-    verdict: SAFE_const
-
-  CALL copyout @ 0xFFFFFFF00A6F3D20
-    size_arg: (const, 0x4, 8)
-    trace: ('const', 4L)
-    tags: const
-    bounds_seen: False
-    verdict: SAFE_const
-
-  CALL copyout @ 0xFFFFFFF00A6F3D60
-    size_arg: (const, 0x4, 8)
-    trace: ('const', 4L)
-    tags: const
-    bounds_seen: False
-    verdict: SAFE_const
-
-  CALL copyout @ 0xFFFFFFF00A6F3DB4
-    size_arg: (unique, 0x4fd00, 4)
-    trace: ('arith', (u'INT_MULT', [('param', None), ('const', 8L)]))
-    tags: arith,const,param
-    arith: INT_MULT
-    bounds_seen: False
-    verdict: PARAM_SIZE
-
-  CALL copyout @ 0xFFFFFFF00A6F3E10
-    size_arg: (const, 0x14, 8)
-    trace: ('const', 20L)
-    tags: const
-    bounds_seen: False
-    verdict: SAFE_const
-
-  CALL copyout @ 0xFFFFFFF00A6F3E74
-    size_arg: (register, 0x4010, 8)
-    trace: ('arith', (u'INT_AND', [('arith', (u'INT_ADD', [('arith', (u'INT_SUB', [('load_dyn', None), ('load_dyn', None)])), ('const', 16L)])), ('const', 4294967295L)]))
-    tags: arith,const,load_dyn
-    arith: INT_ADD,INT_AND,INT_SUB
-    bounds_seen: False
-    verdict: ARITH_SIZE
-
-  CALL copyout @ 0xFFFFFFF00A6F3EE0
-    size_arg: (const, 0x40, 8)
-    trace: ('const', 64L)
-    tags: const
-    bounds_seen: False
-    verdict: SAFE_const
-
-  CALL copyout @ 0xFFFFFFF00A6F3F5C
-    size_arg: (const, 0x8, 8)
-    trace: ('const', 8L)
-    tags: const
-    bounds_seen: False
-    verdict: SAFE_const
-
-  CALL copyout @ 0xFFFFFFF00A6F3F80
-    size_arg: (const, 0x4, 8)
-    trace: ('const', 4L)
-    tags: const
-    bounds_seen: False
-    verdict: SAFE_const
-
-
-========================================================================
-### FUN_fffffff00a71705c  entry=0xFFFFFFF00A71705C  size=0x354
-========================================================================
-  CALL kalloc_type @ 0xFFFFFFF00A717190
-    size_arg: (const, 0x400, 8)
-    trace: ('const', 1024L)
-    tags: const
-    bounds_seen: False
-    verdict: SAFE_const
-
-  CALL copyout @ 0xFFFFFFF00A717308
-    size_arg: (register, 0x4010, 8)
-    trace: ('arith', (u'INT_AND', [('phi', [('other', None), ('other', None)]), ('const', 4294967295L)]))
-    tags: arith,const,other,phi
-    arith: INT_AND
-    bounds_seen: False
-    verdict: PHI_SIZE
-
-  CALL copyin @ 0xFFFFFFF00A717364
-    size_arg: (register, 0x4010, 8)
-    trace: ('arith', (u'INT_AND', [('phi', [('cycle', None), ('cycle', None)]), ('const', 4294967295L)]))
-    tags: arith,const,cycle,phi
-    arith: INT_AND
-    bounds_seen: False
-    verdict: PHI_SIZE
-
-
-========================================================================
-### FUN_fffffff00a731358  entry=0xFFFFFFF00A731358  size=0x9E0
-========================================================================
-  CALL kalloc_zone @ 0xFFFFFFF00A731498
-    size_arg: (const, 0x8004, 8)
-    trace: ('const', 32772L)
-    tags: const
-    bounds_seen: False
-    verdict: SAFE_const
-
-  CALL kalloc_type @ 0xFFFFFFF00A7314B4
-    size_arg: (const, 0x184, 8)
-    trace: ('const', 388L)
-    tags: const
-    bounds_seen: False
-    verdict: SAFE_const
-
-  CALL kalloc_type @ 0xFFFFFFF00A731A30
-    size_arg: (const, 0x648, 8)
-    trace: ('const', 1608L)
-    tags: const
-    bounds_seen: False
-    verdict: SAFE_const
-
-  CALL copyout @ 0xFFFFFFF00A731C10
-    size_arg: (const, 0x648, 8)
-    trace: ('const', 1608L)
-    tags: const
-    bounds_seen: False
-    verdict: SAFE_const
-
-
-========================================================================
-### FUN_fffffff00a734ba0  entry=0xFFFFFFF00A734BA0  size=0x1C8
-========================================================================
-  CALL kalloc_type @ 0xFFFFFFF00A734C04
-    size_arg: (register, 0x4008, 8)
-    trace: ('param', None)
-    tags: param
-    bounds_seen: False
-    verdict: PARAM_SIZE
-
-  CALL copyin @ 0xFFFFFFF00A734C1C
-    size_arg: (register, 0x4008, 8)
-    trace: ('param', None)
-    tags: param
-    bounds_seen: False
-    verdict: PARAM_SIZE
-
-
-========================================================================
-### FUN_fffffff00a747d48  entry=0xFFFFFFF00A747D48  size=0x24C
-========================================================================
-  CALL kalloc_type @ 0xFFFFFFF00A747DDC
-    size_arg: (unique, 0x22f00, 4)
-    trace: ('arith', (u'INT_ADD', [('load_dyn', None), ('const', 2L)]))
-    tags: arith,const,load_dyn
-    arith: INT_ADD
-    bounds_seen: False
-    verdict: ARITH_SIZE
-
-  CALL copyout @ 0xFFFFFFF00A747F20
-    size_arg: (unique, 0x100000cf, 4)
-    trace: ('phi', [('param', None), ('arith', (u'INT_ADD', [('phi', [('cycle', None), ('arith', (u'INT_ADD', [('cycle', None), ('const', 1L)]))]), ('const', 1L)]))])
-    tags: arith,const,cycle,param,phi
-    arith: INT_ADD
-    bounds_seen: False
-    verdict: PARAM_SIZE
-
-
-========================================================================
-### FUN_fffffff00a74c844  entry=0xFFFFFFF00A74C844  size=0x640
-========================================================================
-  CALL kalloc_type @ 0xFFFFFFF00A74C8E8
-    size_arg: (unique, 0x4fd00, 4)
-    trace: ('arith', (u'INT_MULT', [('other', None), ('const', 24L)]))
-    tags: arith,const,other
-    arith: INT_MULT
-    bounds_seen: False
-    verdict: ARITH_SIZE
-
-  CALL copyin @ 0xFFFFFFF00A74C9D0
-    size_arg: (unique, 0x4fd00, 4)
-    trace: ('arith', (u'INT_LEFT', [('other', None), ('const', 2L)]))
-    tags: arith,const,other
-    arith: INT_LEFT
-    bounds_seen: False
-    verdict: ARITH_SIZE
-
-  CALL copyin @ 0xFFFFFFF00A74CA1C
-    size_arg: (unique, 0x4fd00, 4)
-    trace: ('arith', (u'INT_LEFT', [('other', None), ('const', 2L)]))
-    tags: arith,const,other
-    arith: INT_LEFT
-    bounds_seen: False
-    verdict: ARITH_SIZE
-
-  CALL copyin @ 0xFFFFFFF00A74CA68
-    size_arg: (unique, 0x4fd00, 4)
-    trace: ('arith', (u'INT_LEFT', [('other', None), ('const', 2L)]))
-    tags: arith,const,other
-    arith: INT_LEFT
-    bounds_seen: False
-    verdict: ARITH_SIZE
-
-
-========================================================================
-### FUN_fffffff00a74d070  entry=0xFFFFFFF00A74D070  size=0x8C4
-========================================================================
-  CALL kalloc_zone @ 0xFFFFFFF00A74D408
-    size_arg: (const, 0x4, 8)
-    trace: ('const', 4L)
-    tags: const
-    bounds_seen: False
-    verdict: SAFE_const
-
-  CALL kalloc_zone @ 0xFFFFFFF00A74D420
-    size_arg: (const, 0x4, 8)
-    trace: ('const', 4L)
-    tags: const
-    bounds_seen: False
-    verdict: SAFE_const
-
-  CALL copyout @ 0xFFFFFFF00A74D7A8
-    size_arg: (unique, 0x4fd00, 4)
-    trace: ('arith', (u'INT_LEFT', [('other', None), ('const', 2L)]))
-    tags: arith,const,other
-    arith: INT_LEFT
-    bounds_seen: False
-    verdict: ARITH_SIZE
-
-  CALL copyout @ 0xFFFFFFF00A74D7E8
-    size_arg: (unique, 0x4fd00, 4)
-    trace: ('arith', (u'INT_LEFT', [('other', None), ('const', 2L)]))
-    tags: arith,const,other
-    arith: INT_LEFT
-    bounds_seen: False
-    verdict: ARITH_SIZE
-
-  CALL copyout @ 0xFFFFFFF00A74D828
-    size_arg: (unique, 0x4fd00, 4)
-    trace: ('arith', (u'INT_LEFT', [('other', None), ('const', 2L)]))
-    tags: arith,const,other
-    arith: INT_LEFT
-    bounds_seen: False
-    verdict: ARITH_SIZE
-
-
-========================================================================
-### FUN_fffffff00a753408  entry=0xFFFFFFF00A753408  size=0xF0
-========================================================================
-  CALL kalloc_type @ 0xFFFFFFF00A75345C
-    size_arg: (register, 0x4008, 8)
-    trace: ('arith', (u'INT_AND', [('phi', [('load_dyn', None), ('cycle', None)]), ('const', 4092L)]))
-    tags: arith,const,cycle,load_dyn,phi
-    arith: INT_AND
-    bounds_seen: False
-    verdict: FIELD_SIZE
-
-
-========================================================================
-### FUN_fffffff00a78a39c  entry=0xFFFFFFF00A78A39C  size=0x13C
-========================================================================
-  CALL kalloc_type @ 0xFFFFFFF00A78A414
-    size_arg: (register, 0x4018, 8)
-    trace: ('param', None)
-    tags: param
-    bounds_seen: False
-    verdict: PARAM_SIZE
-
-
-========================================================================
-### FUN_fffffff00a78e070  entry=0xFFFFFFF00A78E070  size=0x7C8
-========================================================================
-  CALL kalloc_type @ 0xFFFFFFF00A78E144
-    size_arg: (register, 0x40a8, 8)
-    trace: ('arith', (u'INT_MULT', [('arith', (u'INT_ZEXT', [('phi', [('load_dyn', None), ('phi', [('other', None), ('cycle', None)])])])), ('const', 56L)]))
-    tags: arith,const,cycle,load_dyn,other,phi
-    arith: INT_MULT,INT_ZEXT
-    bounds_seen: False
-    verdict: ARITH_SIZE
-
-  CALL kalloc_type @ 0xFFFFFFF00A78E184
-    size_arg: (register, 0x40b0, 8)
-    trace: ('arith', (u'INT_MULT', [('arith', (u'INT_ZEXT', [('load_dyn', None)])), ('const', 32L)]))
-    tags: arith,const,load_dyn
-    arith: INT_MULT,INT_ZEXT
-    bounds_seen: False
-    verdict: ARITH_SIZE
-
-  CALL kalloc_type @ 0xFFFFFFF00A78E1B0
-    size_arg: (register, 0x40b8, 8)
-    trace: ('arith', (u'INT_MULT', [('phi', [('cycle', None), ('cycle', None)]), ('arith', (u'INT_ZEXT', [('load_dyn', None)]))]))
-    tags: arith,cycle,load_dyn,phi
-    arith: INT_MULT,INT_ZEXT
-    bounds_seen: False
-    verdict: ARITH_SIZE
-
-  CALL copyin @ 0xFFFFFFF00A78E1F4
-    size_arg: (register, 0x4010, 8)
-    trace: ('arith', (u'INT_MULT', [('phi', [('cycle', None), ('cycle', None)]), ('arith', (u'INT_ZEXT', [('load_dyn', None)]))]))
-    tags: arith,cycle,load_dyn,phi
-    arith: INT_MULT,INT_ZEXT
-    bounds_seen: False
-    verdict: ARITH_SIZE
-
-
-========================================================================
-### FUN_fffffff00a7a6318  entry=0xFFFFFFF00A7A6318  size=0x29C4
-========================================================================
-  CALL copyin @ 0xFFFFFFF00A7A640C
-    size_arg: (const, 0x40, 8)
-    trace: ('const', 64L)
-    tags: const
-    bounds_seen: False
-    verdict: SAFE_const
-
-  CALL copyin @ 0xFFFFFFF00A7A66CC
-    size_arg: (const, 0x20, 8)
-    trace: ('const', 32L)
-    tags: const
-    bounds_seen: False
-    verdict: SAFE_const
-
-  CALL copyin @ 0xFFFFFFF00A7A67D0
-    size_arg: (const, 0x20, 8)
-    trace: ('const', 32L)
-    tags: const
-    bounds_seen: False
-    verdict: SAFE_const
-
-  CALL copyin @ 0xFFFFFFF00A7A682C
-    size_arg: (const, 0x40, 8)
-    trace: ('const', 64L)
-    tags: const
-    bounds_seen: False
-    verdict: SAFE_const
-
-  CALL kalloc_type @ 0xFFFFFFF00A7A6938
-    size_arg: (register, 0x40b8, 8)
-    trace: ('arith', (u'INT_ZEXT', [('arith', (u'INT_LEFT', [('phi', [('other', None), ('other', None)]), ('const', 2L)]))]))
-    tags: arith,const,other,phi
-    arith: INT_LEFT,INT_ZEXT
-    bounds_seen: False
-    verdict: ARITH_SIZE
-
-  CALL copyout @ 0xFFFFFFF00A7A6BC0
-    size_arg: (unique, 0x7ff00, 8)
-    trace: ('arith', (u'INT_LEFT', [('phi', [('cycle', None), ('phi', [('cycle', None), ('cycle', None)])]), ('const', 2L)]))
-    tags: arith,const,cycle,phi
-    arith: INT_LEFT
-    bounds_seen: False
-    verdict: ARITH_SIZE
-
-  CALL copyout @ 0xFFFFFFF00A7A7140
-    size_arg: (const, 0x40, 8)
-    trace: ('const', 64L)
-    tags: const
-    bounds_seen: False
-    verdict: SAFE_const
-
-  CALL copyin @ 0xFFFFFFF00A7A7360
-    size_arg: (const, 0x20, 8)
-    trace: ('const', 32L)
-    tags: const
-    bounds_seen: False
-    verdict: SAFE_const
-
-  CALL copyout @ 0xFFFFFFF00A7A74EC
-    size_arg: (register, 0x4010, 8)
-    trace: ('phi', [('cycle', None), ('cycle', None), ('cycle', None), ('cycle', None), ('cycle', None), ('cycle', None), ('cycle', None), ('cycle', None), ('cycle', None), ('cycle', None), ('cycle', None)])
-    tags: cycle,phi
-    bounds_seen: False
-    verdict: PHI_SIZE
-
-  CALL copyout @ 0xFFFFFFF00A7A752C
-    size_arg: (register, 0x4010, 8)
-    trace: ('phi', [('cycle', None), ('cycle', None)])
-    tags: cycle,phi
-    bounds_seen: False
-    verdict: PHI_SIZE
-
-  CALL kalloc_type @ 0xFFFFFFF00A7A7610
-    size_arg: (unique, 0x3b200, 4)
-    trace: ('phi', [('other', None), ('other', None)])
-    tags: other,phi
-    bounds_seen: False
-    verdict: PHI_SIZE
-
-  CALL copyin @ 0xFFFFFFF00A7A80F4
-    size_arg: (register, 0x4010, 8)
-    trace: ('arith', (u'INT_AND', [('param', None), ('const', 4294967295L)]))
-    tags: arith,const,param
-    arith: INT_AND
-    bounds_seen: False
-    verdict: PARAM_SIZE
-
-  CALL copyout @ 0xFFFFFFF00A7A8898
-    size_arg: (register, 0x40a0, 8)
-    trace: ('phi', [('cycle', None), ('cycle', None), ('cycle', None)])
-    tags: cycle,phi
-    bounds_seen: False
-    verdict: PHI_SIZE
-
-  CALL kalloc_type @ 0xFFFFFFF00A7A899C
-    size_arg: (register, 0x40b8, 8)
-    trace: ('arith', (u'INT_LEFT', [('call_ret', 18446744005159867752L), ('const', 4L)]))
-    tags: arith,call_ret,const
-    arith: CALL@0xFFFFFFF00A1ED568,INT_LEFT
-    bounds_seen: False
-    verdict: ARITH_SIZE
-
-  CALL copyout @ 0xFFFFFFF00A7A89DC
-    size_arg: (unique, 0x3b500, 8)
-    trace: ('phi', [('other', None), ('other', None)])
-    tags: other,phi
-    bounds_seen: False
-    verdict: PHI_SIZE
-
-  CALL copyout @ 0xFFFFFFF00A7A8CA4
-    size_arg: (const, 0x4, 8)
-    trace: ('const', 4L)
-    tags: const
-    bounds_seen: False
-    verdict: SAFE_const
-
-
-========================================================================
-### FUN_fffffff00a7aa018  entry=0xFFFFFFF00A7AA018  size=0x1F4
-========================================================================
-  CALL kalloc_type @ 0xFFFFFFF00A7AA070
-    size_arg: (unique, 0x7ff00, 8)
-    trace: ('arith', (u'INT_LEFT', [('arith', (u'INT_ZEXT', [('phi', [('other', None), ('other', None)])])), ('const', 3L)]))
-    tags: arith,const,other,phi
-    arith: INT_LEFT,INT_ZEXT
-    bounds_seen: False
-    verdict: ARITH_SIZE
-
-  CALL copyout @ 0xFFFFFFF00A7AA19C
-    size_arg: (register, 0x4010, 8)
-    trace: ('arith', (u'INT_AND', [('phi', [('cycle', None), ('cycle', None)]), ('const', 34359738360L)]))
-    tags: arith,const,cycle,phi
-    arith: INT_AND
-    bounds_seen: False
-    verdict: PHI_SIZE
-
-
-========================================================================
-### FUN_fffffff00a7aa95c  entry=0xFFFFFFF00A7AA95C  size=0xE8
-========================================================================
-  CALL kalloc_type @ 0xFFFFFFF00A7AA9C0
-    size_arg: (unique, 0x4fd00, 4)
-    trace: ('arith', (u'INT_LEFT', [('phi', [('other', None), ('other', None)]), ('const', 3L)]))
-    tags: arith,const,other,phi
-    arith: INT_LEFT
-    bounds_seen: False
-    verdict: ARITH_SIZE
-
-  CALL copyout @ 0xFFFFFFF00A7AA9FC
-    size_arg: (register, 0x4010, 8)
-    trace: ('arith', (u'INT_SEXT', [('call_ret', 18446744005160453204L)]))
-    tags: arith,call_ret
-    arith: CALL@0xFFFFFFF00A27C454,INT_SEXT
-    bounds_seen: False
-    verdict: CALL_RET_SIZE
-
-
-========================================================================
-### FUN_fffffff00a7ab224  entry=0xFFFFFFF00A7AB224  size=0xD0
-========================================================================
-  CALL kalloc_type @ 0xFFFFFFF00A7AB27C
-    size_arg: (register, 0x4098, 8)
-    trace: ('arith', (u'INT_AND', [('param', None), ('const', 4294967295L)]))
-    tags: arith,const,param
-    arith: INT_AND
-    bounds_seen: False
-    verdict: PARAM_SIZE
-
-  CALL copyout @ 0xFFFFFFF00A7AB2A8
-    size_arg: (register, 0x4010, 8)
-    trace: ('arith', (u'INT_SEXT', [('other', None)]))
-    tags: arith,other
-    arith: INT_SEXT
-    bounds_seen: False
-    verdict: unknown
-
-
-========================================================================
-### FUN_fffffff00a7ab31c  entry=0xFFFFFFF00A7AB31C  size=0x22C
-========================================================================
-  CALL kalloc_type @ 0xFFFFFFF00A7AB378
-    size_arg: (register, 0x40a8, 8)
-    trace: ('arith', (u'INT_LEFT', [('phi', [('other', None), ('other', None), ('other', None)]), ('const', 3L)]))
-    tags: arith,const,other,phi
-    arith: INT_LEFT
-    bounds_seen: False
-    verdict: ARITH_SIZE
-
-  CALL copyout @ 0xFFFFFFF00A7AB430
-    size_arg: (unique, 0x3b500, 8)
-    trace: ('phi', [('other', None), ('other', None)])
-    tags: other,phi
-    bounds_seen: False
-    verdict: PHI_SIZE
-
-
-========================================================================
-### FUN_fffffff00a7ab988  entry=0xFFFFFFF00A7AB988  size=0xF0
-========================================================================
-  CALL kalloc_type @ 0xFFFFFFF00A7AB9E4
-    size_arg: (register, 0x40a0, 8)
-    trace: ('arith', (u'INT_ZEXT', [('arith', (u'INT_AND', [('phi', [('other', None), ('other', None)]), ('const', 262136L)]))]))
-    tags: arith,const,other,phi
-    arith: INT_AND,INT_ZEXT
-    bounds_seen: False
-    verdict: PHI_SIZE
-
-  CALL copyout @ 0xFFFFFFF00A7ABA1C
-    size_arg: (unique, 0x3b500, 8)
-    trace: ('phi', [('other', None), ('other', None)])
-    tags: other,phi
-    bounds_seen: False
-    verdict: PHI_SIZE
-
-
-========================================================================
-### FUN_fffffff00a7ef890  entry=0xFFFFFFF00A7EF890  size=0xB90
-========================================================================
-  CALL kalloc_type @ 0xFFFFFFF00A7EFB0C
-    size_arg: (register, 0x40b0, 8)
-    trace: ('arith', (u'INT_AND', [('phi', [('cycle', None), ('cycle', None)]), ('const', 4294967295L)]))
-    tags: arith,const,cycle,phi
-    arith: INT_AND
-    bounds_seen: False
-    verdict: PHI_SIZE
-
-
-========================================================================
-### FUN_fffffff00a7f070c  entry=0xFFFFFFF00A7F070C  size=0xDC4
-========================================================================
-  CALL kalloc_type @ 0xFFFFFFF00A7F0D8C
-    size_arg: (register, 0x40a0, 8)
-    trace: ('arith', (u'INT_ZEXT', [('arith', (u'INT_LEFT', [('phi', [('other', None), ('cycle', None)]), ('const', 4L)]))]))
-    tags: arith,const,cycle,other,phi
-    arith: INT_LEFT,INT_ZEXT
-    bounds_seen: False
-    verdict: ARITH_SIZE
-
-  CALL kalloc_type @ 0xFFFFFFF00A7F1178
-    size_arg: (register, 0x40a0, 8)
-    trace: ('arith', (u'INT_ZEXT', [('arith', (u'INT_LEFT', [('phi', [('other', None), ('cycle', None)]), ('const', 4L)]))]))
-    tags: arith,const,cycle,other,phi
-    arith: INT_LEFT,INT_ZEXT
-    bounds_seen: False
-    verdict: ARITH_SIZE
-
+### TARGET fun_3187f4 @ 0xFFFFFFF00A3187F4
+note: param to kalloc+copyin
+========================================================================
+
+-- global BL callers --
+  (none - indirect or via sysent)
+
+-- target decompile --
+  
+  undefined8
+  FUN_fffffff00a3187f4
+            (undefined4 param_1,long param_2,long param_3,ulong param_4,ulong param_5,long param_6,
+            long param_7,uint param_8)
+  
+  {
+    undefined4 *puVar1;
+    uint uVar2;
+    uint uVar3;
+    ushort uVar4;
+    long lVar5;
+    int iVar6;
+    long lVar7;
+    long lVar8;
+    int *piVar9;
+    undefined4 *puVar10;
+    undefined8 uVar11;
+    long lVar12;
+    ulong uVar13;
+    ulong uVar14;
+    undefined4 *puVar15;
+    bool bVar16;
+    long *plVar17;
+    undefined8 uVar18;
+    ulong uVar19;
+    undefined4 in_wzr;
+    long in_stack_fffffffffffffe88;
+    undefined4 uVar20;
+    ulong in_stack_fffffffffffffe98;
+    undefined *puStack_100;
+    undefined8 uStack_f8;
+    undefined1 *puStack_f0;
+    undefined *puStack_e8;
+    undefined *puStack_e0;
+    ulong uStack_d8;
+    ulong uStack_d0;
+    ulong uStack_c8;
+    undefined *puStack_98;
+    undefined8 uStack_90;
+    undefined1 *puStack_88;
+    undefined *puStack_80;
+    undefined *puStack_78;
+  
+    if (((2 < DAT_fffffff00acf8884) && ((DAT_fffffff007c105e8 & 1) == 0)) &&
+       ((DAT_fffffff00acfe694 & 1) == 0)) {
+      in_stack_fffffffffffffe88 = param_2;
+      in_stack_fffffffffffffe98 = param_4;
+      FUN_fffffff00a8bb3b0(&DAT_fffffff00700c000,DAT_fffffff00acf8878,0,&DAT_fffffff0070c2200);
+    }
+    lVar5 = tpidr_el1;
+    lVar7 = FUN_fffffff00a27b6f4(lVar5);
+    lVar8 = FUN_fffffff00a312428();
+    if (lVar8 == 0) {
+      if (DAT_fffffff00acf8884 < 3) {
+        return 5;
+      }
+      if ((DAT_fffffff007c105e8 & 1) == 0) {
+        if ((DAT_fffffff00acfe694 & 1) == 0) {
+          FUN_fffffff00a8bb3b0(&DAT_fffffff00700c000,DAT_fffffff00acf8878,0,&DAT_fffffff0070c2274);
+          return 5;
+        }
+        return 5;
+      }
+      return 5;
+    }
+    uVar19 = (ulong)*(uint *)(lVar5 + 0x4e8);
+    if (DAT_fffffff00ad9bd98 != 0) {
+      FUN_fffffff00a20602c(&DAT_fffffff00ad9bd90,lVar5,0);
+      uVar19 = DAT_fffffff00ad9bd98;
+    }
+    DAT_fffffff00ad9bd98 = uVar19;
+    uVar18 = DAT_fffffff00700d9a0;
+    uVar20 = (undefined4)((ulong)in_stack_fffffffffffffe88 >> 0x20);
+    plVar17 = (long *)(lVar8 + 0x88);
+    lVar12 = *plVar17;
+    while (lVar12 != 0) {
+      puStack_100 = &DAT_fffffff00ad78ce0;
+      uStack_f8 = uVar18;
+      puStack_f0 = &LAB_fffffff00a20d464;
+      puStack_e8 = &DAT_fffffff007bbb7d8;
+      puStack_e0 = &DAT_fffffff00ad9bd90;
+      puStack_98 = &DAT_fffffff00ad78ce0;
+      uStack_90 = uVar18;
+      puStack_88 = &LAB_fffffff00a20d494;
+      puStack_80 = &DAT_fffffff007bbb7f8;
+      puStack_78 = &DAT_fffffff00ad9bd90;
+      FUN_fffffff00a20cc84(plVar17,lVar12,0xc0000000,0,&puStack_100,&puStack_98);
+      uVar20 = (undefined4)((ulong)in_stack_fffffffffffffe88 >> 0x20);
+      lVar12 = *plVar17;
+    }
+    *plVar17 = lVar5;
+    if ((int)DAT_fffffff00ad9bd98 == *(int *)(lVar5 + 0x4e8)) {
+      DAT_fffffff00ad9bd98 = CONCAT44(DAT_fffffff00ad9bd98._4_4_,in_wzr);
+    }
+    else {
+      FUN_fffffff00a206b60(&DAT_fffffff00ad9bd90,lVar5);
+    }
+    if (param_7 == 0) {
+      uVar18 = 4;
+      goto LAB_fffffff00a318dec;
+    }
+    if (param_5 - 0x280001 < 0xffffffffffd80017) {
+      uVar18 = 5;
+      goto LAB_fffffff00a318dec;
+    }
+    piVar9 = (int *)FUN_fffffff00a200988(&DAT_fffffff007c62e68,param_5,0,0);
+    if (piVar9 == (int *)0x0) {
+      uVar18 = 6;
+      goto LAB_fffffff00a318dec;
+    }
+    puStack_98 = (undefined1 *)0x0;
+    iVar6 = FUN_fffffff00a368ec0(param_4,piVar9,param_5);
+    if (iVar6 == 0) {
+      if (*piVar9 == 5) {
+        if (piVar9[1] == 0x4000) {
+          uVar19 = (ulong)(uint)piVar9[2];
+          if (uVar19 * 2 + 0x18 <= param_5) {
+            if (piVar9[2] != 0) {
+              lVar12 = 0;
+              do {
+                uVar4 = *(ushort *)((long)piVar9 + lVar12 * 2 + 0x18);
+                if ((uVar4 != 0xffff) && (0x3ff8 < uVar4 || (uVar4 & 7) != 0))
+                goto LAB_fffffff00a318b68;
+                lVar12 = lVar12 + 1;
+                uVar19 = uVar19 - 1;
+              } while (uVar19 != 0);
+            }
+            goto LAB_fffffff00a318bc8;
+          }
+        }
+      }
+      else if (((*piVar9 == 2) && (0x27 < param_5)) && (piVar9[1] == 0x1000)) {
+        uVar2 = piVar9[3];
+        uVar3 = piVar9[5];
+        if (((((!CARRY4(uVar3,uVar2)) && ((ulong)(uVar3 + uVar2) * 2 + 0x28 <= param_5)) &&
+             ((uint)piVar9[2] <= param_5)) &&
+            ((piVar9[2] + uVar2 * 2 <= param_5 && ((uint)piVar9[4] <= param_5)))) &&
+           (piVar9[4] + uVar3 * 2 <= param_5)) {
+  LAB_fffffff00a318bc8:
+          if ((*(byte *)(param_7 + 0x75) >> 4 & 1) != 0) goto LAB_fffffff00a318abc;
+          puVar10 = (undefined4 *)FUN_fffffff00a20141c(&DAT_fffffff007c64eb0,0x8000);
+          FUN_fffffff00a2e587c(param_7);
+          if (*(int *)(param_7 + 0x28) + 0xf0000001U < 0xf0000002) {
+                      /* WARNING: Subroutine does not return */
+            FUN_fffffff00aa3d104(param_7 + 0x28);
+          }
+          *(int *)(param_7 + 0x28) = *(int *)(param_7 + 0x28) + 1;
+          *(uint *)(param_7 + 0xa8) = *(uint *)(param_7 + 0xa8) | 0x100;
+          FUN_fffffff00a20ac04(param_7 + 8);
+          *(ulong *)(puVar10 + 0xe) = param_5;
+          *(int **)(puVar10 + 0x10) = piVar9;
+          lVar12 = *(long *)(lVar8 + 0x40);
+          *(long *)(puVar10 + 4) = lVar12;
+          *(long *)(puVar10 + 6) = lVar12 + param_6;
+          *(long *)(puVar10 + 8) = param_2;
+          *(long *)(puVar10 + 10) = param_3 + param_2;
+          *(long *)(puVar10 + 0xc) = param_7;
+          *puVar10 = param_1;
+          if (((*(int *)(lVar8 + 0x20) == 0x100000c) &&
+              ((uVar2 = *(uint *)(lVar8 + 0x24) & 0xffffff, uVar2 == 0xc || (uVar2 == 2)))) &&
+             ((param_8 >> 6 & 1) == 0)) {
+            if (*(int *)(lVar8 + 0x9c) != *(int *)(lVar8 + 0x98)) {
+              *(undefined1 *)((long)puVar10 + 5) = 1;
+              iVar6 = FUN_fffffff00a319448(lVar7);
+              if (iVar6 == 0) {
+                uVar18 = 0;
+              }
+              else {
+                uVar18 = *(undefined8 *)(lVar7 + 0x350);
+              }
+              goto LAB_fffffff00a318ca4;
+            }
+            uVar18 = 4;
+  LAB_fffffff00a318fc4:
+            FUN_fffffff00a2e3010(param_7);
+            *(undefined8 *)(puVar10 + 0xc) = 0;
+          }
+          else {
+            uVar18 = 0;
+            *(undefined1 *)((long)puVar10 + 5) = 0;
+  LAB_fffffff00a318ca4:
+            uVar11 = FUN_fffffff00a31295c(lVar8);
+            uStack_d8 = 0;
+            puStack_e0 = (undefined *)0x0;
+            uStack_c8 = 0;
+            uStack_d0 = 0;
+            uStack_f8 = 0;
+            puStack_100 = (undefined *)0x0;
+            puStack_e8 = (undefined *)0x0;
+            puStack_f0 = (undefined1 *)0x0;
+            iVar6 = FUN_fffffff00a316f70(uVar11,param_6,&puStack_100);
+            puVar15 = (undefined4 *)(uStack_d8 & 0xfffffffffffffffc);
+            uVar19 = uStack_d8 & 3;
+            if (iVar6 == 0) {
+              puVar1 = puVar15;
+              if (uVar19 != 0) {
+                puVar1 = &DAT_fffffff00ad9b300;
+              }
+              lVar7 = FUN_fffffff00a31dcac(puVar1,uStack_d0 & 0xfffffffffffff000,puVar10,0,uVar18);
+              if (lVar7 == 0) {
+                bVar16 = false;
+                uVar18 = 6;
+              }
+              else {
+                if (((DAT_fffffff00ad4c748 == 0) || (DAT_fffffff00ad4c748 == lVar8)) ||
+                   ((*(byte *)(lVar8 + 0x94) & 1) != 0)) {
+                  FUN_fffffff00a2aea04(*(undefined8 *)(lVar7 + 0x10),0);
+                }
+                puStack_98 = puStack_f0;
+                uVar14 = 0x20000004081;
+                if ((uStack_c8 & 0x600) != 0 || *(int *)(lVar8 + 0x20) == 0x1000007) {
+                  uVar14 = 0x20000004001;
+                }
+                if ((((param_8 >> 9 & 1) == 0) || (*(int *)(lVar8 + 0x20) != 0x100000c)) ||
+                   ((DAT_fffffff007bffa40 == 0 ||
+                    ((DAT_fffffff007bffa44 == 0 || (DAT_fffffff007bffad4 == 0)))))) {
+                  uVar13 = 0;
+                }
+                else {
+                  uVar13 = 0x1000;
+                }
+                uVar18 = FUN_fffffff00a2c49c8
+                                   (uVar11,&puStack_98,(long)puStack_e8 - (long)puStack_f0,0,
+                                    uVar13 | uVar14,lVar7,0,1,
+                                    CONCAT44((uint)uStack_c8 >> 8,(uint)uStack_c8 >> 4) & 0xf00000007,
+                                    CONCAT44(uVar20,(uint)uStack_c8 >> 0xc) & 0xffffffff00000003,0,
+                                    in_stack_fffffffffffffe98 & 0xffffffff00000000);
+                if ((*(byte *)((long)puVar10 + 5) & 1) != 0) {
+                  (*(code *)**(undefined8 **)(lVar7 + 8))(lVar7);
+                  uVar2 = *(uint *)(lVar8 + 0x9c);
+                  *(uint *)(lVar8 + 0x9c) = uVar2 + 1;
+                  *(long *)(*(long *)(lVar8 + 0xa0) + (ulong)uVar2 * 8) = lVar7;
+                }
+                (**(code **)(*(long *)(lVar7 + 8) + 8))(lVar7);
+                bVar16 = true;
+              }
+            }
+            else {
+              bVar16 = false;
+              uVar18 = 1;
+            }
+            if (uVar19 != 0) {
+              puVar15 = &DAT_fffffff00ad9b300;
+            }
+            if (puVar15 != (undefined4 *)0x0) {
+              FUN_fffffff00a2e3010();
+            }
+            if ((int)uVar18 == 0) {
+              bVar16 = true;
+            }
+            if (bVar16) {
+              uVar18 = 0;
+              goto LAB_fffffff00a318dec;
+            }
+            param_7 = *(long *)(puVar10 + 0xc);
+            if (param_7 != 0) goto LAB_fffffff00a318fc4;
+          }
+          FUN_fffffff00a277224(&DAT_fffffff007c64ef0,puVar10);
+          goto LAB_fffffff00a318b6c;
+        }
+      }
+  LAB_fffffff00a318b68:
+      uVar18 = 5;
+    }
+    else {
+  LAB_fffffff00a318abc:
+      uVar18 = 1;
+    }
+  LAB_fffffff00a318b6c:
+    FUN_fffffff00a201000(&DAT_fffffff007c62e68,piVar9,param_5);
+  LAB_fffffff00a318dec:
+    uVar19 = (ulong)*(uint *)(lVar5 + 0x4e8);
+    if (DAT_fffffff00ad9bd98 != 0) {
+      FUN_fffffff00a20602c(&DAT_fffffff00ad9bd90,lVar5,0);
+      uVar19 = DAT_fffffff00ad9bd98;
+    }
+    DAT_fffffff00ad9bd98 = uVar19;
+    *plVar17 = 0;
+    FUN_fffffff00a20ddbc(plVar17,0,2,0,0);
+    if ((int)DAT_fffffff00ad9bd98 == *(int *)(lVar5 + 0x4e8)) {
+      DAT_fffffff00ad9bd98 = CONCAT44(DAT_fffffff00ad9bd98._4_4_,in_wzr);
+    }
+    else {
+      FUN_fffffff00a206b60(&DAT_fffffff00ad9bd90,lVar5);
+    }
+    FUN_fffffff00a3135a8(lVar8);
+    if (((2 < DAT_fffffff00acf8884) && ((DAT_fffffff007c105e8 & 1) == 0)) &&
+       ((DAT_fffffff00acfe694 & 1) == 0)) {
+      FUN_fffffff00a8bb3b0(&DAT_fffffff00700c000,DAT_fffffff00acf8878,0,&DAT_fffffff0070c22aa);
+    }
+    return uVar18;
+  }
+  
+  
+
+========================================================================
+### TARGET fun_734ba0 @ 0xFFFFFFF00A734BA0
+note: param to kalloc+copyin
+========================================================================
+
+-- global BL callers --
+  (none - indirect or via sysent)
+
+-- target decompile --
+  
+  /* WARNING: Globals starting with '_' overlap smaller symbols at the same address */
+  
+  ulong FUN_fffffff00a734ba0(long param_1,ulong param_2,long *param_3)
+  
+  {
+    long lVar1;
+    ulong uVar2;
+    long lVar3;
+    ulong uVar4;
+    long lVar5;
+    ulong uVar6;
+    undefined4 in_wzr;
+  
+    if ((param_1 == 0) || (param_2 == 0)) {
+      if ((DAT_fffffff00acfe694 & 1) == 0) {
+        FUN_fffffff00a8bb3b0(&DAT_fffffff00700c000,DAT_fffffff00ad6e228,0x10,&DAT_fffffff0070ec96a);
+        return 0x16;
+      }
+    }
+    else {
+      uVar6 = param_2 / 0x30;
+      if (param_2 % 0x30 == 0) {
+        lVar3 = FUN_fffffff00a200988(&DAT_fffffff007c62e68,param_2,4,0);
+        if (lVar3 != 0) {
+          uVar4 = FUN_fffffff00a368ec0(param_1,lVar3,param_2);
+          lVar5 = lVar3;
+          if ((int)uVar4 == 0) {
+            lVar1 = tpidr_el1;
+            uVar2 = (ulong)*(uint *)(lVar1 + 0x4e8);
+            if (_DAT_fffffff00adb43b8 != 0) {
+              FUN_fffffff00a20602c(&DAT_fffffff00adb43b0,lVar1,0);
+              uVar4 = uVar4 & 0xffffffff;
+              uVar2 = _DAT_fffffff00adb43b8;
+            }
+            _DAT_fffffff00adb43b8 = uVar2;
+            lVar5 = *param_3;
+            param_2 = param_3[1] * 0x30;
+            *param_3 = lVar3;
+            param_3[1] = uVar6;
+            if (DAT_fffffff00adb43b8 == *(int *)(lVar1 + 0x4e8)) {
+              _DAT_fffffff00adb43b8 = CONCAT44(DAT_fffffff00adb43b8_4,in_wzr);
+            }
+            else {
+              FUN_fffffff00a206b60(&DAT_fffffff00adb43b0);
+            }
+          }
+          FUN_fffffff00a201000(&DAT_fffffff007c62e68,lVar5,param_2);
+          return uVar4;
+        }
+        return 0xc;
+      }
+      if ((DAT_fffffff00acfe694 & 1) == 0) {
+        FUN_fffffff00a8bb3b0(&DAT_fffffff00700c000,DAT_fffffff00ad6e228,0x10,&DAT_fffffff0070ec9b6);
+        return 0x16;
+      }
+    }
+    return 0x16;
+  }
+  
+  
+
+========================================================================
+### TARGET fun_78a39c @ 0xFFFFFFF00A78A39C
+note: param to kalloc
+========================================================================
+
+-- global BL callers --
+  (none - indirect or via sysent)
+
+-- target decompile --
+  
+  undefined8
+  FUN_fffffff00a78a39c(long param_1,undefined8 *param_2,undefined8 param_3,ulong param_4,int param_5)
+  
+  {
+    undefined1 *puVar1;
+    code *pcVar2;
+    undefined8 uVar3;
+    undefined1 *puVar4;
+  
+    if (param_4 < 0x100) {
+      if (param_4 < 2) {
+        uVar3 = 0x16;
+      }
+      else {
+        puVar4 = (undefined1 *)FUN_fffffff00a200988(&DAT_fffffff007c62e68,param_4,0x8004,0);
+        if (puVar4 != (undefined1 *)0x0) {
+          *puVar4 = (char)param_4;
+        }
+        puVar1 = (undefined1 *)0x0;
+        if (puVar4 != (undefined1 *)0x0) {
+          puVar1 = puVar4 + param_4;
+        }
+        if (puVar1 < puVar4 || (ulong)((long)puVar1 - (long)puVar4) < param_4) {
+  LAB_fffffff00a78a440:
+                      /* WARNING: Does not return */
+          pcVar2 = (code *)SoftwareBreakpoint(0x5519,0xfffffff00a78a444);
+          (*pcVar2)();
+        }
+        uVar3 = FUN_fffffff00a368ec0(param_3,puVar4);
+        if ((int)uVar3 == 0) {
+          if (param_5 != 0) {
+            if (puVar1 < puVar4 + 0x10) goto LAB_fffffff00a78a440;
+            if (((puVar4[1] == '\0') && (param_4 == 0x10)) && (*(int *)(param_1 + 8) == 2)) {
+              puVar4[1] = 2;
+            }
+          }
+          if ((puVar1 < puVar4 + 0x10) || (*puVar4 = (char)param_4, puVar1 <= puVar4))
+          goto LAB_fffffff00a78a440;
+          uVar3 = 0;
+          *param_2 = puVar4;
+        }
+        else if (puVar4 != (undefined1 *)0x0) {
+          FUN_fffffff00a201340(&DAT_fffffff007c62e68,puVar4,1,0xff);
+        }
+      }
+    }
+    else {
+      uVar3 = 0x3f;
+    }
+    return uVar3;
+  }
+  
+  
+
+========================================================================
+### TARGET fun_6c4b10 @ 0xFFFFFFF00A6C4B10
+note: count*24+44 / count*24
+========================================================================
+
+-- global BL callers --
+  (none - indirect or via sysent)
+
+-- target decompile --
+  
+  /* WARNING: Globals starting with '_' overlap smaller symbols at the same address */
+  
+  undefined8 FUN_fffffff00a6c4b10(long param_1,undefined8 *param_2)
+  
+  {
+    undefined8 uVar1;
+    undefined8 *puVar2;
+    int iVar3;
+    ulong uVar4;
+    undefined8 uStack_90;
+    undefined8 uStack_88;
+    undefined8 uStack_80;
+    undefined8 uStack_78;
+    undefined8 uStack_70;
+    undefined8 uStack_68;
+    undefined8 uStack_60;
+    undefined8 uStack_58;
+    undefined4 uStack_50;
+  
+    uStack_50 = 0;
+    uStack_68 = 0;
+    uStack_70 = 0;
+    uStack_58 = 0;
+    uStack_60 = 0;
+    uStack_88 = 0;
+    uStack_90 = 0;
+    uStack_78 = 0;
+    uStack_80 = 0;
+    uVar1 = FUN_fffffff00a368ec0(param_1,&uStack_90,0x2c);
+    if ((int)uVar1 != 0) {
+      return uVar1;
+    }
+    if ((int)uStack_90 == 0x12cc16d) {
+      uVar4 = (ulong)uStack_70._4_4_;
+      if (uStack_70._4_4_ == 0xffffffff) {
+        uVar4 = 0;
+        iVar3 = 0x2c;
+      }
+      else {
+        if (0x80 < uStack_70._4_4_) goto LAB_fffffff00a6c4b7c;
+        iVar3 = uStack_70._4_4_ * 0x18 + 0x2c;
+      }
+      puVar2 = (undefined8 *)FUN_fffffff00a200988(&DAT_fffffff007c62e68,iVar3,0,0);
+      if (puVar2 == (undefined8 *)0x0) {
+        uVar1 = 0xc;
+      }
+      else {
+        *(undefined4 *)puVar2 = 0x12cc16d;
+        uVar1 = _DAT_fffffff00ad69d9c;
+        *(undefined8 *)((long)puVar2 + 0xc) = uRamfffffff00ad69da4;
+        *(undefined8 *)((long)puVar2 + 4) = uVar1;
+        uVar1 = _DAT_fffffff00ad69d9c;
+        *(undefined8 *)((long)puVar2 + 0x1c) = uRamfffffff00ad69da4;
+        *(undefined8 *)((long)puVar2 + 0x14) = uVar1;
+        *(undefined8 *)((long)puVar2 + 0x24) = 0xffffffff;
+        puVar2[4] = uStack_70;
+        *(undefined4 *)(puVar2 + 5) = (undefined4)uStack_68;
+        puVar2[1] = uStack_88;
+        *puVar2 = uStack_90;
+        puVar2[3] = uStack_78;
+        puVar2[2] = uStack_80;
+        if ((uVar4 == 0) ||
+           (uVar1 = FUN_fffffff00a368ec0
+                              (param_1 + 0x2c,(undefined4 *)((long)puVar2 + 0x2c),uVar4 * 0x18),
+           (int)uVar1 == 0)) {
+          uVar1 = 0;
+          *param_2 = puVar2;
+        }
+        else {
+          FUN_fffffff00a201254(&DAT_fffffff007c62e68,puVar2);
+        }
+      }
+    }
+    else {
+  LAB_fffffff00a6c4b7c:
+      uVar1 = 0x16;
+    }
+    return uVar1;
+  }
+  
+  
+
+========================================================================
+### TARGET fun_3cd8b0 @ 0xFFFFFFF00A3CD8B0
+note: other+1 / param*param
+========================================================================
+
+-- global BL callers --
+  (none - indirect or via sysent)
+
+-- target decompile --
+  
+  /* WARNING: Globals starting with '_' overlap smaller symbols at the same address */
+  
+  undefined8 FUN_fffffff00a3cd8b0(undefined8 param_1,uint param_2,uint param_3)
+  
+  {
+    int iVar1;
+    long lVar2;
+    uint uVar3;
+    uint uVar4;
+    ulong uVar5;
+    undefined8 uVar6;
+    long lVar7;
+    long lVar8;
+    undefined4 in_wzr;
+  
+    uVar6 = 0x16;
+    if ((0xfffffbff < param_2 - 0x401) && (0xffffff00 < param_3 - 0x100)) {
+      lVar8 = (ulong)param_3 * (ulong)param_2;
+      iVar1 = (int)lVar8 + 1;
+      lVar7 = FUN_fffffff00a200988(&DAT_fffffff007c62e68,iVar1,0,0);
+      if (lVar7 == 0) {
+        uVar6 = 0xc;
+      }
+      else {
+        uVar6 = FUN_fffffff00a368ec0(param_1,lVar7,lVar8);
+        if ((int)uVar6 == 0) {
+          *(undefined1 *)(lVar7 + lVar8) = 0;
+          FUN_fffffff00a79dce0(lVar7,param_2,param_3,&LAB_fffffff00a3cda3c);
+          lVar8 = tpidr_el1;
+          uVar5 = (ulong)*(uint *)(lVar8 + 0x4e8);
+          if (_DAT_fffffff00ad56370 != 0) {
+            FUN_fffffff00a20602c(&DAT_fffffff00ad56368,lVar8,0);
+            uVar5 = _DAT_fffffff00ad56370;
+          }
+          _DAT_fffffff00ad56370 = uVar5;
+          uVar4 = DAT_fffffff00ada9a84;
+          uVar3 = DAT_fffffff00ada9a80;
+          lVar2 = DAT_fffffff00ada9a78;
+          DAT_fffffff00ada9a78 = lVar7;
+          DAT_fffffff00ada9a80 = param_2;
+          DAT_fffffff00ada9a84 = param_3;
+          if (DAT_fffffff00ad56370 == *(int *)(lVar8 + 0x4e8)) {
+            _DAT_fffffff00ad56370 = CONCAT44(DAT_fffffff00ad56370_4,in_wzr);
+          }
+          else {
+            FUN_fffffff00a206b60(&DAT_fffffff00ad56368);
+          }
+          FUN_fffffff00a201000(&DAT_fffffff007c62e68,lVar2,uVar4 * uVar3 + 1);
+          uVar6 = 0;
+        }
+        else {
+          FUN_fffffff00a201000(&DAT_fffffff007c62e68,lVar7,iVar1);
+        }
+      }
+    }
+    return uVar6;
+  }
+  
+  
+
+========================================================================
+### TARGET fun_78e070 @ 0xFFFFFFF00A78E070
+note: load*56 / load*32
+========================================================================
+
+-- global BL callers --
+  (none - indirect or via sysent)
+
+-- target decompile --
+  
+  ulong FUN_fffffff00a78e070(long param_1,long param_2,long param_3,long *param_4)
+  
+  {
+    uint uVar1;
+    code *pcVar2;
+    int iVar3;
+    ulong uVar4;
+    uint uVar5;
+    long *plVar6;
+    long *plVar7;
+    uint uVar8;
+    long *plVar9;
+    ulong uVar10;
+    long lVar11;
+    ulong uVar12;
+    ulong uVar13;
+    ulong uVar14;
+    ulong uVar15;
+    long *plVar16;
+    long *plVar17;
+    long lVar18;
+    ulong uVar19;
+    undefined8 uVar20;
+    ulong uVar21;
+    long lVar22;
+    uint uStack_68;
+    uint uStack_64;
+  
+    uStack_68 = *(uint *)(param_3 + 0x18);
+    if ((param_1 == 0) || ((*(byte *)(param_1 + 0x444) >> 2 & 1) == 0)) {
+      uVar20 = 5;
+      lVar22 = 0x20;
+    }
+    else {
+      uVar20 = 8;
+      lVar22 = 0x38;
+    }
+    if ((uStack_68 & 0xfffcff3d) != 0) {
+      return 0x66;
+    }
+    uVar8 = *(uint *)(param_3 + 0x10);
+    if (uVar8 - 0x401 < 0xfffffc00) {
+      uVar15 = 0;
+      uVar4 = 0;
+      plVar17 = (long *)0x0;
+      plVar16 = (long *)0x0;
+      uVar19 = 0x16;
+      goto LAB_fffffff00a78e248;
+    }
+    if (DAT_fffffff00acf8428 < uVar8) {
+      uVar8 = DAT_fffffff00acf8428;
+      if (DAT_fffffff00acf8428 < 2) {
+        uVar8 = 1;
+      }
+      *(uint *)(param_3 + 0x10) = uVar8;
+    }
+    uVar15 = FUN_fffffff00a200988(&DAT_fffffff007c7d519,(ulong)uVar8 * 0x38,4,0);
+    uVar21 = uVar15 + (ulong)uVar8 * 0x38;
+    if (((uVar15 ^ uVar21) & 0xffc0000000000000) != 0) {
+      uVar21 = uVar21 & 0xffffffffffff | 0xc8a2000000000000;
+    }
+    if (uVar15 == 0) {
+      plVar17 = (long *)0x0;
+      plVar16 = (long *)0x0;
+    }
+    else {
+      uVar8 = *(uint *)(param_3 + 0x10);
+      plVar16 = (long *)FUN_fffffff00a200988(&DAT_fffffff007c7d5b9,(ulong)uVar8 * 0x20,4,0);
+      plVar17 = plVar16 + (ulong)uVar8 * 4;
+      if (plVar16 != (long *)0x0) {
+        uVar5 = *(uint *)(param_3 + 0x10);
+        lVar18 = lVar22 * (ulong)uVar5;
+        uVar4 = FUN_fffffff00a200988(&DAT_fffffff007c62e68,lVar18,4,0);
+        uVar10 = uVar4 + lVar18;
+        if (((uVar4 ^ uVar10) & 0xffc0000000000000) != 0) {
+          uVar10 = uVar10 & 0xffffffffffff | 0xc8a2000000000000;
+        }
+        if (uVar4 != 0) {
+          if (uVar5 < *(uint *)(param_3 + 0x10)) goto LAB_fffffff00a78e4a4;
+          uVar19 = FUN_fffffff00a368ec0
+                             (*(undefined8 *)(param_3 + 8),uVar4,
+                              lVar22 * (ulong)*(uint *)(param_3 + 0x10));
+          if (((int)uVar19 != 0) ||
+             (uVar19 = FUN_fffffff00a78e8d8
+                                 (uVar4,uVar10,uVar20,*(undefined4 *)(param_3 + 0x10),uVar15,uVar21,
+                                  plVar16,plVar17), (int)uVar19 != 0)) goto LAB_fffffff00a78e248;
+          uVar5 = *(uint *)(param_3 + 0x10);
+          uVar19 = (ulong)uVar5;
+          iVar3 = FUN_fffffff00a78eb78(plVar16,plVar17,uVar19);
+          if (iVar3 == 0) {
+            uVar19 = 0x16;
+            goto LAB_fffffff00a78e248;
+          }
+          if (uVar5 != 0) {
+            lVar11 = 0;
+            lVar18 = uVar15 + 0x2c;
+            do {
+              if ((lVar18 - 0x2cU < uVar15) || (uVar21 < lVar18 + 0xcU)) goto LAB_fffffff00a78e4a4;
+              if (*(int *)(uVar15 + lVar11 * 0x38 + 0x2c) != 0) {
+                uVar19 = 0x16;
+                goto LAB_fffffff00a78e248;
+              }
+              lVar11 = lVar11 + 1;
+              lVar18 = lVar18 + 0x38;
+              uVar19 = uVar19 - 1;
+            } while (uVar19 != 0);
+          }
+          if (((*(ushort *)(param_2 + 0x16) & 0x8002) == 0) &&
+             ((*(byte *)(*(long *)(param_2 + 0x20) + 0x24) >> 2 & 1) == 0)) {
+            lVar18 = FUN_fffffff00a27ae44(param_1);
+            uVar19 = FUN_fffffff00aa10300(*(undefined8 *)(lVar18 + 8),param_2);
+            if ((int)uVar19 != 0) goto LAB_fffffff00a78e248;
+            uVar5 = *(uint *)(param_3 + 0x10);
+          }
+          if (uVar8 < uVar5) goto LAB_fffffff00a78e4a4;
+          if (uVar5 == 0) {
+  LAB_fffffff00a78e460:
+            uVar12 = 0;
+          }
+          else {
+            uVar19 = (ulong)uVar5 & 7;
+            if (uVar5 < 8) {
+              uVar12 = 0;
+              lVar18 = 0;
+            }
+            else {
+              uVar12 = 0;
+              lVar18 = 0;
+              plVar9 = plVar16 + 0x10;
+              do {
+                if (plVar9[-0x10] != 0) {
+                  lVar18 = *(long *)(plVar9[-0x10] + 0x28) + lVar18;
+                }
+                if (plVar9[-0xc] != 0) {
+                  lVar18 = *(long *)(plVar9[-0xc] + 0x28) + lVar18;
+                }
+                if (plVar9[-8] != 0) {
+                  lVar18 = *(long *)(plVar9[-8] + 0x28) + lVar18;
+                }
+                if (plVar9[-4] != 0) {
+                  lVar18 = *(long *)(plVar9[-4] + 0x28) + lVar18;
+                }
+                if (*plVar9 != 0) {
+                  lVar18 = *(long *)(*plVar9 + 0x28) + lVar18;
+                }
+                if (plVar9[4] != 0) {
+                  lVar18 = *(long *)(plVar9[4] + 0x28) + lVar18;
+                }
+                if (plVar9[8] != 0) {
+                  lVar18 = *(long *)(plVar9[8] + 0x28) + lVar18;
+                }
+                if (plVar9[0xc] != 0) {
+                  lVar18 = *(long *)(plVar9[0xc] + 0x28) + lVar18;
+                }
+                uVar12 = uVar12 + 8;
+                plVar9 = plVar9 + 0x20;
+              } while (((ulong)uVar5 & 0xfffffff8) != uVar12);
+            }
+            if ((uVar5 & 7) != 0) {
+              plVar9 = plVar16 + uVar12 * 4;
+              do {
+                if (*plVar9 != 0) {
+                  lVar18 = *(long *)(*plVar9 + 0x28) + lVar18;
+                }
+                uVar19 = uVar19 - 1;
+                plVar9 = plVar9 + 4;
+              } while (uVar19 != 0);
+            }
+            if (uVar5 == 0) goto LAB_fffffff00a78e460;
+            if (plVar17 < plVar16 + 4) goto LAB_fffffff00a78e4a4;
+            if ((*(uint *)(plVar16 + 3) & 1) == 0) {
+              plVar9 = (long *)0x0;
+            }
+            else {
+              if (uVar8 == 0) goto LAB_fffffff00a78e4a4;
+              plVar9 = plVar16 + 1;
+            }
+            if ((*(uint *)(plVar16 + 3) >> 1 & 1) == 0) {
+              plVar6 = (long *)0x0;
+            }
+            else {
+              if (uVar8 == 0) goto LAB_fffffff00a78e4a4;
+              plVar6 = plVar16 + 2;
+            }
+            uVar19 = (**(code **)(*(long *)(*(long *)(param_2 + 0x20) + 0x48) + 0xb0))
+                               (param_2,plVar9,*plVar16,0,plVar6,&uStack_68);
+            if ((int)uVar19 == 0) {
+              uVar5 = uStack_68 & 0xffffff7f;
+              *(uint *)(plVar16 + 3) = *(uint *)(plVar16 + 3) | 4;
+              *(uint *)((long)plVar16 + 0x1c) = uVar5;
+              uVar1 = uStack_68 & 0x4010;
+              uStack_68 = uVar5;
+              if (uVar1 != 0) {
+  LAB_fffffff00a78e5f4:
+                uVar19 = 0;
+                goto LAB_fffffff00a78e5f8;
+              }
+              uVar12 = (ulong)*(uint *)(param_3 + 0x10);
+              if (*(uint *)(param_3 + 0x10) < 2) {
+                uVar19 = 0;
+              }
+              else {
+                uVar13 = 1;
+                plVar9 = plVar16;
+                do {
+                  plVar6 = plVar9 + 4;
+                  if ((plVar6 < plVar16) || (plVar17 < plVar9 + 8)) goto LAB_fffffff00a78e4a4;
+                  uStack_68 = uStack_68 | 0x80;
+                  if ((*(uint *)(plVar16 + uVar13 * 4 + 3) & 1) == 0) {
+                    plVar9 = (long *)0x0;
+                  }
+                  else {
+                    if (plVar17 <= plVar6) goto LAB_fffffff00a78e4a4;
+                    plVar9 = plVar16 + uVar13 * 4 + 1;
+                  }
+                  if ((*(uint *)(plVar16 + uVar13 * 4 + 3) >> 1 & 1) == 0) {
+                    plVar7 = (long *)0x0;
+                  }
+                  else {
+                    if (plVar17 <= plVar6) goto LAB_fffffff00a78e4a4;
+                    plVar7 = plVar16 + uVar13 * 4 + 2;
+                  }
+                  uVar19 = (**(code **)(*(long *)(*(long *)(param_2 + 0x20) + 0x48) + 0xb0))
+                                     (param_2,plVar9,*plVar6,0,plVar7,&uStack_68);
+                  if ((int)uVar19 != 0) goto LAB_fffffff00a78e5f8;
+                  *(uint *)(plVar16 + uVar13 * 4 + 3) = *(uint *)(plVar16 + uVar13 * 4 + 3) | 4;
+                  uVar5 = uStack_68 & 0xffffff7f;
+                  *(uint *)((long)plVar16 + uVar13 * 0x20 + 0x1c) = uVar5;
+                  uVar1 = uStack_68 & 0x4010;
+                  uStack_68 = uVar5;
+                  if (uVar1 != 0) goto LAB_fffffff00a78e5f4;
+                  uVar19 = 0;
+                  uVar13 = uVar13 + 1;
+                  uVar12 = (ulong)*(uint *)(param_3 + 0x10);
+                  plVar9 = plVar6;
+                } while (uVar13 < uVar12);
+              }
+            }
+            else {
+  LAB_fffffff00a78e5f8:
+              uVar12 = (ulong)*(uint *)(param_3 + 0x10);
+            }
+            uVar5 = (uint)uVar12;
+            if (uVar8 < uVar5) goto LAB_fffffff00a78e4a4;
+            if (uVar5 == 0) {
+              lVar11 = 0;
+            }
+            else {
+              uVar13 = uVar12 & 7;
+              if (uVar5 < 8) {
+                uVar14 = 0;
+                lVar11 = 0;
+              }
+              else {
+                uVar14 = 0;
+                lVar11 = 0;
+                plVar9 = plVar16 + 0x10;
+                do {
+                  if (plVar9[-0x10] != 0) {
+                    lVar11 = *(long *)(plVar9[-0x10] + 0x28) + lVar11;
+                  }
+                  if (plVar9[-0xc] != 0) {
+                    lVar11 = *(long *)(plVar9[-0xc] + 0x28) + lVar11;
+                  }
+                  if (plVar9[-8] != 0) {
+                    lVar11 = *(long *)(plVar9[-8] + 0x28) + lVar11;
+                  }
+                  if (plVar9[-4] != 0) {
+                    lVar11 = *(long *)(plVar9[-4] + 0x28) + lVar11;
+                  }
+                  if (*plVar9 != 0) {
+                    lVar11 = *(long *)(*plVar9 + 0x28) + lVar11;
+                  }
+                  if (plVar9[4] != 0) {
+                    lVar11 = *(long *)(plVar9[4] + 0x28) + lVar11;
+                  }
+                  if (plVar9[8] != 0) {
+                    lVar11 = *(long *)(plVar9[8] + 0x28) + lVar11;
+                  }
+                  if (plVar9[0xc] != 0) {
+                    lVar11 = *(long *)(plVar9[0xc] + 0x28) + lVar11;
+                  }
+                  uVar14 = uVar14 + 8;
+                  plVar9 = plVar9 + 0x20;
+                } while ((uVar12 & 0xfffffff8) != uVar14);
+              }
+              if (uVar13 != 0) {
+                plVar9 = plVar16 + uVar14 * 4;
+                do {
+                  if (*plVar9 != 0) {
+                    lVar11 = *(long *)(*plVar9 + 0x28) + lVar11;
+                  }
+                  uVar13 = uVar13 - 1;
+                  plVar9 = plVar9 + 4;
+                } while (uVar13 != 0);
+              }
+            }
+            if (((int)uVar19 != 0) &&
+               (((lVar11 == lVar18 || (uVar8 = (int)uVar19 + 1, 0x24 < uVar8)) ||
+                ((1L << ((ulong)uVar8 & 0x3f) & 0x1000000021U) == 0)))) goto LAB_fffffff00a78e248;
+          }
+          iVar3 = FUN_fffffff00a78ebec(param_1,param_2,uVar4,uVar10,uVar12,uVar15,uVar21);
+          uVar19 = (ulong)uStack_64;
+          if (uStack_64 == 0) {
+            uVar19 = lVar22 * (ulong)*(uint *)(param_3 + 0x10);
+            if (uVar10 - uVar4 <= uVar19 && uVar19 - (uVar10 - uVar4) != 0) {
+  LAB_fffffff00a78e4a4:
+                      /* WARNING: Does not return */
+              pcVar2 = (code *)SoftwareBreakpoint(0x5519,0xfffffff00a78e4a8);
+              (*pcVar2)();
+            }
+            uVar19 = FUN_fffffff00a369a3c(uVar4,*(undefined8 *)(param_3 + 8));
+            if ((int)uVar19 == 0) {
+              uVar19 = 0;
+              *param_4 = (long)iVar3;
+            }
+          }
+          goto LAB_fffffff00a78e248;
+        }
+      }
+    }
+    uVar4 = 0;
+    uVar19 = 0xc;
+  LAB_fffffff00a78e248:
+    FUN_fffffff00a201000(&DAT_fffffff007c62e68,uVar4,lVar22 * (ulong)*(uint *)(param_3 + 0x10));
+    uVar4 = (ulong)*(uint *)(param_3 + 0x10);
+    if (plVar16 != (long *)0x0) {
+      if (*(uint *)(param_3 + 0x10) == 0) {
+        lVar22 = 0;
+      }
+      else {
+        uVar21 = 0;
+        do {
+          plVar9 = plVar16 + uVar21 * 4;
+          if (plVar9 < plVar16 || plVar17 < plVar9 + 4) goto LAB_fffffff00a78e4a4;
+          if (*plVar9 != 0) {
+            FUN_fffffff00a71aac8();
+          }
+          lVar22 = plVar9[1];
+          if (lVar22 != 0) {
+            if (plVar17 <= plVar9) goto LAB_fffffff00a78e4a4;
+            plVar9[1] = 0;
+            FUN_fffffff00a201340(&DAT_fffffff007c62e68,lVar22,1,0xff);
+          }
+          lVar22 = plVar9[2];
+          while (lVar22 != 0) {
+            lVar22 = FUN_fffffff00a76b6b4();
+          }
+          uVar21 = uVar21 + 1;
+        } while (uVar21 != uVar4);
+        lVar22 = uVar4 << 5;
+      }
+      FUN_fffffff00a201000(&DAT_fffffff007c7d609,plVar16,lVar22);
+      uVar4 = (ulong)*(uint *)(param_3 + 0x10);
+    }
+    FUN_fffffff00a201000(&DAT_fffffff007c7d569,uVar15,uVar4 * 0x38);
+    return uVar19;
+  }
+  
+  
