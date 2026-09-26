@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # @runtime Jython
-# kernel_rw.py v34 - no string concat, only percent format
+# kernel_rw.py v35 - essentials only
 
 import os
 import sys
@@ -14,14 +14,13 @@ WS = os.environ.get("GITHUB_WORKSPACE", "/tmp")
 OUT = os.path.join(WS, "result.txt")
 
 SEP = "=" * 72
-MAX_DECOMPILE_SEC = 60
+MAX_DECOMPILE_SEC = 90
 MAX_BLOCK_SIZE = 0x1000000
-GLOBAL_SCAN_BUDGET_SEC = 120
+GLOBAL_SCAN_BUDGET_SEC = 180
 
 SYSENT_BASE = 0xFFFFFFF007C192A0
 SYSENT_STRIDE = 24
-NECP_OPEN_IDX = 501
-NECP_ACTION_IDX = 502
+KERNEL_BASE = 0xFFFFFFF007004000
 
 COPYIN = 0xFFFFFFF00A368EC0
 COPYOUT = 0xFFFFFFF00A369A3C
@@ -36,41 +35,31 @@ SINKS = [
 ]
 
 TARGETS = [
-    ("necp_client_action",        0xFFFFFFF00A4E5C28),
-    ("necp_client_add_flow",      0xFFFFFFF00A4E843C),
-    ("necp_client_add_client",    0xFFFFFFF00A4E60DC),
-    ("necp_client_remove_flow",   0xFFFFFFF00A4E93C4),
-    ("necp_client_remove_client", 0xFFFFFFF00A4E76F4),
-    ("necp_client_copy_result",   0xFFFFFFF00A4E7BE8),
-    ("necp_client_copy_list",     0xFFFFFFF00A4E80FC),
+    ("necp_client_action",       0xFFFFFFF00A4E5C28),
+    ("necp_client_add_client",   0xFFFFFFF00A4E60DC),
+    ("necp_client_add_flow",     0xFFFFFFF00A4E843C),
+    ("necp_client_remove_flow",  0xFFFFFFF00A4E93C4),
+    ("necp_client_remove_client",0xFFFFFFF00A4E76F4),
+    ("necp_client_copy_result",  0xFFFFFFF00A4E7BE8),
+    ("necp_client_copy_list",    0xFFFFFFF00A4E80FC),
     ("necp_client_copy_interface",0xFFFFFFF00A4EAC7C),
-    ("necp_client_sysctl_arena",  0xFFFFFFF00A4EB704),
-    ("necp_client_update_cache",  0xFFFFFFF00A4EBD58),
-    ("necp_client_copy_update",   0xFFFFFFF00A4EC264),
-    ("necp_get_tlv_at_offset",    0xFFFFFFF00A4C2034),
-    ("necp_flow_alloc",           0xFFFFFFF00A346E70),
-    ("necp_handler_big",          0xFFFFFFF00A3D91B4),
-    ("necp_per_flow_copy",        0xFFFFFFF00A4F2E70),
-    ("necp_copy_result_inner",    0xFFFFFFF00A4F26F0),
-    ("fun_4ee24c",                0xFFFFFFF00A4EE24C),
-    ("fun_501454",                0xFFFFFFF00A501454),
-    ("fun_aa40d30",               0xFFFFFFF00AA40D30),
-    ("fun_4edf3c",                0xFFFFFFF00A4EDF3C),
-    ("fun_4edd74",                0xFFFFFFF00A4EDD74),
-    ("fun_4f1aa4",                0xFFFFFFF00A4F1AA4),
-    ("fun_4db9f0",                0xFFFFFFF00A4DB9F0),
-    ("fun_700f94",                0xFFFFFFF00A700F94),
-    ("fun_4ed864",                0xFFFFFFF00A4ED864),
-    ("fun_4ed8bc",                0xFFFFFFF00A4ED8BC),
+    ("necp_client_sysctl_arena", 0xFFFFFFF00A4EB704),
+    ("necp_client_copy_update",  0xFFFFFFF00A4EC264),
+    ("necp_handler_big",         0xFFFFFFF00A3D91B4),
+    ("necp_per_flow_copy",       0xFFFFFFF00A4F2E70),
+    ("fun_4dd4cc",               0xFFFFFFF00A4DD4CC),
+    ("fun_4ed8bc",               0xFFFFFFF00A4ED8BC),
+    ("fun_4ee24c",               0xFFFFFFF00A4EE24C),
+    ("fun_501454",               0xFFFFFFF00A501454),
+    ("fun_aa40d30",              0xFFFFFFF00AA40D30),
 ]
 
 GLOBAL_CALLERS = [
-    ("necp_client_action",        0xFFFFFFF00A4E5C28),
-    ("necp_client_add_flow",      0xFFFFFFF00A4E843C),
-    ("fun_4ee24c",                0xFFFFFFF00A4EE24C),
-    ("fun_501454",                0xFFFFFFF00A501454),
-    ("fun_aa40d30",               0xFFFFFFF00AA40D30),
-    ("fun_4ed8bc",                0xFFFFFFF00A4ED8BC),
+    ("necp_client_action",  0xFFFFFFF00A4E5C28),
+    ("necp_client_add_flow",0xFFFFFFF00A4E843C),
+    ("fun_4dd4cc",          0xFFFFFFF00A4DD4CC),
+    ("fun_501454",          0xFFFFFFF00A501454),
+    ("fun_4ee24c",          0xFFFFFFF00A4EE24C),
 ]
 
 DEC = None
@@ -114,19 +103,6 @@ def sa(a):
         return None
 
 
-def read_u32(addr):
-    try:
-        ga = sa(addr)
-        if ga is None:
-            return None
-        b = getBytes(ga, 4)
-        if b is None:
-            return None
-        return (b[0] & 0xFF) | ((b[1] & 0xFF) << 8) | ((b[2] & 0xFF) << 16) | ((b[3] & 0xFF) << 24)
-    except Exception:
-        return None
-
-
 def read_u64(addr):
     try:
         ga = sa(addr)
@@ -135,19 +111,12 @@ def read_u64(addr):
         b = getBytes(ga, 8)
         if b is None:
             return None
-        return (b[0] & 0xFF) | ((b[1] & 0xFF) << 8) | ((b[2] & 0xFF) << 16) | ((b[3] & 0xFF) << 24) | \
-               ((b[4] & 0xFF) << 32) | ((b[5] & 0xFF) << 40) | ((b[6] & 0xFF) << 48) | ((b[7] & 0xFF) << 56)
+        r = 0
+        for i in range(8):
+            r = r | ((b[i] & 0xFF) << (i * 8))
+        return r
     except Exception:
         return None
-
-
-def strip_pac(p):
-    if p is None:
-        return None
-    p = p & 0xFFFFFFFFFFFFFFFF
-    if (p & 0xFFFFFFF000000000) == 0xFFFFFFF000000000:
-        return p
-    return (p & 0x0000000FFFFFFFFF) | 0xFFFFFFF000000000
 
 
 def get_func(addr):
@@ -320,7 +289,7 @@ def bl_to(f, target):
     except Exception:
         return hits
     cnt = 0
-    while it.hasNext() and cnt < 80000:
+    while it.hasNext() and cnt < 100000:
         try:
             a = it.next()
             pc = _u(a.getOffset())
@@ -335,53 +304,6 @@ def bl_to(f, target):
             if dst == target:
                 hits.append(pc)
     return hits
-
-
-def mem_ops(f):
-    out = []
-    try:
-        body = f.getBody()
-        if body is None:
-            return out
-        it = body.getAddresses(True)
-    except Exception:
-        return out
-    cnt = 0
-    while it.hasNext() and cnt < 80000:
-        try:
-            a = it.next()
-            pc = _u(a.getOffset())
-            raw = int(currentProgram.getMemory().getInt(a)) & 0xFFFFFFFF
-        except Exception:
-            cnt += 1
-            continue
-        cnt += 1
-        kind = None
-        base = 0
-        imm = 0
-        if (raw & 0xFFC00000) == 0xF9400000:
-            kind, base, imm = "ldr_x", (raw >> 5) & 0x1F, ((raw >> 10) & 0xFFF) * 8
-        elif (raw & 0xFFC00000) == 0xB9400000:
-            kind, base, imm = "ldr_w", (raw >> 5) & 0x1F, ((raw >> 10) & 0xFFF) * 4
-        elif (raw & 0xFFC00000) == 0xF9000000:
-            kind, base, imm = "str_x", (raw >> 5) & 0x1F, ((raw >> 10) & 0xFFF) * 8
-        elif (raw & 0xFFC00000) == 0xB9000000:
-            kind, base, imm = "str_w", (raw >> 5) & 0x1F, ((raw >> 10) & 0xFFF) * 4
-        elif (raw & 0xFFE00000) == 0x39400000:
-            kind, base, imm = "ldrb", (raw >> 5) & 0x1F, (raw >> 10) & 0xFFF
-        elif (raw & 0xFFE00000) == 0x39000000:
-            kind, base, imm = "strb", (raw >> 5) & 0x1F, (raw >> 10) & 0xFFF
-        elif (raw & 0xFFE00000) == 0x79400000:
-            kind, base, imm = "ldrh", (raw >> 5) & 0x1F, ((raw >> 10) & 0xFFF) * 2
-        elif (raw & 0xFFE00000) == 0x79000000:
-            kind, base, imm = "strh", (raw >> 5) & 0x1F, ((raw >> 10) & 0xFFF) * 2
-        else:
-            continue
-        if base in (19, 20, 21, 22, 23, 24, 25, 26, 27, 28) and imm > 0x100:
-            out.append((fmt(pc), kind, base, imm))
-        elif imm > 0x800:
-            out.append((fmt(pc), kind, base, imm))
-    return out
 
 
 def global_bl_callers(target, max_hits=100, budget=GLOBAL_SCAN_BUDGET_SEC):
@@ -424,33 +346,35 @@ def global_bl_callers(target, max_hits=100, budget=GLOBAL_SCAN_BUDGET_SEC):
 
 def dump_sysent(w):
     w(SEP)
-    w("### SYSENT LOOKUP")
+    w("### SYSENT RAW")
     w(SEP)
-    w("base = %s stride = %d" % (fmt(SYSENT_BASE), SYSENT_STRIDE))
+    w("base=%s stride=%d kbase=%s" % (fmt(SYSENT_BASE), SYSENT_STRIDE, fmt(KERNEL_BASE)))
     w("")
-    for idx in [NECP_OPEN_IDX, NECP_ACTION_IDX, 500, 503]:
+    for idx in [500, 501, 502, 503]:
         entry = SYSENT_BASE + idx * SYSENT_STRIDE
         w("--- sysent[%d] @ %s" % (idx, fmt(entry)))
-        for off in range(0, SYSENT_STRIDE, 8):
-            v = read_u64(entry + off)
-            if v is None:
-                w("  +0x%02X : <no data>" % off)
-            else:
-                w("  +0x%02X : %s" % (off, fmt(v)))
         p0 = read_u64(entry)
+        p1 = read_u64(entry + 8)
+        p2 = read_u64(entry + 16)
         if p0 is not None:
-            func = strip_pac(p0)
-            w("  entry0 stripped = %s" % fmt(func))
-            f = get_func(func)
+            w("  +0x00 = %s" % fmt(p0))
+            low = p0 & 0xFFFFFFFF
+            guess = KERNEL_BASE + low
+            w("  low32 = 0x%08X   guess = %s" % (low, fmt(guess)))
+            f = get_func(guess)
             if f:
                 ent = _u(f.getEntryPoint().getOffset())
                 try:
                     sz = int(f.getBody().getNumAddresses())
                 except Exception:
                     sz = 0
-                w("  func = %s size=0x%X" % (fmt(ent), sz))
+                w("  func at guess: %s size=0x%X" % (fmt(ent), sz))
             else:
-                w("  func = no function at %s" % fmt(func))
+                w("  no func at guess")
+        if p1 is not None:
+            w("  +0x08 = %s" % fmt(p1))
+        if p2 is not None:
+            w("  +0x10 = %s" % fmt(p2))
     w("")
 
 
@@ -460,25 +384,24 @@ def main():
     def w(s):
         L.append(s)
 
-    log("=== kernel_rw.py v34 ===")
+    log("=== kernel_rw.py v35 ===")
     log("program: %s" % currentProgram.getName())
-    log("disasm available: %s" % HAS_DISASM)
-    log("create cmd available: %s" % HAS_CREATE)
+    log("disasm=%s create=%s" % (HAS_DISASM, HAS_CREATE))
 
     w("=== PROGRAM ===")
     w("name = %s" % currentProgram.getName())
     w("has_disasm=%s has_create=%s" % (HAS_DISASM, HAS_CREATE))
     w("")
 
-    log("[0/4] sysent lookup")
+    log("[1/4] sysent")
     try:
         dump_sysent(w)
     except Exception as ex:
         w("SYSENT EXCEPTION %s" % ex)
 
-    log("[1/4] NECP sanity + ensure functions")
+    log("[2/4] sanity")
     w(SEP)
-    w("### NECP SANITY")
+    w("### SANITY")
     w(SEP)
     for name, addr in TARGETS:
         try:
@@ -498,7 +421,7 @@ def main():
             w("  %-32s EXCEPTION %s" % (name, str(ex)))
     w("")
 
-    log("[2/4] per-function analysis")
+    log("[3/4] per-function")
     total = len(TARGETS)
     for idx, (name, addr) in enumerate(TARGETS):
         log("  [%d/%d] %s" % (idx + 1, total, name))
@@ -516,7 +439,7 @@ def main():
             w("### %s  entry=%s  size=0x%X" % (name, fmt(ent), sz))
             w(SEP)
             if not f:
-                w("NO FUNCTION, raw disasm fallback:")
+                w("NO FUNCTION, raw disasm:")
                 for l in raw_disasm(addr, 200):
                     w(l)
                 w("")
@@ -552,16 +475,6 @@ def main():
                 w("BL CALLS EXCEPTION %s" % ex)
 
             try:
-                susp = mem_ops(f)
-                if susp:
-                    w("SUSPICIOUS MEM OPS:")
-                    for pc, kind, base, imm in susp[:120]:
-                        w("    %s  %-8s  [x%-2d, #0x%X]" % (pc, kind, base, imm))
-                    w("")
-            except Exception as ex:
-                w("MEM OPS EXCEPTION %s" % ex)
-
-            try:
                 w("DECOMPILE:")
                 body = decompile(f)
                 for l in body:
@@ -578,7 +491,7 @@ def main():
             w("FUNC EXCEPTION %s %s" % (name, ex))
             continue
 
-    log("[3/4] global BL callers")
+    log("[4/4] global callers")
     w(SEP)
     w("### GLOBAL BL CALLERS")
     w(SEP)
@@ -600,7 +513,6 @@ def main():
             fent = _u(f.getEntryPoint().getOffset()) if f else 0
             w("  %s  %-4s in %-30s @ %s" % (fmt(pc), kind, nm[:30], fmt(fent)))
 
-    log("[4/4] write result")
     try:
         fh = open(OUT, "w")
         for l in L:
