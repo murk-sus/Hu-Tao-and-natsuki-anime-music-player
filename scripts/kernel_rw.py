@@ -1,15 +1,13 @@
 # -*- coding: utf-8 -*-
 # @runtime Jython
-# necp_final_analysis.py — финальный скрипт для Ghidra headless
+# validate_all_offsets.py
 #
-# Выводит в result.txt:
-#   1. Валидация всех known offsets (kernproc, task_list, kernel_base)
-#   2. Поиск правильной функции necp_client_copy_result по xref на строку
-#   3. Декомпиляция + дизасм + trace offset assigned_results
-#   4. Поиск writer'а assigned_results (add_flow, netagent)
-#   5. Дампы kalloc_type / kalloc_var зон
-#   6. Поиск альтернативных примитивов (TLV, mbuf, socket)
-#   7. Сводка: что валидно, что нет, где нужен новый оффсет
+# Читает offsets.json (или Offsets.json), валидирует каждый оффсет через Ghidra:
+#   - адресные оффсеты (kernel globals) -> чтение памяти
+#   - числовые оффсеты (struct fields) -> поиск ldr/str с этим imm в дизассемблере
+#   - известные функции NECP -> дизасм + декомпиляция + извлечение imm-оффсетов
+#
+# Output: result.txt + validated_offsets.json
 
 import os
 import re
@@ -23,44 +21,34 @@ from ghidra.util.task import TaskMonitor
 
 WS = os.environ.get("GITHUB_WORKSPACE", "/tmp")
 OUT = os.path.join(WS, "result.txt")
-OUT_JSON = os.path.join(WS, "offsets.json")
+OUT_JSON = os.path.join(WS, "validated_offsets.json")
+OFFSETS_JSON = os.path.join(WS, "offsets.json")
 
-# Verified offsets from prior analysis
-KBASE = 0xFFFFFFF007004000
-KNOWN = {
-    "off_kernel_base":      (0xFFFFFFF007004000, "ptr"),
-    "off_g_kernproc":       (0xFFFFFFF007BBF040, "ptr"),
-    "off_g_task_list":      (0xFFFFFFF0080D93F0, "ptr"),
-    "off_proc_p_pid":       (0x74,               "int"),
-    "off_proc_ro_p_ucred":  (0x98,               "int"),
-    "off_task_bsd_info":    (0x4E0,              "int"),
-    "off_task_itk_space":   (0x320,              "int"),
-    "off_ucred_cr_uid":     (0x18,               "int"),
-    "off_ucred_cr_svuid":   (0x1C,               "int"),
-    "off_ucred_cr_gid":     (0x20,               "int"),
-    "off_ucred_cr_svgid":   (0x24,               "int"),
-}
+KPTR_MIN = 0xFFFFFFF000000000
+KPTR_MAX = 0xFFFFFFFFFF000000
 
-# Strings that identify copy_result related code
-NEEDLE_STRINGS = {
-    "assigned_copyout":      "necp_client_copy assigned results copyout error",
-    "assigned_tlv_header":   "necp_client_copy assigned results tlv_header copyout error",
-    "result_copyout":        "necp_client_copy result copyout error",
-    "group_members":         "necp_client_copy group members copyout error",
-    "params_copyout":        "necp_client_copy parameters copyout error",
-    "flow_divert_tlv":       "necp_client_copy request flow divert TLV copyout error",
-}
-
-HARDCODED_FUNCS = [
-    ("copy_result_candidate", 0xFFFFFFF00A4EC264),
-    ("copy_interface_wrong",  0xFFFFFFF00A4EAC7C),
-    ("add_flow",              0xFFFFFFF00A4E843C),
-    ("remove_flow",           0xFFFFFFF00A4E93C4),
+# Known NECP functions (addr from prior dumps)
+NECP_FUNCS = [
     ("necp_open",             0xFFFFFFF00A4E411C),
+    ("necp_client_add_flow",  0xFFFFFFF00A4E843C),
+    ("necp_client_remove_flow", 0xFFFFFFF00A4E93C4),
+    ("necp_client_copy_interface", 0xFFFFFFF00A4EAC7C),
+    ("necp_client_copy_update",    0xFFFFFFF00A4EC264),
 ]
 
+# Accessor functions to search for known struct offsets
+ACCESSOR_PATTERNS = {
+    "proc_pid":        ["_proc_pid", "proc_pid"],
+    "proc_task":       ["_proc_task", "proc_task"],
+    "proc_ucred":      ["_proc_ucred", "proc_ucred"],
+    "task_bsd_info":   ["_get_bsdtask_info", "get_bsdtask_info"],
+    "kauth_cred_getuid": ["_kauth_cred_getuid", "kauth_cred_getuid"],
+    "kauth_cred_getsvuid": ["_kauth_cred_getsvuid", "kauth_cred_getsvuid"],
+    "task_itk_space":  ["_task_get_itk_space", "task_get_itk_space"],
+}
+
+MAX_DISASM = 500
 MAX_DECOMP = 200
-MAX_DISASM = 400
 
 
 def _u(v):
@@ -120,15 +108,22 @@ def inblk(a):
     return None
 
 
-def find_func_by_addr(addr):
+def read_u64(addr):
     try:
         ga = sa(addr)
         if ga is None:
             return None
-        f = getFunctionAt(ga)
-        if f is not None:
-            return f
-        return getFunctionContaining(ga)
+        return int(currentProgram.getMemory().getLong(ga)) & 0xFFFFFFFFFFFFFFFF
+    except Exception:
+        return None
+
+
+def read_u32(addr):
+    try:
+        ga = sa(addr)
+        if ga is None:
+            return None
+        return int(currentProgram.getMemory().getInt(ga)) & 0xFFFFFFFF
     except Exception:
         return None
 
@@ -142,46 +137,28 @@ def find_func_by_name(name):
                     return f
             except Exception:
                 pass
+        for f in fm.getFunctions(True):
+            try:
+                if name in str(f.getName()):
+                    return f
+            except Exception:
+                pass
     except Exception:
         pass
     return None
 
 
-def funcs_calling(f):
-    out = []
-    try:
-        for ref in getReferencesTo(f.getEntryPoint()):
-            try:
-                c = getFunctionContaining(ref.getFromAddress())
-                if c is None:
-                    continue
-                e = _u(c.getEntryPoint().getOffset())
-                if e == _u(f.getEntryPoint().getOffset()):
-                    continue
-                nm = str(c.getName())
-                if nm not in out:
-                    out.append(nm)
-            except Exception:
-                pass
-    except Exception:
-        pass
-    return out
-
-
-def refs_to(addr):
-    out = []
+def find_func_by_addr(addr):
     try:
         ga = sa(addr)
         if ga is None:
-            return out
-        for ref in getReferencesTo(ga):
-            try:
-                out.append(_u(ref.getFromAddress().getOffset()))
-            except Exception:
-                pass
+            return None
+        f = getFunctionAt(ga)
+        if f is not None:
+            return f
+        return getFunctionContaining(ga)
     except Exception:
-        pass
-    return out
+        return None
 
 
 def decompile(f, timeout):
@@ -200,15 +177,15 @@ def decompile(f, timeout):
         if c is None:
             out.append("(empty)")
             return out
-        txt = c.getC()
-        for line in txt.split("\n"):
+        for line in c.getC().split("\n"):
             out.append("  " + line.rstrip())
     except Exception as e:
-        out.append("(decompile exception: %s)" % str(e))
+        out.append("(exception: %s)" % str(e))
     return out
 
 
-def disasm(f, maxn):
+def disasm_func(f, maxn):
+    """Return list of (pc, raw32, mnemonic_line) tuples."""
     out = []
     body = f.getBody()
     if body is None:
@@ -217,223 +194,225 @@ def disasm(f, maxn):
         it = body.getAddresses(True)
     except Exception:
         return out
+    listing = currentProgram.getListing()
     cnt = 0
     while it.hasNext() and cnt < maxn:
         a = it.next()
         try:
             pc = _u(a.getOffset())
             b = int(currentProgram.getMemory().getInt(a)) & 0xFFFFFFFF
-            out.append("  %016X  %08X" % (pc, b))
+            ins = listing.getInstructionAt(a)
+            txt = str(ins) if ins is not None else "?"
+            out.append((pc, b, txt))
         except Exception:
             pass
         cnt += 1
     return out
 
 
-def find_string_occurrences():
-    """Find all occurrences of NEEDLE strings and return {key: [addrs]}."""
-    result = {}
-    mem = currentProgram.getMemory()
-    for key, needle in NEEDLE_STRINGS.items():
-        hits = []
-        try:
-            jn = zeros(len(needle), 'b')
-            for i in range(len(needle)):
-                v = ord(needle[i])
-                if v > 127:
-                    v -= 256
-                jn[i] = v
-            addr = mem.getMinAddress()
-            mon = TaskMonitor.DUMMY
-            while addr is not None:
-                try:
-                    hit = mem.findBytes(addr, jn, None, True, mon)
-                except Exception:
-                    break
-                if hit is None:
-                    break
-                hits.append(_u(hit.getOffset()))
-                if len(hits) >= 8:
-                    break
-                nxt = hit.add(1)
-                if nxt is None:
-                    break
-                addr = nxt
-        except Exception:
-            pass
-        result[key] = hits
-    return result
+# --- mini ARM64 decoder for extracting imm offsets ---
+def extract_ldr_str_imm(raw):
+    """Extract (mnem, base_reg, imm) from LDR/STR (unsigned) 64/32-bit."""
+    # LDR X, [Xn, #imm]  = 0xF9400000 base
+    if (raw & 0xFFC00000) == 0xF9400000:
+        return ("ldr_x", (raw >> 5) & 0x1F, ((raw >> 10) & 0xFFF) * 8)
+    if (raw & 0xFFC00000) == 0xB9400000:
+        return ("ldr_w", (raw >> 5) & 0x1F, ((raw >> 10) & 0xFFF) * 4)
+    if (raw & 0xFFC00000) == 0xF9000000:
+        return ("str_x", (raw >> 5) & 0x1F, ((raw >> 10) & 0xFFF) * 8)
+    if (raw & 0xFFC00000) == 0xB9000000:
+        return ("str_w", (raw >> 5) & 0x1F, ((raw >> 10) & 0xFFF) * 4)
+    if (raw & 0xFFE00000) == 0x39400000:
+        return ("ldrb", (raw >> 5) & 0x1F, (raw >> 10) & 0xFFF)
+    if (raw & 0xFFE00000) == 0x39000000:
+        return ("strb", (raw >> 5) & 0x1F, (raw >> 10) & 0xFFF)
+    if (raw & 0xFFE00000) == 0x79400000:
+        return ("ldrh", (raw >> 5) & 0x1F, ((raw >> 10) & 0xFFF) * 2)
+    if (raw & 0xFFE00000) == 0x79000000:
+        return ("strh", (raw >> 5) & 0x1F, ((raw >> 10) & 0xFFF) * 2)
+    return None
 
 
-def validate_offset(name, addr, kind):
-    blk = inblk(addr)
-    if kind == "int":
-        return (True, "0x%X (numeric)" % addr, "OK")
-    if blk is None:
-        return (False, fmt(addr), "NOT_IN_LOADED_BLOCKS")
-    try:
-        ga = sa(addr)
-        v = int(currentProgram.getMemory().getLong(ga)) & 0xFFFFFFFFFFFFFFFF
-    except Exception as e:
-        return (False, fmt(addr), "READ_ERR: %s" % str(e))
-    ok = (v >= 0xFFFFFFF000000000) and (v <= 0xFFFFFFFFFF000000)
-    return (ok, fmt(v), "OK" if ok else "NOT_A_KPTR")
-
-
-def dump_zone_names():
-    """Search all strings for kalloc_type markers."""
+def extract_all_imms(f):
+    """Return list of (pc, kind, base, imm, raw)."""
     out = []
-    try:
-        for b in currentProgram.getMemory().getBlocks():
-            nm = str(b.getName())
-            if "__cstring" not in nm:
-                continue
-            if not b.isInitialized():
-                continue
-            s = _u(b.getStart().getOffset())
-            e = _u(b.getEnd().getOffset())
-            size = int(e - s)
-            if size <= 0 or size > 4 * 1024 * 1024:
-                continue
-            ga = sa(s)
-            arr = zeros(size, 'b')
-            try:
-                currentProgram.getMemory().getBytes(ga, arr)
-            except Exception:
-                continue
-            cur = ""
-            cur_off = s
-            for i in range(size):
-                v = int(arr[i])
-                if v < 0:
-                    v += 256
-                if 0x20 <= v < 0x7F:
-                    if not cur:
-                        cur_off = s + i
-                    cur += chr(v)
-                else:
-                    if len(cur) >= 4 and "necp" in cur.lower():
-                        out.append((cur_off, cur))
-                    cur = ""
-            if len(cur) >= 4 and "necp" in cur.lower():
-                out.append((cur_off, cur))
-    except Exception:
-        pass
-    return out[:60]
+    for pc, raw, txt in disasm_func(f, MAX_DISASM):
+        r = extract_ldr_str_imm(raw)
+        if r is not None:
+            out.append((pc, r[0], r[1], r[2], raw))
+    return out
 
+
+def find_accessor_offset(func_names, want_ldr=True):
+    """Find ldr X0/W0, [X0, #imm] ; ret pattern in function."""
+    f = None
+    for n in func_names:
+        f = find_func_by_name(n)
+        if f is not None:
+            break
+    if f is None:
+        return None, None
+    try:
+        insns = disasm_func(f, 40)
+    except Exception:
+        return None, None
+    for i, (pc, raw, txt) in enumerate(insns):
+        r = extract_ldr_str_imm(raw)
+        if r is None:
+            continue
+        kind, base, imm = r
+        # looking for ldr X0/W0, [X0, #imm] ; ret
+        rd = raw & 0x1F
+        if rd == 0 and base == 0 and kind.startswith("ldr"):
+            # verify next instruction is ret
+            if i + 1 < len(insns) and insns[i+1][1] == 0xD65F03C0:
+                return _u(f.getEntryPoint().getOffset()), imm
+    return _u(f.getEntryPoint().getOffset()), None
+
+
+# ---------- main ----------
 
 def main():
-    print("=== necp_final_analysis ===")
+    print("=== validate_all_offsets.py ===")
     lines = []
+    validated = {}
 
-    # ---------- 1. program info ----------
     lines.append("=== PROGRAM ===")
     try:
-        lines.append("name     = %s" % currentProgram.getName())
-        lines.append("lang     = %s" % currentProgram.getLanguage().getLanguageID())
-        lines.append("min      = %s" % fmt(currentProgram.getMemory().getMinAddress().getOffset()))
-        lines.append("max      = %s" % fmt(currentProgram.getMemory().getMaxAddress().getOffset()))
+        lines.append("name = %s" % currentProgram.getName())
+        lines.append("min  = %s" % fmt(currentProgram.getMemory().getMinAddress().getOffset()))
+        lines.append("max  = %s" % fmt(currentProgram.getMemory().getMaxAddress().getOffset()))
     except Exception as e:
         lines.append("(err: %s)" % str(e))
     lines.append("")
 
-    # ---------- 2. validate known offsets ----------
-    lines.append("=== VALIDATE KNOWN OFFSETS ===")
-    valid_count = 0
-    for name, (addr, kind) in KNOWN.items():
-        ok, val, status = validate_offset(name, addr, kind)
-        if ok:
-            valid_count += 1
-        lines.append("  %-24s  %s  ->  %-20s  [%s]" % (name, fmt(addr), val, status))
-    lines.append("  summary: %d/%d valid" % (valid_count, len(KNOWN)))
+    # ---------- 1. Load offsets.json ----------
+    offsets = {}
+    if os.path.exists(OFFSETS_JSON):
+        try:
+            with open(OFFSETS_JSON) as fh:
+                raw = json.load(fh)
+            if isinstance(raw, dict) and "defaults" in raw:
+                offsets = raw["defaults"]
+            elif isinstance(raw, dict):
+                offsets = raw
+            lines.append("=== LOADED %d OFFSETS FROM %s ===" % (len(offsets), OFFSETS_JSON))
+        except Exception as e:
+            lines.append("=== FAILED TO PARSE %s: %s ===" % (OFFSETS_JSON, str(e)))
+    else:
+        lines.append("=== offsets.json NOT FOUND at %s ===" % OFFSETS_JSON)
+
+    for k, v in sorted(offsets.items()):
+        lines.append("  %-38s = %s" % (k, v))
     lines.append("")
 
-    # ---------- 3. find string xrefs ----------
-    lines.append("=== STRING XREFS (NEEDLE -> FUNCTION) ===")
-    str_hits = find_string_occurrences()
-    func_candidates = {}  # func_entry -> set of needle keys
-    for key, hits in str_hits.items():
-        lines.append("--- %s ---" % key)
-        if not hits:
-            lines.append("  (no hits)")
+    # ---------- 2. Validate each offset ----------
+    lines.append("=== VALIDATION ===")
+    for key, val in sorted(offsets.items()):
+        try:
+            if isinstance(val, str) and val.startswith("0x"):
+                ival = int(val, 16)
+            else:
+                ival = int(val)
+        except Exception:
+            lines.append("  %-38s = %-20s  BAD_VALUE" % (key, str(val)))
+            validated[key] = {"status": "bad_value"}
             continue
-        for a in hits[:4]:
-            blk = inblk(a)
-            lines.append("  str @ %s  [%s]" % (fmt(a), blk[2] if blk else "?"))
-            for r in refs_to(a)[:4]:
-                blk2 = inblk(r)
-                f = getFunctionContaining(sa(r))
-                fe = _u(f.getEntryPoint().getOffset()) if f is not None else None
-                fn = str(f.getName()) if f is not None else "?"
-                lines.append("    xref %s  func=%s  [%s]" % (
-                    fmt(r), fmt(fe) if fe else "?", fn))
-                if fe is not None:
-                    func_candidates.setdefault(fe, set()).add(key)
+
+        # Case A: kernel address
+        if ival >= 0xFFFFFFF000000000:
+            blk = inblk(ival)
+            if blk is None:
+                lines.append("  %-38s %-20s  NOT_IN_BLOCKS" % (key, fmt(ival)))
+                validated[key] = {"status": "not_in_blocks", "addr": fmt(ival)}
+                continue
+            v64 = read_u64(ival)
+            v32 = read_u32(ival)
+            kptr = (v64 is not None and KPTR_MIN <= v64 <= KPTR_MAX)
+            lines.append("  %-38s %-20s  [%s]  u64=%s  u32=%s  %s" % (
+                key, fmt(ival), blk[2],
+                fmt(v64) if v64 is not None else "err",
+                fmt(v32) if v32 is not None else "err",
+                "KPTR_OK" if kptr else "not_kptr"))
+            validated[key] = {
+                "status": "ok" if kptr else "not_kptr",
+                "addr": fmt(ival),
+                "value_u64": fmt(v64) if v64 is not None else None,
+                "value_u32": fmt(v32) if v32 is not None else None,
+                "block": blk[2],
+            }
+            continue
+
+        # Case B: numeric struct offset
+        lines.append("  %-38s 0x%X (numeric offset)" % (key, ival))
+        validated[key] = {"status": "numeric", "value": ival}
+
     lines.append("")
 
-    # rank functions by how many distinct needles they reference
-    lines.append("=== FUNCTION RANK (by needle refs) ===")
-    ranked = sorted(func_candidates.items(), key=lambda kv: -len(kv[1]))
-    for fe, keys in ranked[:12]:
-        f = find_func_by_addr(fe)
-        nm = str(f.getName()) if f is not None else "?"
-        sz = 0
-        if f is not None:
-            try:
-                sz = int(f.getBody().getNumAddresses())
-            except Exception:
-                sz = 0
-        lines.append("  %s  %-28s  size=0x%-6X  needles=%s" % (
-            fmt(fe), nm, sz, ",".join(sorted(keys))))
+    # ---------- 3. Accessor function scan ----------
+    lines.append("=== ACCESSOR FUNCTIONS ===")
+    for name, patterns in ACCESSOR_PATTERNS.items():
+        entry, imm = find_accessor_offset(patterns)
+        if entry is None:
+            lines.append("  %-24s NOT_FOUND" % name)
+            continue
+        if imm is not None:
+            lines.append("  %-24s @ %s  -> +0x%X" % (name, fmt(entry), imm))
+            validated["accessor_" + name] = {"entry": fmt(entry), "offset": imm}
+        else:
+            lines.append("  %-24s @ %s  -> (no clean ldr+ret pattern)" % (name, fmt(entry)))
     lines.append("")
 
-    # ---------- 4. hardcoded func dumps ----------
-    lines.append("=== HARDCODED FUNCS (disasm + decomp) ===")
-    for name, addr in HARDCODED_FUNCS:
+    # ---------- 4. NECP function disasm ----------
+    lines.append("=== NECP FUNCTIONS DISASM ===")
+    for name, addr in NECP_FUNCS:
         f = find_func_by_addr(addr)
         if f is None:
-            lines.append("--- %s @ %s --- NO FUNCTION" % (name, fmt(addr)))
-            lines.append("")
+            lines.append("--- %s @ %s : NO FUNCTION" % (name, fmt(addr)))
             continue
         entry = _u(f.getEntryPoint().getOffset())
-        sz = 0
         try:
             sz = int(f.getBody().getNumAddresses())
         except Exception:
-            pass
-        blk = inblk(entry)
-        lines.append("--- %s @ %s  size=0x%X  [%s] ---" % (
-            name, fmt(entry), sz, blk[2] if blk else "?"))
-        lines.append("  callers: %s" % ", ".join(funcs_calling(f)[:6]))
-        lines.append("  decompile:")
-        for l in decompile(f, 90)[:MAX_DECOMP]:
-            lines.append(l)
+            sz = 0
+        lines.append("--- %s @ %s  size=0x%X ---" % (name, fmt(entry), sz))
+
+        imms = extract_all_imms(f)
+        # filter for LDR (not STR) from callee-saved regs, imm range 0x40-0x200
+        callee = set([19, 20, 21, 22, 23, 24])
+        interesting = [(pc, kind, base, imm) for (pc, kind, base, imm, raw) in imms
+                       if kind.startswith("ldr") and base in callee and 0x40 <= imm <= 0x300]
+        # deduplicate by imm
+        seen = set()
+        for pc, kind, base, imm in interesting:
+            if imm in seen:
+                continue
+            seen.add(imm)
+            lines.append("  %s %-8s [x%d, #0x%X] @ %s" % (
+                name[:20], kind, base, imm, fmt(pc)))
+
+        # decompile brief
+        lines.append("  decompile (first 40):")
+        for l in decompile(f, 60)[:40]:
+            lines.append("    " + l)
         lines.append("")
 
-    # ---------- 5. NECP zone names ----------
-    lines.append("=== NECP-RELATED STRINGS ===")
-    try:
-        zn = dump_zone_names()
-        for a, s in zn[:40]:
-            lines.append("  %s  %s" % (fmt(a), s))
-    except Exception as e:
-        lines.append("(err: %s)" % str(e))
-    lines.append("")
-
-    # ---------- 6. small verdict ----------
+    # ---------- 5. Summary verdict ----------
     lines.append("=== VERDICT ===")
-    lines.append("If function_rank top entry has size > 0x400 and needles")
-    lines.append("contain assigned_copyout + assigned_tlv_header, that is")
-    lines.append("the real necp_client_copy_result.")
-    lines.append("")
-    lines.append("Next step for Ghidra manual pass:")
-    lines.append("  - open that function's decompile")
-    lines.append("  - find ldr X, [Y, #N] where Y comes from client/flow")
-    lines.append("  - that N is the real NCF_ASSIGNED_OFF")
-    lines.append("  - search add_flow / netagent for str X, [Y, #N]")
+    ok_count = sum(1 for v in validated.values() if v.get("status") == "ok")
+    numeric_count = sum(1 for v in validated.values() if v.get("status") == "numeric")
+    not_kptr = sum(1 for v in validated.values() if v.get("status") == "not_kptr")
+    not_in_blocks = sum(1 for v in validated.values() if v.get("status") == "not_in_blocks")
+    bad = sum(1 for v in validated.values() if v.get("status") == "bad_value")
+    lines.append("  ok (kptr valid)     : %d" % ok_count)
+    lines.append("  numeric offsets     : %d" % numeric_count)
+    lines.append("  present but not kptr: %d" % not_kptr)
+    lines.append("  not in loaded blocks: %d" % not_in_blocks)
+    lines.append("  bad value           : %d" % bad)
+    lines.append("  total               : %d" % len(validated))
     lines.append("")
 
-    # write
+    # write result.txt
     try:
         with open(OUT, "w") as fh:
             for l in lines:
@@ -442,16 +421,10 @@ def main():
     except Exception as e:
         print("[-] write: %s" % str(e))
 
-    # json summary
-    jout = {
-        "valid_offsets": valid_count,
-        "total_offsets": len(KNOWN),
-        "ranked_funcs": [{"addr": fmt(fe), "needles": sorted(list(k))}
-                         for fe, k in ranked[:12]],
-    }
+    # write validated_offsets.json
     try:
         with open(OUT_JSON, "w") as fh:
-            fh.write(json.dumps(jout, indent=2, sort_keys=True))
+            fh.write(json.dumps(validated, indent=2, sort_keys=True))
         print("[+] wrote " + OUT_JSON)
     except Exception as e:
         print("[-] write json: %s" % str(e))
