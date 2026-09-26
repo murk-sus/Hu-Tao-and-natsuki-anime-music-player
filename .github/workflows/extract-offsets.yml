@@ -52,6 +52,7 @@ jobs:
           curl -fsSL -o /tmp/ipsw.tar.gz https://github.com/blacktop/ipsw/releases/download/v3.1.716/ipsw_3.1.716_linux_x86_64.tar.gz
           tar -C /usr/local/bin -xzf /tmp/ipsw.tar.gz ipsw
 
+      # bump v4 -> v5 чтобы подтянуть свежие сигнатуры (включая 27.0)
       - uses: actions/cache@v4
         id: cache-symbolicator
         with:
@@ -61,6 +62,7 @@ jobs:
       - if: steps.cache-symbolicator.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
+          rm -rf "$GITHUB_WORKSPACE/symbolicator"
           git clone --depth 1 https://github.com/blacktop/symbolicator.git "$GITHUB_WORKSPACE/symbolicator"
 
       - id: sigs
@@ -76,19 +78,21 @@ jobs:
             if [ -d "$ROOT/$VER" ]; then
               echo "SIGDIR=$ROOT/$VER" >> "$GITHUB_ENV"
               echo "SIG_VER=$VER" >> "$GITHUB_ENV"
+              echo "::warning::27.0 не найдено, используем $VER"
               exit 0
             fi
           done
           LATEST=$(ls -1 "$ROOT" 2>/dev/null | sort -V | tail -n1)
           echo "SIGDIR=$ROOT/$LATEST" >> "$GITHUB_ENV"
           echo "SIG_VER=$LATEST" >> "$GITHUB_ENV"
-          echo "::warning::Сигнатуры для 27.0 не найдены, используется версия $LATEST."
+          echo "::warning::Ни одной 27.x нет, берём $LATEST"
 
+      # kernel тот же (24A437) — ключ не трогаем, остаётся warm
       - uses: actions/cache@v4
         id: cache-kernelcache
         with:
           path: ${{ github.workspace }}/kernelcache
-          key: kernelcache-iPhone14_5-24A437-v5
+          key: kernelcache-iPhone14_5-24A437-v4
 
       - if: steps.cache-kernelcache.outputs.cache-hit != 'true'
         run: |
@@ -110,6 +114,7 @@ jobs:
           echo "KERNEL_NAME=$(basename "$KERNEL")" >> "$GITHUB_ENV"
           file "$KERNEL"
 
+      # bump v4 -> v5 чтобы пересчитать symbols.json со свежими сигнатурами
       - uses: actions/cache@v4
         id: cache-symbols
         with:
@@ -120,33 +125,39 @@ jobs:
         if: steps.cache-symbols.outputs.cache-hit != 'true'
         run: |
           set -uo pipefail
-          echo "=== SIGDIR: $SIGDIR (версия $SIG_VER) ==="
+          echo "=== SIGDIR: $SIGDIR (version $SIG_VER) ==="
           if [ ! -d "$SIGDIR" ]; then
-            echo "::error::Папка с сигнатурами не найдена: $SIGDIR"
+            echo "::error::SIGDIR не найден: $SIGDIR"
             echo "[]" > "$GITHUB_WORKSPACE/symbols.json"
             exit 1
           fi
+          ls -la "$SIGDIR" | head -20
 
-          echo "=== ipsw kernel symbolicate --signatures $SIGDIR --json ==="
+          echo "=== Running: ipsw kernel symbolicate --signatures $SIGDIR --json ==="
           ipsw kernel symbolicate --signatures "$SIGDIR" --json -v --output "$GITHUB_WORKSPACE/symbols.json" "$KERNEL" 2>&1 | tee /tmp/sym.log || true
 
+          echo "=== Built-in table markers ==="
+          grep -iE "bsd_syscall_table|mach_trap_table|mig_kern_subsystem|Found .* table" /tmp/sym.log || echo "(no markers)"
+
+          # fallback: если пусто / "[]" — тянем только встроенные таблицы
           if [ ! -s "$GITHUB_WORKSPACE/symbols.json" ] || [ "$(cat "$GITHUB_WORKSPACE/symbols.json")" = "[]" ]; then
-            echo "=== Сигнатуры не сработали, fallback на встроенные таблицы ==="
-            ipsw kernel symbolicate --json -v --output "$GITHUB_WORKSPACE/symbols.json" "$KERNEL" 2>&1 | tee /tmp/sym_fallback.log || true
+            echo "=== signatures не сработали, fallback без --signatures ==="
+            ipsw kernel symbolicate --json -v --output "$GITHUB_WORKSPACE/symbols.json" "$KERNEL" 2>&1 | tee /tmp/sym_fb.log || true
           fi
 
           if [ ! -s "$GITHUB_WORKSPACE/symbols.json" ]; then
             echo "[]" > "$GITHUB_WORKSPACE/symbols.json"
           fi
 
-          echo "=== symbols.json: $(wc -c < "$GITHUB_WORKSPACE/symbols.json") байт ==="
+          echo "=== symbols.json: $(wc -c < "$GITHUB_WORKSPACE/symbols.json") bytes ==="
           head -c 800 "$GITHUB_WORKSPACE/symbols.json"
 
+      # ВАЖНО: ключ НЕ меняем (v4), чтобы сохранить warm-run Ghidra
       - uses: actions/cache@v4
         id: cache-project
         with:
           path: ${{ github.workspace }}/ghidra_project
-          key: ghidra-project-24A437-v5
+          key: ghidra-project-24A437-v4
 
       - name: Run Ghidra
         continue-on-error: true
