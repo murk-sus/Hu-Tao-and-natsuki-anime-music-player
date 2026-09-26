@@ -78,29 +78,39 @@ jobs:
           set -euo pipefail
           git clone --depth 1 "https://github.com/blacktop/symbolicator.git" "$GITHUB_WORKSPACE/symbolicator"
 
-      - name: Inspect signatures (diagnostic)
+      - name: Resolve signatures dir for iOS 27.0
+        id: sigs
         shell: bash
         run: |
           set -uo pipefail
-          SIGDIR="$GITHUB_WORKSPACE/symbolicator/kernel"
-          echo "=== Signatures dir: $SIGDIR ==="
-          if [ ! -d "$SIGDIR" ]; then
-            echo "FATAL: no kernel subdir in symbolicator"
-            ls -la "$GITHUB_WORKSPACE/symbolicator" || true
-            exit 1
+          ROOT="$GITHUB_WORKSPACE/symbolicator/kernel"
+
+          echo "=== Available iOS version dirs ==="
+          ls -1 "$ROOT" || true
+
+          # Приоритет: 27.0 → 27.2 → последняя существующая
+          for VER in "27.0" "27.2" "27.1" "27.3"; do
+            if [ -d "$ROOT/$VER" ]; then
+              echo "=== Selected signatures version: $VER ==="
+              ls -la "$ROOT/$VER" | head -20
+              echo "SIGDIR=$ROOT/$VER" >> "$GITHUB_ENV"
+              echo "SIG_VER=$VER" >> "$GITHUB_ENV"
+              exit 0
+            fi
+          done
+
+          # Fallback: любая 27.x или самая свежая
+          LATEST=$(ls -1 "$ROOT" 2>/dev/null | sort -V | tail -n1)
+          if [ -n "$LATEST" ] && [ -d "$ROOT/$LATEST" ]; then
+            echo "=== Fallback: using latest available version: $LATEST ==="
+            ls -la "$ROOT/$LATEST" | head -20
+            echo "SIGDIR=$ROOT/$LATEST" >> "$GITHUB_ENV"
+            echo "SIG_VER=$LATEST" >> "$GITHUB_ENV"
+            exit 0
           fi
-          echo "=== Available signature files (first 40) ==="
-          ls -1 "$SIGDIR" | head -40
-          echo "=== Signature count ==="
-          ls -1 "$SIGDIR" | wc -l
-          echo "=== Looking for iOS 27 / XNU 13432 signatures ==="
-          ls -1 "$SIGDIR" | grep -iE "13432|27\.|iOS.?27" || echo "NOT FOUND — iOS 27 signatures missing"
-          echo "=== Sample signature content ==="
-          SAMPLE=$(ls -1 "$SIGDIR"/*.json 2>/dev/null | head -n1)
-          if [ -n "$SAMPLE" ]; then
-            echo "--- $SAMPLE ---"
-            head -c 1500 "$SAMPLE"
-          fi
+
+          echo "FATAL: no signature version dirs found"
+          exit 1
 
       - name: Cache kernelcache
         id: cache-kernelcache
@@ -138,54 +148,15 @@ jobs:
           set -uo pipefail
           KERNEL=$(find "$GITHUB_WORKSPACE/kernelcache" -type f -name "kernelcache*" 2>/dev/null | head -n1)
           if [ -z "$KERNEL" ]; then
-            echo "FATAL: kernelcache not found in $GITHUB_WORKSPACE/kernelcache"
+            echo "FATAL: kernelcache not found"
             ls -la "$GITHUB_WORKSPACE/kernelcache" || true
             exit 1
           fi
-          echo "=== Resolved kernelcache ==="
+          echo "=== kernelcache ==="
           file "$KERNEL"
           ls -lh "$KERNEL"
           echo "KERNEL=$KERNEL" >> "$GITHUB_ENV"
           echo "KERNEL_NAME=$(basename "$KERNEL")" >> "$GITHUB_ENV"
-
-      - name: Decompress kernelcache (only if compressed)
-        shell: bash
-        run: |
-          set -uo pipefail
-          echo "=== Checking compression state of: $KERNEL ==="
-          FTYPE=$(file "$KERNEL")
-          echo "file output: $FTYPE"
-
-          if echo "$FTYPE" | grep -q "Mach-O"; then
-            echo "=== kernelcache is already decompressed Mach-O — skipping decompression ==="
-            echo "KERNEL=$KERNEL" >> "$GITHUB_ENV"
-            echo "KERNEL_NAME=$(basename "$KERNEL")" >> "$GITHUB_ENV"
-            exit 0
-          fi
-
-          echo "=== kernelcache appears compressed (LZFSE/LZSS/Img4) — decompressing ==="
-          OUTDIR="$GITHUB_WORKSPACE/kernelcache_decompressed"
-          mkdir -p "$OUTDIR"
-          OUTNAME="$OUTDIR/$(basename "$KERNEL")"
-
-          # -o = output FILE, not dir
-          ipsw kernel dec "$KERNEL" -o "$OUTNAME" 2>&1 | tee /tmp/dec.log || true
-
-          if [ ! -s "$OUTNAME" ]; then
-            echo "WARNING: decompression failed or produced empty file"
-            echo "=== /tmp/dec.log ==="
-            cat /tmp/dec.log || true
-            echo "=== falling back to original kernelcache ==="
-            echo "KERNEL=$KERNEL" >> "$GITHUB_ENV"
-            echo "KERNEL_NAME=$(basename "$KERNEL")" >> "$GITHUB_ENV"
-            exit 0
-          fi
-
-          echo "=== Decompressed ==="
-          file "$OUTNAME"
-          ls -lh "$OUTNAME"
-          echo "KERNEL=$OUTNAME" >> "$GITHUB_ENV"
-          echo "KERNEL_NAME=$(basename "$OUTNAME")" >> "$GITHUB_ENV"
 
       - name: Cache symbols
         id: cache-symbols
@@ -194,37 +165,42 @@ jobs:
           path: ${{ github.workspace }}/symbols.json
           key: symbols-${{ hashFiles('kernelcache/**') }}
 
-      - name: Full symbolication with diagnostics
+      - name: Symbolicate kernel (blacktop signatures + built-in tables)
         if: steps.cache-symbols.outputs.cache-hit != 'true'
         shell: bash
         run: |
           set -uo pipefail
-          SIGDIR="$GITHUB_WORKSPACE/symbolicator/kernel"
 
           echo "=========================================="
-          echo "  Symbolicating: $KERNEL"
-          echo "  Signatures:    $SIGDIR"
+          echo "  Kernel:     $KERNEL"
+          echo "  SigDir:     $SIGDIR"
+          echo "  SigVersion: $SIG_VER"
           echo "=========================================="
 
-          echo "=== Running: ipsw kernel symbolicate -v ==="
-          ipsw kernel symbolicate --signatures "$SIGDIR" --json -v "$KERNEL" \
+          echo ""
+          echo "=== Running: ipsw kernel symbolicate --signatures $SIGDIR --json ==="
+          ipsw kernel symbolicate \
+            --signatures "$SIGDIR" \
+            --json \
+            -v \
+            "$KERNEL" \
             2>&1 | tee /tmp/sym_full.log || true
 
           echo ""
-          echo "=== symbolicate exit log (tail 50) ==="
+          echo "=== Tail of symbolicate log (50 lines) ==="
           tail -n 50 /tmp/sym_full.log || true
 
           echo ""
-          echo "=== Looking for built-in table markers in log ==="
-          grep -iE "bsd_syscall_table|mach_trap_table|mig_kern_subsystem|found .* table" \
-            /tmp/sym_full.log || echo "NO BUILT-IN TABLE MARKERS FOUND"
+          echo "=== Built-in table markers in log ==="
+          grep -iE "bsd_syscall_table|mach_trap_table|mig_kern_subsystem|found .* table|signatures" \
+            /tmp/sym_full.log || echo "(no markers)"
 
           echo ""
-          echo "=== Looking for symbol addresses in log ==="
+          echo "=== Found addresses in log (count) ==="
           grep -cE "0x[0-9A-Fa-f]{10,}" /tmp/sym_full.log || echo "0"
 
           echo ""
-          echo "=== Searching for symbols.json outputs ==="
+          echo "=== Searching for *.symbols.json files ==="
           find . -type f -name "*.symbols.json" 2>/dev/null | head -5 || true
           find . -type f -name "*symbols*.json" 2>/dev/null | head -5 || true
 
@@ -237,10 +213,13 @@ jobs:
             cp "$SRC" "$GITHUB_WORKSPACE/symbols.json"
             echo "=== copied $SRC -> symbols.json ==="
           else
-            echo "=== No symbols.json produced by symbolicate ==="
-            echo "=== Trying fallback: --output flag ==="
-            ipsw kernel symbolicate --signatures "$SIGDIR" --json \
-              --output "$GITHUB_WORKSPACE/symbols.json" "$KERNEL" \
+            echo "=== No *.symbols.json found — trying --output ==="
+            ipsw kernel symbolicate \
+              --signatures "$SIGDIR" \
+              --json \
+              -v \
+              --output "$GITHUB_WORKSPACE/symbols.json" \
+              "$KERNEL" \
               2>&1 | tee /tmp/sym_fallback.log || true
             if [ ! -s "$GITHUB_WORKSPACE/symbols.json" ]; then
               echo "=== Fallback produced nothing — writing [] ==="
@@ -249,7 +228,7 @@ jobs:
           fi
 
           echo ""
-          echo "=== symbols.json final size: $(wc -c < "$GITHUB_WORKSPACE/symbols.json" 2>/dev/null || echo 0) bytes ==="
+          echo "=== symbols.json size: $(wc -c < "$GITHUB_WORKSPACE/symbols.json" 2>/dev/null || echo 0) bytes ==="
           echo "=== symbols.json head (first 2000 bytes) ==="
           head -c 2000 "$GITHUB_WORKSPACE/symbols.json" 2>/dev/null || true
           echo ""
