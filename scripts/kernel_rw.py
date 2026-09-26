@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # @runtime Jython
-# kernel_rw.py v39 - caller trace for tier1/tier2 candidates
+# kernel_rw.py v40 - caller trace for tier1/tier2 candidates
 
 import os
 import sys
@@ -16,15 +16,13 @@ SEP = "=" * 72
 MAX_DECOMPILE_SEC = 90
 
 TRACE_TARGETS = [
-    ("fun_3187f4",  0xFFFFFFF00A3187F4, "param->kalloc+copyin"),
-    ("fun_734ba0",  0xFFFFFFF00A734BA0, "param->kalloc+copyin"),
-    ("fun_78a39c",  0xFFFFFFF00A78A39C, "param->kalloc"),
+    ("fun_3187f4",  0xFFFFFFF00A3187F4, "param to kalloc+copyin"),
+    ("fun_734ba0",  0xFFFFFFF00A734BA0, "param to kalloc+copyin"),
+    ("fun_78a39c",  0xFFFFFFF00A78A39C, "param to kalloc"),
     ("fun_6c4b10",  0xFFFFFFF00A6C4B10, "count*24+44 / count*24"),
     ("fun_3cd8b0",  0xFFFFFFF00A3CD8B0, "other+1 / param*param"),
     ("fun_78e070",  0xFFFFFFF00A78E070, "load*56 / load*32"),
 ]
-
-MAX_DEPTH = 3
 
 DEC = None
 MONITOR = ConsoleTaskMonitor()
@@ -164,73 +162,12 @@ def bl_callers_global(target, max_hits=60, budget=120):
     return hits
 
 
-def collect_bl_targets(func):
-    found = set()
-    try:
-        body = func.getBody()
-        if body is None:
-            return found
-        it = body.getAddresses(True)
-    except Exception:
-        return found
-    cnt = 0
-    while it.hasNext() and cnt < 80000:
-        try:
-            a = it.next()
-            pc = _u(a.getOffset())
-            raw = int(currentProgram.getMemory().getInt(a)) & 0xFFFFFFFF
-        except Exception:
-            cnt += 1
-            continue
-        cnt += 1
-        if (raw & 0xFC000000) == 0x94000000:
-            imm = sign26(raw & 0x03FFFFFF) << 2
-            dst = (pc + imm) & 0xFFFFFFFFFFFFFFFF
-            found.add(dst)
-    return found
-
-
-(def walk_callers(f, depth, visited, w):
-    if depth > MAX_DEPTH:
-        return
-    try:
-        ent = _u(f.getEntryPoint().getOffset())
-    except Exception:
-        return
-    if ent in visited:
-        return
-    visited.addent)
-    try:
-        callees = f.getCalledFunctions(MONITOR)
-    except Exception:
-        callees = None
-    if not callees:
-        return
-    for cf in callees:
-        try:
-            cfe = _u(cf.getEntryPoint().getOffset())
-        except Exception:
-            continue
-        if cfe in visited:
-            continue
-        # every callee: emit and recurse
-        try:
-            cfname = str(cf.getName())
-            cfsz = int(cf.getBody().getNumAddresses())
-        except Exception:
-            cfname = "?"
-            cfsz = 0
-        indent = "  " * depth
-        w("%s[%d] callee %s @ %s size=0x%X" % (indent, depth, cfname, fmt(cfe), cfsz))
-        walk_callers(cf, depth + 1, visited, w)
-
-
 def main():
     L = []
     def w(s):
         L.append(s)
 
-    log("=== kernel_rw.py v39 ===")
+    log("=== kernel_rw.py v40 ===")
     log("program: %s" % currentProgram.getName())
 
     w("=== PROGRAM ===")
@@ -238,14 +175,13 @@ def main():
     w("")
 
     for label, addr, note in TRACE_TARGETS:
-        log("[*] tracing %s @ %s (%s)" % (label, fmt(addr), note))
+        log("[*] %s @ %s (%s)" % (label, fmt(addr), note))
         w("")
         w(SEP)
         w("### TARGET %s @ %s" % (label, fmt(addr)))
         w("note: %s" % note)
         w(SEP)
 
-        # direct global BL callers of the target
         w("")
         w("-- global BL callers --")
         try:
@@ -254,7 +190,7 @@ def main():
             w("  exception %s" % ex)
             hits = []
         if not hits:
-            w("  (none — indirect or via sysent)")
+            w("  (none - indirect or via sysent)")
         callers = []
         for pc, kind in hits:
             cf = getFunctionContaining(sa(pc))
@@ -269,7 +205,6 @@ def main():
             w("  %s  %s  @  %s  size=0x%X" % (fmt(pc), kind, cfname, cfsz))
             callers.append((cfe, cfname, cf))
 
-        # decompile each unique caller, one level
         seen_callers = set()
         for cfe, cfname, cf in callers:
             if cfe in seen_callers:
@@ -283,7 +218,6 @@ def main():
             except Exception as ex:
                 w("  exception %s" % ex)
 
-        # direct decompile of target itself for reference
         tf = get_func(addr)
         if tf is not None:
             w("")
