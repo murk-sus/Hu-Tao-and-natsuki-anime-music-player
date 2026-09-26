@@ -21,7 +21,7 @@ jobs:
           java-version: "25"
           distribution: temurin
 
-      # ============ Ghidra ============
+      # ==================== GHIDRA ====================
       - uses: actions/cache@v4
         id: cache-ghidra
         with:
@@ -32,10 +32,13 @@ jobs:
         name: Install Ghidra
         run: |
           set -euo pipefail
+          echo "=== Ghidra cache MISS ==="
+          df -h /
           curl -fsSL -o /tmp/g.zip https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_12.1.2_build/ghidra_12.1.2_PUBLIC_20260605.zip
           unzip -q /tmp/g.zip -d "$GITHUB_WORKSPACE"
           mv "$GITHUB_WORKSPACE/ghidra_12.1.2_PUBLIC" "$GITHUB_WORKSPACE/ghidra"
           JYTHON_ZIP=$(find "$GITHUB_WORKSPACE/ghidra/Extensions/Ghidra" -maxdepth 1 -name "*Jython*.zip" | head -n1)
+          echo "JYTHON_ZIP=$JYTHON_ZIP"
           test -n "$JYTHON_ZIP"
           mkdir -p "$GITHUB_WORKSPACE/ghidra/Ghidra/Extensions"
           unzip -q "$JYTHON_ZIP" -d "$GITHUB_WORKSPACE/ghidra/Ghidra/Extensions"
@@ -46,11 +49,14 @@ jobs:
       - name: Validate Ghidra
         run: |
           set -euo pipefail
+          echo "=== GHIDRA_ROOT=$GHIDRA_ROOT ==="
           test -x "$GHIDRA_ROOT/support/analyzeHeadless"
           test -d "$GHIDRA_ROOT/Ghidra/Extensions/Jython"
+          ls -la "$GHIDRA_ROOT/support/analyzeHeadless"
+          ls -la "$GHIDRA_ROOT/Ghidra/Extensions/Jython" | head -5
           echo "Ghidra OK"
 
-      # ============ ipsw ============
+      # ==================== IPSW ====================
       - uses: actions/cache@v4
         id: cache-ipsw
         with:
@@ -61,6 +67,7 @@ jobs:
         name: Install ipsw
         run: |
           set -euo pipefail
+          echo "=== ipsw cache MISS ==="
           curl -fsSL -o /tmp/ipsw.tar.gz https://github.com/blacktop/ipsw/releases/download/v3.1.716/ipsw_3.1.716_linux_x86_64.tar.gz
           tar -C /usr/local/bin -xzf /tmp/ipsw.tar.gz ipsw
           rm -f /tmp/ipsw.tar.gz
@@ -70,8 +77,9 @@ jobs:
           set -euo pipefail
           test -x /usr/local/bin/ipsw
           /usr/local/bin/ipsw version
+          echo "ipsw OK"
 
-      # ============ symbolicator ============
+      # ==================== SYMBOLICATOR ====================
       - uses: actions/cache@v4
         id: cache-symbolicator
         with:
@@ -82,6 +90,7 @@ jobs:
         name: Clone symbolicator
         run: |
           set -euo pipefail
+          echo "=== symbolicator cache MISS ==="
           rm -rf "$GITHUB_WORKSPACE/symbolicator"
           git clone --depth 1 https://github.com/blacktop/symbolicator.git "$GITHUB_WORKSPACE/symbolicator"
 
@@ -92,6 +101,10 @@ jobs:
           test -d "$ROOT"
           echo "=== доступные версии сигнатур ==="
           ls -1 "$ROOT"
+          echo "=== размер каждой версии ==="
+          for d in "$ROOT"/*/; do
+            echo "  $d: $(find "$d" -type f | wc -l) files"
+          done
 
       - id: sigs
         name: Pick signature dir
@@ -119,16 +132,17 @@ jobs:
             echo "::error::Ни одной папки сигнатур не найдено"
             exit 1
           fi
+          COUNT=$(find "$SIGDIR" -type f | wc -l)
+          echo "=== SIGDIR=$SIGDIR (files=$COUNT) ==="
+          ls -la "$SIGDIR"
+          if [ "$COUNT" -eq 0 ]; then
+            echo "::error::Папка сигнатур пуста: $SIGDIR"
+            exit 1
+          fi
           echo "SIGDIR=$SIGDIR" >> "$GITHUB_ENV"
           echo "SIG_VER=$SIG_VER" >> "$GITHUB_ENV"
-          echo "=== SIGDIR=$SIGDIR ==="
-          ls -la "$SIGDIR"
-          # папка должна быть не пустой
-          COUNT=$(find "$SIGDIR" -type f | wc -l)
-          echo "signature files: $COUNT"
-          [ "$COUNT" -gt 0 ] || { echo "::error::Папка сигнатур пуста: $SIGDIR"; exit 1; }
 
-      # ============ kernelcache ============
+      # ==================== KERNELCACHE ====================
       - uses: actions/cache@v4
         id: cache-kernelcache
         with:
@@ -139,10 +153,13 @@ jobs:
         name: Download & extract kernelcache
         run: |
           set -euo pipefail
+          echo "=== kernelcache cache MISS ==="
           mkdir -p ipsw kernelcache
           ipsw download ipsw --device iPhone14,5 --build 24A437 --output ipsw 2>&1 | tee /tmp/dl.log || true
           IPSW=$(find ipsw -name "*.ipsw" -type f | head -n1)
+          echo "IPSW=$IPSW"
           test -n "$IPSW"
+          test -s "$IPSW"
           ipsw extract --kernel "$IPSW" --output kernelcache
           find kernelcache -type f ! -name "kernelcache*" -delete
           find kernelcache -type d -empty -delete
@@ -153,12 +170,13 @@ jobs:
         run: |
           set -euo pipefail
           KERNEL=$(find "$GITHUB_WORKSPACE/kernelcache" -type f -name "kernelcache*" | head -n1)
+          echo "KERNEL=$KERNEL"
           test -n "$KERNEL"
           test -s "$KERNEL"
           file "$KERNEL" | grep -qi "Mach-O" || { echo "::error::не Mach-O"; exit 1; }
+          ls -la "$KERNEL"
           echo "KERNEL=$KERNEL" >> "$GITHUB_ENV"
           echo "KERNEL_NAME=$(basename "$KERNEL")" >> "$GITHUB_ENV"
-          ls -la "$KERNEL"
 
       - name: Validate scripts
         run: |
@@ -167,7 +185,7 @@ jobs:
           python3 -c "import ast; ast.parse(open('$GITHUB_WORKSPACE/scripts/kernel_rw.py').read())"
           echo "kernel_rw.py OK"
 
-      # ============ symbolicate ============
+      # ==================== SYMBOLICATE ====================
       - uses: actions/cache@v4
         id: cache-symbols
         with:
@@ -179,62 +197,55 @@ jobs:
         run: |
           set -uo pipefail
           OUT="$GITHUB_WORKSPACE/symbols.json"
+          KDIR="$(dirname "$KERNEL")"
           echo "[]" > "$OUT"
 
-          check_nonempty() {
-            python3 -c "import json,sys; d=json.load(open('$OUT')); sys.exit(0 if d else 1)" 2>/dev/null
-          }
-
-          # --- 1. primary: stdout redirect (ipsw пишет JSON в stdout) ---
-          echo "=== [1] ipsw kernel symbolicate --signatures $SIG_VER (stdout) ==="
+          echo "=== [1] ipsw kernel symbolicate (stdout redirect) ==="
           ipsw kernel symbolicate --signatures "$SIGDIR" --json "$KERNEL" \
-            > /tmp/sym_out.json 2> /tmp/sym.log || true
-          echo "stdout bytes: $(wc -c < /tmp/sym_out.json 2>/dev/null || echo 0)"
-          tail -n 20 /tmp/sym.log || true
-          if [ -s /tmp/sym_out.json ]; then cp /tmp/sym_out.json "$OUT"; fi
-          if check_nonempty; then echo "[1] OK"; else
-            # --- 2. с -v, JSON+логи смешаны → тянем JSON-блок из лога ---
-            echo "=== [2] extract JSON from verbose log ==="
-            ipsw kernel symbolicate --signatures "$SIGDIR" --json -v "$KERNEL" \
-              > /tmp/sym_raw.txt 2>&1 || true
-            python3 - "$OUT" /tmp/sym_raw.txt <<'PYEOF' || true
-import re, sys, json
-out, raw = sys.argv[1], sys.argv[2]
-data = open(raw, errors="ignore").read()
-# ищем первый сбалансированный JSON
-for m in re.finditer(r'[\[{]', data):
-    start = m.start()
-    depth = 0
-    for i in range(start, len(data)):
-        c = data[i]
-        if c in '[{': depth += 1
-        elif c in ']}': depth -= 1
-        if depth == 0:
-            try:
-                obj = json.loads(data[start:i+1])
-                if obj:
-                    open(out, "w").write(json.dumps(obj, indent=2))
-                    print(f"extracted JSON, entries: {len(obj) if hasattr(obj,'__len__') else '?'}")
-                    sys.exit(0)
-            except Exception:
-                pass
-            break
-print("no JSON extracted")
-PYEOF
-          fi
-          if check_nonempty; then echo "[2] OK"; else
-            # --- 3. fallback: только встроенные таблицы ядра ---
-            echo "=== [3] fallback: без --signatures ==="
-            ipsw kernel symbolicate --json "$KERNEL" > /tmp/sym_fb.json 2> /tmp/sym_fb.log || true
-            if [ -s /tmp/sym_fb.json ]; then cp /tmp/sym_fb.json "$OUT"; fi
+            > /tmp/sym_stdout.json 2> /tmp/sym.log || true
+          echo "stdout size: $(wc -c < /tmp/sym_stdout.json 2>/dev/null || echo 0)"
+          tail -n 30 /tmp/sym.log || true
+          if [ -s /tmp/sym_stdout.json ]; then
+            cp /tmp/sym_stdout.json "$OUT"
           fi
 
-          if ! check_nonempty; then
-            echo "[]" > "$OUT"
-            echo "::warning::symbols.json пустой — символикация не дала результата, идём дальше"
+          # ищем .symbols.json, который ipsw пишет рядом с kernelcache
+          if [ ! -s "$OUT" ] || [ "$(tr -d ' \n\r\t' < "$OUT")" = "[]" ]; then
+            echo "=== [2] поиск *.symbols.json в $KDIR ==="
+            ls -la "$KDIR" || true
+            FOUND=$(find "$KDIR" -name "*.symbols.json" -type f | head -n1)
+            echo "FOUND=$FOUND"
+            if [ -n "$FOUND" ] && [ -s "$FOUND" ]; then
+              cp "$FOUND" "$OUT"
+            fi
           fi
-          echo "=== final: $(wc -c < "$OUT") bytes ==="
-          head -c 400 "$OUT" || true
+
+          # fallback: --output как директория
+          if [ ! -s "$OUT" ] || [ "$(tr -d ' \n\r\t' < "$OUT")" = "[]" ]; then
+            echo "=== [3] fallback: --output $KDIR ==="
+            ipsw kernel symbolicate --signatures "$SIGDIR" --json --output "$KDIR" "$KERNEL" 2>&1 | tee /tmp/sym_fb.log || true
+            FOUND=$(find "$KDIR" -name "*.symbols.json" -type f | head -n1)
+            echo "FOUND=$FOUND"
+            if [ -n "$FOUND" ] && [ -s "$FOUND" ]; then
+              cp "$FOUND" "$OUT"
+            fi
+          fi
+
+          # fallback: без сигнатур, только встроенные таблицы
+          if [ ! -s "$OUT" ] || [ "$(tr -d ' \n\r\t' < "$OUT")" = "[]" ]; then
+            echo "=== [4] fallback: без --signatures ==="
+            ipsw kernel symbolicate --json "$KERNEL" > /tmp/sym_nosig.json 2> /tmp/sym_nosig.log || true
+            if [ -s /tmp/sym_nosig.json ]; then
+              cp /tmp/sym_nosig.json "$OUT"
+            fi
+          fi
+
+          if ! python3 -c "import json,sys; d=json.load(open('$OUT')); sys.exit(0 if d else 1)" 2>/dev/null; then
+            echo "::warning::symbols.json пустой — идём дальше без символов"
+            echo "[]" > "$OUT"
+          fi
+          echo "=== final symbols.json: $(wc -c < "$OUT") bytes ==="
+          head -c 500 "$OUT" || true
           echo
 
       - name: Validate symbols.json
@@ -243,27 +254,27 @@ PYEOF
           set -uo pipefail
           F="$GITHUB_WORKSPACE/symbols.json"
           test -f "$F" || { echo "::error::symbols.json отсутствует"; exit 1; }
-          python3 - "$F" <<'PYEOF'
-import json, sys
-p = sys.argv[1]
-try:
-    d = json.load(open(p))
-except Exception as e:
-    print(f"::error::symbols.json невалиден: {e}")
-    sys.exit(1)
-def count(x):
-    if isinstance(x, list): return sum(count(i) for i in x) if x else 0
-    if isinstance(x, dict): return sum(count(v) for v in x.values()) if x else 0
-    return 1
-n = count(d)
-print(f"top-level: {type(d).__name__}, entries: {n}")
-if isinstance(d, dict) and d:
-    print(f"keys sample: {list(d.keys())[:20]}")
-if n == 0:
-    print("::warning::symbols.json пустой — продолжаем, но символы не подтянутся")
-PYEOF
+          python3 - <<'PY'
+          import json, sys
+          p = "/home/runner/work/Hu-Tao-and-natsuki-anime-music-player/Hu-Tao-and-natsuki-anime-music-player/symbols.json"
+          try:
+              d = json.load(open(p))
+          except Exception as e:
+              print(f"::error::symbols.json невалиден: {e}")
+              sys.exit(1)
+          def count(x):
+              if isinstance(x, list): return sum(count(i) for i in x) if x else 0
+              if isinstance(x, dict): return sum(count(v) for v in x.values()) if x else 0
+              return 1
+          n = count(d)
+          print(f"top-level: {type(d).__name__}, entries: {n}")
+          if isinstance(d, dict) and d:
+              print(f"keys sample: {list(d.keys())[:20]}")
+          if n == 0:
+              print("::warning::symbols.json пустой — символы не подтянутся")
+          PY
 
-      # ============ Ghidra project (warm-run) ============
+      # ==================== GHIDRA PROJECT (warm) ====================
       - uses: actions/cache@v4
         id: cache-project
         with:
@@ -278,7 +289,7 @@ PYEOF
           GITHUB_WORKSPACE: ${{ github.workspace }}
         run: |
           echo "cache-project hit: ${{ steps.cache-project.outputs.cache-hit }}"
-          echo "symbols.json: $(wc -c < "$SYMBOLS_JSON" 2>/dev/null || echo 0) bytes"
+          echo "symbols.json size: $(wc -c < "$SYMBOLS_JSON" 2>/dev/null || echo 0)"
           if [ "${{ steps.cache-project.outputs.cache-hit }}" = "true" ]; then
             echo "=== warm ==="
             "$GHIDRA_ROOT/support/analyzeHeadless" \
@@ -319,7 +330,7 @@ PYEOF
             echo "::error::offsets.json пуст или отсутствует"
           fi
           echo "=== kernel.log (последние строки) ==="
-          tail -n 30 kernel.log 2>/dev/null || echo "(no kernel.log)"
+          tail -n 40 kernel.log 2>/dev/null || echo "(no kernel.log)"
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -344,7 +355,7 @@ PYEOF
           rm -rf "$GITHUB_WORKSPACE/symbolicator"   2>/dev/null
           rm -rf "$GITHUB_WORKSPACE/ghidra"         2>/dev/null
           rm -rf "$GITHUB_WORKSPACE/ghidra_project" 2>/dev/null
-          rm -f  /tmp/g.zip /tmp/ipsw.tar.gz /tmp/sym*.log /tmp/sym*.json /tmp/sym_raw.txt /tmp/dl.log 2>/dev/null
+          rm -f  /tmp/g.zip /tmp/ipsw.tar.gz /tmp/sym*.log /tmp/sym*.json /tmp/dl.log 2>/dev/null
           rm -rf "$HOME/.config/ghidra"             2>/dev/null
           rm -rf /var/tmp/runner-ghidra             2>/dev/null
           exit 0
