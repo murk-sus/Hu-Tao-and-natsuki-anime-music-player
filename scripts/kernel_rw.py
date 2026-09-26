@@ -14,11 +14,10 @@ WS = os.environ.get("GITHUB_WORKSPACE", "/tmp")
 OUT = os.path.join(WS, "result.txt")
 OUT_JSON = os.path.join(WS, "offsets.json")
 
-NEEDLES = ["copy result copyout error", "necp_client_copy"]
-MAX_HITS = 40
-MAX_FUNCS = 8
-MAX_DISASM = 400
+TARGET = 0xFFFFFFF00A4EAC7C
+MAX_DISASM = 800
 FLOW_REGS = ["x19", "x20", "x21", "x22", "x23", "x24"]
+BAD_CALLS = [0xFFFFFFF00A8BB3B0]
 
 
 def _u(v):
@@ -44,84 +43,39 @@ def sa(a):
 
 
 _blocks = None
-_bmap = None
 
 
-def _load_blocks():
-    global _blocks, _bmap
+def blocks():
+    global _blocks
     if _blocks is not None:
-        return
-    _blocks = []
-    _bmap = {}
+        return _blocks
+    out = []
     try:
         for b in currentProgram.getMemory().getBlocks():
             try:
                 if not b.isInitialized():
                     continue
-                s = _u(b.getStart().getOffset())
-                e = _u(b.getEnd().getOffset())
-                nm = b.getName()
-                ex = bool(b.isExecute())
-                _blocks.append((s, e, nm, ex))
-                _bmap[s] = (e, nm, ex)
+                out.append((_u(b.getStart().getOffset()),
+                            _u(b.getEnd().getOffset()),
+                            b.getName(), bool(b.isExecute())))
             except Exception:
                 pass
     except Exception:
         pass
+    _blocks = out
+    return out
 
 
 def inblk(a):
-    _load_blocks()
     if a is None:
         return None
     av = _u(a)
-    # linear fallback (blocks are few, but keep simple)
-    for s, e, nm, ex in _blocks:
+    for s, e, nm, ex in blocks():
         if s <= av < e:
             return (s, e, nm, ex)
     return None
 
 
-def jbytes(s):
-    jb = zeros(len(s), 'b')
-    for i in range(len(s)):
-        v = ord(s[i])
-        if v > 127:
-            v -= 256
-        jb[i] = v
-    return jb
-
-
-def find_all(needle, cap):
-    hits = []
-    try:
-        mem = currentProgram.getMemory()
-        jn = jbytes(needle)
-        addr = mem.getMinAddress()
-        if addr is None:
-            return hits
-        mon = TaskMonitor.DUMMY
-        while True:
-            try:
-                hit = mem.findBytes(addr, jn, None, True, mon)
-            except Exception as ex:
-                print("[-] findBytes: %s" % str(ex))
-                break
-            if hit is None:
-                break
-            hits.append(_u(hit.getOffset()))
-            if len(hits) >= cap:
-                break
-            nxt = hit.add(1)
-            if nxt is None:
-                break
-            addr = nxt
-    except Exception as ex:
-        print("[-] find_all('%s'): %s" % (needle, str(ex)))
-    return hits
-
-
-# ------------------- decoder -------------------
 def dec(b, pc):
     if b == 0xD503237F: return "pacibsp"
     if b == 0xD50323FF: return "autibsp"
@@ -288,8 +242,7 @@ def dec(b, pc):
 def disasm(a, count):
     if a is None:
         return []
-    blk = inblk(a)
-    if blk is None:
+    if inblk(a) is None:
         return []
     ga = sa(a)
     if ga is None:
@@ -313,10 +266,7 @@ def parse_instr(line):
     m = re.match(r"([0-9A-F]{16})\s+([0-9A-F]{8})\s+(.*)", line)
     if not m:
         return None
-    pc = int(m.group(1), 16)
-    body = m.group(3)
-    mn = body.split(" ", 1)[0].lower()
-    return (pc, mn, body)
+    return (int(m.group(1), 16), m.group(3).split(" ", 1)[0].lower(), m.group(3))
 
 
 def extract_mem(body):
@@ -339,35 +289,6 @@ def extract_call(body):
     return int(m.group(1), 16)
 
 
-def refs_to(a):
-    out = []
-    try:
-        ga = sa(a)
-        if ga is None:
-            return out
-        for ref in getReferencesTo(ga):
-            try:
-                out.append(_u(ref.getFromAddress().getOffset()))
-            except Exception:
-                pass
-    except Exception:
-        pass
-    return out
-
-
-def func_containing(a):
-    try:
-        ga = sa(a)
-        if ga is None:
-            return None
-        f = getFunctionContaining(ga)
-        if f is None:
-            return None
-        return _u(f.getEntryPoint().getOffset())
-    except Exception:
-        return None
-
-
 def func_name_at(a):
     try:
         ga = sa(a)
@@ -381,215 +302,101 @@ def func_name_at(a):
         return None
 
 
-def dump_ascii(a, n):
-    blk = inblk(a)
-    if blk is None:
-        return "(not in block)"
-    ga = sa(a)
-    if ga is None:
-        return "(no addr)"
-    mem = currentProgram.getMemory()
-    try:
-        jbuf = zeros(n, 'b')
-        mem.getBytes(ga, jbuf)
-        s = ""
-        for i in range(int(n)):
-            raw = jbuf[i]
-            try:
-                v = int(raw)
-            except Exception:
-                v = ord(str(raw)[0])
-            c = v & 0xFF
-            s += chr(c) if 0x20 <= c < 0x7F else "."
-        return s
-    except Exception as e:
-        return "(err: %s)" % str(e)
-
-
-def analyze_func(faddr):
-    """Returns dict with analysis of one function."""
-    res = {
-        "addr": faddr,
-        "name": func_name_at(faddr) or "?",
-        "dis": [],
-        "ldrs": {},
-        "calls": [],
-        "flow_ldrs": [],
-        "best": [],
-    }
+def analyze(faddr):
+    out = []
     dis = disasm(faddr, MAX_DISASM)
-    res["dis"] = dis
+    out.append("DISASM count=%d" % len(dis))
+
+    ldr_by_reg = {}
+    ldr_by_off = {}
+    qmem = []
+    calls = []
+
     for line in dis:
         r = parse_instr(line)
         if not r:
             continue
         pc, mn, body = r
         e = extract_mem(body)
-        if e is not None and mn in ("ldr", "ldrb", "ldrh", "ldur"):
-            k = e  # (base, imm)
-            if k not in res["ldrs"]:
-                res["ldrs"][k] = []
-            res["ldrs"][k].append((pc, body))
+        if e is not None:
+            base, imm = e
+            if mn in ("ldr", "ldrb", "ldrh", "ldur"):
+                if base not in ldr_by_reg:
+                    ldr_by_reg[base] = []
+                ldr_by_reg[base].append((pc, imm, mn, body))
+                if imm not in ldr_by_off:
+                    ldr_by_off[imm] = []
+                ldr_by_off[imm].append((pc, base, mn, body))
+            if mn in ("ldp", "stp") and "q" in body:
+                qmem.append((pc, body))
+            if mn == "str" and "q" in body:
+                qmem.append((pc, body))
+            if mn == "ldr" and "q" in body:
+                qmem.append((pc, body))
         if mn in ("b", "bl"):
             t = extract_call(body)
             if t is not None:
-                res["calls"].append((pc, mn, t))
+                calls.append((pc, mn, t))
 
-    # flow-reg candidates
-    for (base, imm), ent in res["ldrs"].items():
-        if base in FLOW_REGS and 0x40 <= imm <= 0x300:
-            for pc, body in ent:
-                res["flow_ldrs"].append((pc, base, imm, body))
-    res["flow_ldrs"].sort()
+    out.append("")
+    out.append("FLOW-REG LDRs:")
+    for reg in FLOW_REGS:
+        if reg in ldr_by_reg:
+            for pc, imm, mn, body in ldr_by_reg[reg]:
+                out.append("  %016X  %s" % (pc, body))
 
-    # best pair: LDR [R, #off] followed somewhere by LDR [R, #off+8]
-    for pc, base, imm, body in res["flow_ldrs"]:
-        key = (base, imm + 8)
-        if key in res["ldrs"]:
-            res["best"].append((pc, base, imm, body, res["ldrs"][key][0][0]))
+    out.append("")
+    out.append("ALL LDR OFFSETS sorted:")
+    for imm in sorted(ldr_by_off.keys()):
+        entries = ldr_by_off[imm]
+        bases = []
+        for pc, base, mn, body in entries:
+            if base not in bases:
+                bases.append(base)
+        bases.sort()
+        out.append("  +0x%03X  bases=%s  n=%d" % (imm, ",".join(bases), len(entries)))
 
-    return res
+    out.append("")
+    out.append("Q-REGISTER MEM OPS (candidates for TLV writes):")
+    for pc, body in qmem:
+        out.append("  %016X  %s" % (pc, body))
+
+    out.append("")
+    out.append("CALLS:")
+    seen = []
+    for pc, mn, t in calls:
+        if t in seen:
+            continue
+        seen.append(t)
+        nm = func_name_at(t) or "?"
+        out.append("  %016X  %s -> %s  %s" % (pc, mn, fmt(t), nm))
+
+    out.append("")
+    out.append("FULL DISASM:")
+    for l in dis:
+        out.append("  " + l)
+
+    return out, ldr_by_off, qmem, calls
 
 
 def main():
-    print("=== necp_client_copy_result analysis ===")
+    print("=== target analysis 0x%X ===" % TARGET)
     t0 = time.time()
 
     lines = []
-    lines.append("=== SCAN ===")
-    for n in NEEDLES:
-        lines.append("needle: '%s'" % n)
-    lines.append("")
-    lines.append("=== HINT DUMP 0xFFFFFFF0070D2AC8 ===")
-    lines.append("  " + dump_ascii(0xFFFFFFF0070D2AC8, 96))
-    lines.append("")
-
-    # find string addresses
-    hits_by_needle = {}
-    string_addrs = []
-    for n in NEEDLES:
-        print("[+] findBytes '%s'..." % n)
-        h = find_all(n, MAX_HITS)
-        hits_by_needle[n] = h
-        for a in h:
-            if a not in string_addrs:
-                string_addrs.append(a)
-
-    lines.append("=== HITS ===")
-    for n in NEEDLES:
-        lines.append("'%s': %d" % (n, len(hits_by_needle[n])))
-        for a in hits_by_needle[n][:12]:
-            blk = inblk(a)
-            lines.append("  %s  [%s]" % (fmt(a), blk[2] if blk else "?"))
-    lines.append("unique strings: %d" % len(string_addrs))
+    lines.append("=== TARGET ===")
+    lines.append("addr = %s" % fmt(TARGET))
+    blk = inblk(TARGET)
+    lines.append("block = %s" % (blk[2] if blk else "?"))
+    lines.append("name = %s" % (func_name_at(TARGET) or "?"))
     lines.append("")
 
-    if not string_addrs:
-        lines.append("VERDICT: no strings found")
-        write(lines, {})
-        return
+    body, ldr_by_off, qmem, calls = analyze(TARGET)
+    for l in body:
+        lines.append(l)
 
-    # resolve funcs from xrefs
-    print("[+] resolving xrefs...")
-    funcs = []
-    func_hits = {}
-    for s in string_addrs:
-        for r in refs_to(s):
-            f = func_containing(r)
-            if f is not None:
-                if f not in func_hits:
-                    func_hits[f] = 0
-                    funcs.append(f)
-                func_hits[f] += 1
+    write(lines, {})
 
-    lines.append("=== FUNCS FROM XREFS ===")
-    lines.append("count: %d" % len(funcs))
-    for f in funcs:
-        blk = inblk(f)
-        lines.append("  %s  %s  hits=%d  [%s]" % (fmt(f), func_name_at(f) or "?", func_hits[f], blk[2] if blk else "?"))
-    lines.append("")
-
-    if not funcs:
-        lines.append("VERDICT: no funcs. Raw xref dump:")
-        for s in string_addrs[:6]:
-            rr = refs_to(s)
-            lines.append("  str %s xrefs=%d" % (fmt(s), len(rr)))
-            for r in rr[:6]:
-                blk = inblk(r)
-                lines.append("    ref %s  [%s]  func=%s" % (fmt(r), blk[2] if blk else "?", func_containing(r)))
-        write(lines, {})
-        return
-
-    # sort by hits desc, take top
-    funcs_sorted = sorted(funcs, key=lambda f: -func_hits[f])
-    top = funcs_sorted[:MAX_FUNCS]
-
-    print("[+] analyzing %d funcs" % len(top))
-    best_offset_votes = {}
-    analyses = []
-    for f in top:
-        a = analyze_func(f)
-        analyses.append(a)
-        # vote for offsets that have pair (off, off+8)
-        for pc, base, imm, body, pc2 in a["best"]:
-            key = imm
-            best_offset_votes[key] = best_offset_votes.get(key, 0) + 1
-
-    for a in analyses:
-        lines.append("==============================================")
-        lines.append("=== FUNC %s  %s ===" % (fmt(a["addr"]), a["name"]))
-        lines.append("==============================================")
-        lines.append("  flow-reg LDRs (%d):" % len(a["flow_ldrs"]))
-        for pc, base, imm, body in a["flow_ldrs"][:24]:
-            lines.append("    %016X  %s" % (pc, body))
-        lines.append("  best pairs (LDR off, LDR off+8) (%d):" % len(a["best"]))
-        for pc, base, imm, body, pc2 in a["best"][:24]:
-            lines.append("    %016X  %s   ---> pair@+0x%X  %016X" % (pc, body, imm + 8, pc2))
-        lines.append("  all LDR offsets:")
-        seen = []
-        for (base, imm) in a["ldrs"].keys():
-            if imm not in seen:
-                seen.append(imm)
-        seen.sort()
-        for imm in seen:
-            bases = []
-            for (base, imm2) in a["ldrs"].keys():
-                if imm2 == imm and base not in bases:
-                    bases.append(base)
-            bases.sort()
-            lines.append("    +0x%03X  base=%s" % (imm, ",".join(bases)))
-        lines.append("  calls:")
-        seen_t = []
-        for pc, mn, t in a["calls"]:
-            if t in seen_t:
-                continue
-            seen_t.append(t)
-            fname = func_name_at(t) or "?"
-            lines.append("    %s -> %s  %s" % (mn, fmt(t), fname))
-        lines.append("  disasm (first 100):")
-        for l in a["dis"][:100]:
-            lines.append("    " + l)
-        lines.append("")
-
-    lines.append("=== VERDICT ===")
-    if best_offset_votes:
-        best_list = sorted(best_offset_votes.items(), key=lambda kv: -kv[1])
-        lines.append("top candidate offsets (with pair off+8):")
-        for off, cnt in best_list[:8]:
-            lines.append("  +0x%X  votes=%d" % (off, cnt))
-        lines.append("")
-        lines.append("RECOMMENDED NCF_ASSIGNED_OFF = 0x%X" % best_list[0][0])
-    else:
-        lines.append("no pairs found.")
-        lines.append("copy_result likely does NOT read flow->assigned_results")
-
-    jout = {
-        "string_addrs": [fmt(s) for s in string_addrs],
-        "funcs": [fmt(f) for f in top],
-        "func_hits": {fmt(f): func_hits[f] for f in top},
-        "best_offset_votes": dict((str(k), v) for k, v in best_offset_votes.items()),
-    }
-    write(lines, jout)
     print("[+] done in %.1fs" % (time.time() - t0))
 
 
