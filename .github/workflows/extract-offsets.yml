@@ -22,6 +22,7 @@ jobs:
           java-version: "25"
           distribution: temurin
 
+      # ---------- Ghidra ----------
       - name: Cache Ghidra
         id: cache-ghidra
         uses: actions/cache@v4
@@ -46,6 +47,7 @@ jobs:
         shell: bash
         run: echo "GHIDRA_ROOT=$GITHUB_WORKSPACE/ghidra" >> "$GITHUB_ENV"
 
+      # ---------- ipsw ----------
       - name: Cache ipsw
         id: cache-ipsw
         uses: actions/cache@v4
@@ -62,6 +64,7 @@ jobs:
           tar -C /usr/local/bin -xzf /tmp/ipsw.tar.gz ipsw
           ipsw version
 
+      # ---------- symbolicator ----------
       - name: Cache symbolicator
         id: cache-symbolicator
         uses: actions/cache@v4
@@ -78,33 +81,74 @@ jobs:
           echo "=== symbolicator/kernel contents ==="
           ls -la "$GITHUB_WORKSPACE/symbolicator/kernel" | head -20
 
-      - name: Unpack kernel
+      # ---------- kernelcache (главный кэш) ----------
+      - name: Cache kernelcache
+        id: cache-kernelcache
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/kernelcache
+          key: kernelcache-iPhone14,5-24A437
+
+      - name: Download IPSW and extract kernelcache
+        if: steps.cache-kernelcache.outputs.cache-hit != 'true'
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p kernel
-          unzip -o kernel.zip -d kernel
-          # Приоритет: kernelcache (Mach-O), потом kernel.raw
-          K=$(find kernel -type f -name "kernelcache*" -print -quit)
-          if [ -z "$K" ]; then
-            K=$(find kernel -type f -name "kernel.raw" -print -quit)
-          fi
-          test -n "$K"
-          echo "KERNEL=$K" >> "$GITHUB_ENV"
-          echo "KERNEL_NAME=$(basename "$K")" >> "$GITHUB_ENV"
-          echo "=== File type ==="
-          file "$K"
-          ls -lh "$K"
+          mkdir -p ipsw kernelcache
 
+          echo "=== Downloading IPSW (iPhone14,5 27.0 24A437) ==="
+          ipsw download ipsw \
+            --device iPhone14,5 \
+            --version 27.0 \
+            --output ipsw \
+            --confirm 2>&1 | tee /tmp/dl.log || \
+          ipsw download ipsw \
+            --device iPhone14,5 \
+            --build 24A437 \
+            --output ipsw \
+            --confirm 2>&1 | tee /tmp/dl.log || true
+
+          IPSW=$(find ipsw -name "*.ipsw" -type f | head -n1)
+          if [ -z "$IPSW" ]; then
+            echo "FATAL: IPSW not downloaded"
+            exit 1
+          fi
+          ls -lh "$IPSW"
+
+          echo "=== Extracting kernelcache ==="
+          ipsw extract --kernel "$IPSW" --output kernelcache
+
+          echo "=== Removing non-kernelcache files ==="
+          # Оставляем только файлы, чьё имя начинается с kernelcache
+          find kernelcache -type f ! -name "kernelcache*" -delete
+          find kernelcache -type d -empty -delete
+          ls -la kernelcache
+
+      - name: Resolve kernelcache path
+        shell: bash
+        run: |
+          set -euo pipefail
+          KERNEL=$(find "$GITHUB_WORKSPACE/kernelcache" -type f -name "kernelcache*" | head -n1)
+          if [ -z "$KERNEL" ]; then
+            echo "FATAL: kernelcache not found"
+            ls -la "$GITHUB_WORKSPACE/kernelcache"
+            exit 1
+          fi
+          echo "KERNEL=$KERNEL" >> "$GITHUB_ENV"
+          echo "KERNEL_NAME=$(basename "$KERNEL")" >> "$GITHUB_ENV"
+          file "$KERNEL"
+          ls -lh "$KERNEL"
+
+      # ---------- символикация ----------
       - name: Cache symbols
-        id: cs
+        id: cache-symbols
         uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}/symbols.json
-          key: symbols-${{ hashFiles('kernel.zip') }}
+          key: symbols-${{ hashFiles('kernelcache/**') }}
 
       - name: Symbolicate kernel
-        if: steps.cs.outputs.cache-hit != 'true'
+        if: steps.cache-symbols.outputs.cache-hit != 'true'
         shell: bash
         run: |
           set -uo pipefail
@@ -122,23 +166,24 @@ jobs:
           find . -type f -name "*symbols*.json" | head -20
           SRC=$(find . -type f -name "*symbols*.json" | head -n1)
           if [ -z "$SRC" ] || [ ! -f "$SRC" ]; then
-            echo "No symbols JSON produced — check that kernelcache is a Mach-O file"
+            echo "No symbols JSON produced"
             echo "[]" > "$GITHUB_WORKSPACE/symbols.json"
           else
             cp "$SRC" "$GITHUB_WORKSPACE/symbols.json"
           fi
           echo "symbols.json size: $(wc -c < "$GITHUB_WORKSPACE/symbols.json") bytes"
 
+      # ---------- Ghidra project ----------
       - name: Cache ghidra project
-        id: cp
+        id: cache-project
         uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}/ghidra_project
-          key: ghidra-project-${{ hashFiles('kernel.zip') }}
+          key: ghidra-project-${{ hashFiles('kernelcache/**') }}
 
-      - name: Warm run
+      - name: Warm run (cached project)
         id: warm
-        if: steps.cp.outputs.cache-hit == 'true'
+        if: steps.cache-project.outputs.cache-hit == 'true'
         continue-on-error: true
         shell: bash
         env:
@@ -153,8 +198,8 @@ jobs:
             -scriptPath "$GITHUB_WORKSPACE/scripts" \
             2>&1 | tee kernel.log || true
 
-      - name: Cold run
-        if: steps.cp.outputs.cache-hit != 'true' || steps.warm.outcome != 'success'
+      - name: Cold run (fresh import)
+        if: steps.cache-project.outputs.cache-hit != 'true' || steps.warm.outcome != 'success'
         continue-on-error: true
         shell: bash
         env:
