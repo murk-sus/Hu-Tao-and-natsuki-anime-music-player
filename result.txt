@@ -65,254 +65,1543 @@ SCAN_RANGES:
 ========================================================================
 ### FUN_fffffff00a3187f4  entry=0xFFFFFFF00A3187F4  size=0x82C
 ========================================================================
-  ANALYSIS EXCEPTION: 'ghidra.program.model.pcode.PcodeOpAST' object has no attribute 'getAddress'
+  CALL kalloc_type @ 0xFFFFFFF00A318A98
+    size_arg: (register, 0x4020, 8)
+    trace: ('param', None)
+    tags: param
+    bounds_seen: False
+    verdict: PARAM_SIZE
+
+  CALL copyin @ 0xFFFFFFF00A318AB4
+    size_arg: (register, 0x4020, 8)
+    trace: ('param', None)
+    tags: param
+    bounds_seen: False
+    verdict: PARAM_SIZE
+
+  CALL kalloc_zone @ 0xFFFFFFF00A318BDC
+    size_arg: (const, 0x8000, 8)
+    trace: ('const', 32768L)
+    tags: const
+    bounds_seen: False
+    verdict: SAFE_const
+
 
 ========================================================================
 ### FUN_fffffff00a319020  entry=0xFFFFFFF00A319020  size=0x224
 ========================================================================
-  ANALYSIS EXCEPTION: 'ghidra.program.model.pcode.PcodeOpAST' object has no attribute 'getAddress'
+  CALL copyin @ 0xFFFFFFF00A31908C
+    size_arg: (const, 0xe0, 8)
+    trace: ('const', 224L)
+    tags: const
+    bounds_seen: False
+    verdict: SAFE_const
+
+  CALL kalloc_type @ 0xFFFFFFF00A3190F4
+    size_arg: (register, 0x40a0, 8)
+    trace: ('arith', (u'INT_LEFT', [('other', None), ('const', 5L)]))
+    tags: arith,const,other
+    arith: INT_LEFT
+    bounds_seen: False
+    verdict: ARITH_SIZE
+
+  CALL copyin @ 0xFFFFFFF00A319114
+    size_arg: (register, 0x40a0, 8)
+    trace: ('arith', (u'INT_LEFT', [('other', None), ('const', 5L)]))
+    tags: arith,const,other
+    arith: INT_LEFT
+    bounds_seen: False
+    verdict: ARITH_SIZE
+
+  CALL kalloc_type @ 0xFFFFFFF00A319144
+    size_arg: (register, 0x4008, 8)
+    trace: ('arith', (u'INT_MULT', [('other', None), ('const', 24L)]))
+    tags: arith,const,other
+    arith: INT_MULT
+    bounds_seen: False
+    verdict: ARITH_SIZE
+
 
 ========================================================================
 ### FUN_fffffff00a32408c  entry=0xFFFFFFF00A32408C  size=0x540
 ========================================================================
-  ANALYSIS EXCEPTION: 'ghidra.program.model.pcode.PcodeOpAST' object has no attribute 'getAddress'
+  CALL kalloc_type @ 0xFFFFFFF00A3241BC
+    size_arg: (register, 0x40b8, 8)
+    trace: ('arith', (u'INT_LEFT', [('arith', (u'INT_RIGHT', [('phi', [('other', None), ('cycle', None)]), ('arith', (u'INT_AND', [('phi', [('cycle', None), ('cycle', None)]), ('const', 63L)]))])), ('const', 5L)]))
+    tags: arith,const,cycle,other,phi
+    arith: INT_AND,INT_LEFT,INT_RIGHT
+    bounds_seen: False
+    verdict: ARITH_SIZE
+
+  CALL kalloc_type @ 0xFFFFFFF00A3241D8
+    size_arg: (register, 0x40e0, 8)
+    trace: ('arith', (u'INT_LEFT', [('arith', (u'INT_RIGHT', [('phi', [('other', None), ('cycle', None)]), ('arith', (u'INT_AND', [('phi', [('cycle', None), ('cycle', None)]), ('const', 63L)]))])), ('const', 2L)]))
+    tags: arith,const,cycle,other,phi
+    arith: INT_AND,INT_LEFT,INT_RIGHT
+    bounds_seen: False
+    verdict: ARITH_SIZE
+
+  CALL copyout @ 0xFFFFFFF00A3242B0
+    size_arg: (unique, 0x3b500, 8)
+    trace: ('phi', [('other', None), ('other', None)])
+    tags: other,phi
+    bounds_seen: False
+    verdict: PHI_SIZE
+
 
 ========================================================================
 ### FUN_fffffff00a346e70  entry=0xFFFFFFF00A346E70  size=0x198
 ========================================================================
-  ANALYSIS EXCEPTION: 'ghidra.program.model.pcode.PcodeOpAST' object has no attribute 'getAddress'
+  CALL copyin @ 0xFFFFFFF00A346ED8
+    size_arg: (const, 0xb0, 8)
+    trace: ('const', 176L)
+    tags: const
+    bounds_seen: False
+    verdict: SAFE_const
+
+  CALL copyin @ 0xFFFFFFF00A346F30
+    size_arg: (const, 0x158, 8)
+    trace: ('const', 344L)
+    tags: const
+    bounds_seen: False
+    verdict: SAFE_const
+
+  CALL kalloc_type @ 0xFFFFFFF00A346F74
+    size_arg: (unique, 0x55e00, 4)
+    trace: ('arith', (u'INT_MULT', [('arith', (u'INT_ADD', [('phi', [('other', None), ('other', None)]), ('param', None)])), ('phi', [('other', None), ('other', None)])]))
+    tags: arith,other,param,phi
+    arith: INT_ADD,INT_MULT
+    bounds_seen: False
+    verdict: PARAM_SIZE
+
+  CALL copyin @ 0xFFFFFFF00A346F8C
+    size_arg: (unique, 0x55e00, 4)
+    trace: ('arith', (u'INT_MULT', [('phi', [('other', None), ('other', None)]), ('phi', [('other', None), ('other', None)])]))
+    tags: arith,other,phi
+    arith: INT_MULT
+    bounds_seen: False
+    verdict: ARITH_SIZE
+
 
 ========================================================================
 ### FUN_fffffff00a39f9f4  entry=0xFFFFFFF00A39F9F4  size=0x2318
 ========================================================================
-  ANALYSIS EXCEPTION: 'ghidra.program.model.pcode.PcodeOpAST' object has no attribute 'getAddress'
+  CALL copyout @ 0xFFFFFFF00A3A04B4
+    size_arg: (const, 0x4, 8)
+    trace: ('const', 4L)
+    tags: const
+    bounds_seen: False
+    verdict: SAFE_const
+
+  CALL kalloc_type @ 0xFFFFFFF00A3A04D8
+    size_arg: (unique, 0x24100, 8)
+    trace: ('arith', (u'INT_ADD', [('phi', [('cycle', None), ('cycle', None)]), ('phi', [('cycle', None), ('cycle', None)])]))
+    tags: arith,cycle,phi
+    arith: INT_ADD
+    bounds_seen: False
+    verdict: ARITH_SIZE
+
 
 ========================================================================
 ### FUN_fffffff00a3a3698  entry=0xFFFFFFF00A3A3698  size=0x9DC
 ========================================================================
-  ANALYSIS EXCEPTION: 'ghidra.program.model.pcode.PcodeOpAST' object has no attribute 'getAddress'
+  CALL copyin @ 0xFFFFFFF00A3A379C
+    size_arg: (const, 0x18, 8)
+    trace: ('const', 24L)
+    tags: const
+    bounds_seen: False
+    verdict: SAFE_const
+
+  CALL kalloc_type @ 0xFFFFFFF00A3A38F0
+    size_arg: (register, 0x4008, 8)
+    trace: ('load_dyn', None)
+    tags: load_dyn
+    bounds_seen: False
+    verdict: FIELD_SIZE
+
+  CALL copyin @ 0xFFFFFFF00A3A3908
+    size_arg: (unique, 0x48700, 8)
+    trace: ('load_dyn', None)
+    tags: load_dyn
+    bounds_seen: False
+    verdict: FIELD_SIZE
+
 
 ========================================================================
 ### FUN_fffffff00a3cd8b0  entry=0xFFFFFFF00A3CD8B0  size=0x18C
 ========================================================================
-  ANALYSIS EXCEPTION: 'ghidra.program.model.pcode.PcodeOpAST' object has no attribute 'getAddress'
+  CALL kalloc_type @ 0xFFFFFFF00A3CD90C
+    size_arg: (unique, 0x22f00, 4)
+    trace: ('arith', (u'INT_ADD', [('other', None), ('const', 1L)]))
+    tags: arith,const,other
+    arith: INT_ADD
+    bounds_seen: False
+    verdict: ARITH_SIZE
+
+  CALL copyin @ 0xFFFFFFF00A3CD924
+    size_arg: (register, 0x40b8, 8)
+    trace: ('arith', (u'INT_MULT', [('arith', (u'INT_ZEXT', [('param', None)])), ('arith', (u'INT_ZEXT', [('param', None)]))]))
+    tags: arith,param
+    arith: INT_MULT,INT_ZEXT
+    bounds_seen: False
+    verdict: PARAM_SIZE
+
 
 ========================================================================
 ### FUN_fffffff00a3d6f44  entry=0xFFFFFFF00A3D6F44  size=0x15BC
 ========================================================================
-  ANALYSIS EXCEPTION: 'ghidra.program.model.pcode.PcodeOpAST' object has no attribute 'getAddress'
+  CALL kalloc_zone @ 0xFFFFFFF00A3D70F0
+    size_arg: (const, 0x4, 8)
+    trace: ('const', 4L)
+    tags: const
+    bounds_seen: False
+    verdict: SAFE_const
+
+  CALL copyin @ 0xFFFFFFF00A3D7384
+    size_arg: (const, 0x4, 8)
+    trace: ('const', 4L)
+    tags: const
+    bounds_seen: False
+    verdict: SAFE_const
+
+  CALL copyin @ 0xFFFFFFF00A3D73D4
+    size_arg: (const, 0x8, 8)
+    trace: ('const', 8L)
+    tags: const
+    bounds_seen: False
+    verdict: SAFE_const
+
 
 ========================================================================
 ### FUN_fffffff00a3d91b4  entry=0xFFFFFFF00A3D91B4  size=0x790
 ========================================================================
-  ANALYSIS EXCEPTION: 'ghidra.program.model.pcode.PcodeOpAST' object has no attribute 'getAddress'
+  CALL copyin @ 0xFFFFFFF00A3D93A8
+    size_arg: (const, 0x8, 8)
+    trace: ('const', 8L)
+    tags: const
+    bounds_seen: False
+    verdict: SAFE_const
+
+  CALL copyin @ 0xFFFFFFF00A3D9450
+    size_arg: (const, 0x10, 8)
+    trace: ('const', 16L)
+    tags: const
+    bounds_seen: False
+    verdict: SAFE_const
+
+  CALL copyin @ 0xFFFFFFF00A3D9498
+    size_arg: (const, 0xc, 8)
+    trace: ('const', 12L)
+    tags: const
+    bounds_seen: False
+    verdict: SAFE_const
+
+  CALL kalloc_type @ 0xFFFFFFF00A3D94C8
+    size_arg: (unique, 0x10000d2e, 8)
+    trace: ('phi', [('other', None), ('arith', (u'INT_AND', [('other', None), ('const', 4294967295L)]))])
+    tags: arith,const,other,phi
+    arith: INT_AND
+    bounds_seen: False
+    verdict: PHI_SIZE
+
+  CALL copyin @ 0xFFFFFFF00A3D9508
+    size_arg: (const, 0x10, 8)
+    trace: ('const', 16L)
+    tags: const
+    bounds_seen: False
+    verdict: SAFE_const
+
 
 ========================================================================
 ### FUN_fffffff00a3dd024  entry=0xFFFFFFF00A3DD024  size=0x26C
 ========================================================================
-  ANALYSIS EXCEPTION: 'ghidra.program.model.pcode.PcodeOpAST' object has no attribute 'getAddress'
+  CALL kalloc_type @ 0xFFFFFFF00A3DD118
+    size_arg: (unique, 0x48f00, 4)
+    trace: ('load_dyn', None)
+    tags: load_dyn
+    bounds_seen: False
+    verdict: FIELD_SIZE
+
+  CALL copyin @ 0xFFFFFFF00A3DD130
+    size_arg: (unique, 0x48f00, 4)
+    trace: ('load_dyn', None)
+    tags: load_dyn
+    bounds_seen: False
+    verdict: FIELD_SIZE
+
+  CALL kalloc_type @ 0xFFFFFFF00A3DD1F8
+    size_arg: (register, 0x40a0, 8)
+    trace: ('arith', (u'INT_LEFT', [('phi', [('cycle', None), ('phi', [('cycle', None), ('cycle', None)]), ('phi', [('cycle', None), ('cycle', None)])]), ('const', 3L)]))
+    tags: arith,const,cycle,phi
+    arith: INT_LEFT
+    bounds_seen: False
+    verdict: ARITH_SIZE
+
 
 ========================================================================
 ### FUN_fffffff00a3eb958  entry=0xFFFFFFF00A3EB958  size=0xA58
 ========================================================================
-  ANALYSIS EXCEPTION: 'ghidra.program.model.pcode.PcodeOpAST' object has no attribute 'getAddress'
+  CALL kalloc_type @ 0xFFFFFFF00A3EBB68
+    size_arg: (register, 0x40a8, 4)
+    trace: ('phi', [('cycle', None), ('cycle', None)])
+    tags: cycle,phi
+    bounds_seen: False
+    verdict: PHI_SIZE
+
+  CALL copyin @ 0xFFFFFFF00A3EBC00
+    size_arg: (register, 0x40a8, 4)
+    trace: ('phi', [('cycle', None), ('cycle', None)])
+    tags: cycle,phi
+    bounds_seen: False
+    verdict: PHI_SIZE
+
+  CALL copyout @ 0xFFFFFFF00A3EC184
+    size_arg: (register, 0x40a8, 4)
+    trace: ('phi', [('cycle', None), ('cycle', None)])
+    tags: cycle,phi
+    bounds_seen: False
+    verdict: PHI_SIZE
+
 
 ========================================================================
 ### FUN_fffffff00a41c5a4  entry=0xFFFFFFF00A41C5A4  size=0x1C0
 ========================================================================
-  ANALYSIS EXCEPTION: 'ghidra.program.model.pcode.PcodeOpAST' object has no attribute 'getAddress'
+  CALL kalloc_type @ 0xFFFFFFF00A41C634
+    size_arg: (register, 0x40c0, 8)
+    trace: ('arith', (u'INT_ZEXT', [('arith', (u'INT_LEFT', [('other', None), ('const', 3L)]))]))
+    tags: arith,const,other
+    arith: INT_LEFT,INT_ZEXT
+    bounds_seen: False
+    verdict: ARITH_SIZE
+
+  CALL copyin @ 0xFFFFFFF00A41C6D4
+    size_arg: (register, 0x40c0, 8)
+    trace: ('arith', (u'INT_ZEXT', [('arith', (u'INT_LEFT', [('other', None), ('const', 3L)]))]))
+    tags: arith,const,other
+    arith: INT_LEFT,INT_ZEXT
+    bounds_seen: False
+    verdict: ARITH_SIZE
+
 
 ========================================================================
 ### FUN_fffffff00a43dcd8  entry=0xFFFFFFF00A43DCD8  size=0x224
 ========================================================================
-  ANALYSIS EXCEPTION: 'ghidra.program.model.pcode.PcodeOpAST' object has no attribute 'getAddress'
+  CALL kalloc_type @ 0xFFFFFFF00A43DDBC
+    size_arg: (register, 0x4098, 8)
+    trace: ('arith', (u'INT_MULT', [('arith', (u'INT_ZEXT', [('load_dyn', None)])), ('const', 4L)]))
+    tags: arith,const,load_dyn
+    arith: INT_MULT,INT_ZEXT
+    bounds_seen: False
+    verdict: ARITH_SIZE
+
+  CALL copyin @ 0xFFFFFFF00A43DE20
+    size_arg: (register, 0x4098, 8)
+    trace: ('arith', (u'INT_MULT', [('arith', (u'INT_ZEXT', [('load_dyn', None)])), ('const', 4L)]))
+    tags: arith,const,load_dyn
+    arith: INT_MULT,INT_ZEXT
+    bounds_seen: False
+    verdict: ARITH_SIZE
+
 
 ========================================================================
 ### FUN_fffffff00a4412bc  entry=0xFFFFFFF00A4412BC  size=0x3EC
 ========================================================================
-  ANALYSIS EXCEPTION: 'ghidra.program.model.pcode.PcodeOpAST' object has no attribute 'getAddress'
+  CALL kalloc_type @ 0xFFFFFFF00A441478
+    size_arg: (register, 0x4008, 8)
+    trace: ('arith', (u'INT_LEFT', [('arith', (u'INT_SEXT', [('load_dyn', None)])), ('const', 2L)]))
+    tags: arith,const,load_dyn
+    arith: INT_LEFT,INT_SEXT
+    bounds_seen: False
+    verdict: ARITH_SIZE
+
 
 ========================================================================
 ### FUN_fffffff00a4424d4  entry=0xFFFFFFF00A4424D4  size=0x100
 ========================================================================
-  ANALYSIS EXCEPTION: 'ghidra.program.model.pcode.PcodeOpAST' object has no attribute 'getAddress'
+  CALL kalloc_type @ 0xFFFFFFF00A442540
+    size_arg: (unique, 0x7ff00, 8)
+    trace: ('arith', (u'INT_LEFT', [('arith', (u'INT_ZEXT', [('phi', [('other', None), ('other', None)])])), ('const', 2L)]))
+    tags: arith,const,other,phi
+    arith: INT_LEFT,INT_ZEXT
+    bounds_seen: False
+    verdict: ARITH_SIZE
+
+  CALL copyout @ 0xFFFFFFF00A442588
+    size_arg: (unique, 0x7ff00, 8)
+    trace: ('arith', (u'INT_LEFT', [('arith', (u'INT_ZEXT', [('phi', [('other', None), ('other', None)])])), ('const', 2L)]))
+    tags: arith,const,other,phi
+    arith: INT_LEFT,INT_ZEXT
+    bounds_seen: False
+    verdict: ARITH_SIZE
+
 
 ========================================================================
 ### FUN_fffffff00a4bd8c4  entry=0xFFFFFFF00A4BD8C4  size=0x228
 ========================================================================
-  ANALYSIS EXCEPTION: 'ghidra.program.model.pcode.PcodeOpAST' object has no attribute 'getAddress'
+  CALL kalloc_type @ 0xFFFFFFF00A4BD934
+    size_arg: (register, 0x40a8, 8)
+    trace: ('load_dyn', None)
+    tags: load_dyn
+    bounds_seen: False
+    verdict: FIELD_SIZE
+
+  CALL copyout @ 0xFFFFFFF00A4BDA9C
+    size_arg: (const, 0x4, 8)
+    trace: ('const', 4L)
+    tags: const
+    bounds_seen: False
+    verdict: SAFE_const
+
 
 ========================================================================
 ### FUN_fffffff00a4bdaec  entry=0xFFFFFFF00A4BDAEC  size=0x2E8
 ========================================================================
-  ANALYSIS EXCEPTION: 'ghidra.program.model.pcode.PcodeOpAST' object has no attribute 'getAddress'
+  CALL copyin @ 0xFFFFFFF00A4BDB3C
+    size_arg: (const, 0x4, 8)
+    trace: ('const', 4L)
+    tags: const
+    bounds_seen: False
+    verdict: SAFE_const
+
+  CALL kalloc_type @ 0xFFFFFFF00A4BDCE0
+    size_arg: (register, 0x40a0, 8)
+    trace: ('arith', (u'INT_ZEXT', [('arith', (u'INT_ADD', [('arith', (u'INT_ADD', [('load_dyn', None), ('phi', [('other', None), ('other', None)])])), ('const', 9L)]))]))
+    tags: arith,const,load_dyn,other,phi
+    arith: INT_ADD,INT_ZEXT
+    bounds_seen: False
+    verdict: ARITH_SIZE
+
+  CALL copyout @ 0xFFFFFFF00A4BDD80
+    size_arg: (register, 0x40a0, 8)
+    trace: ('arith', (u'INT_ZEXT', [('arith', (u'INT_ADD', [('arith', (u'INT_ADD', [('load_dyn', None), ('phi', [('other', None), ('other', None)])])), ('const', 9L)]))]))
+    tags: arith,const,load_dyn,other,phi
+    arith: INT_ADD,INT_ZEXT
+    bounds_seen: False
+    verdict: ARITH_SIZE
+
 
 ========================================================================
 ### FUN_fffffff00a4bdf70  entry=0xFFFFFFF00A4BDF70  size=0x218
 ========================================================================
-  ANALYSIS EXCEPTION: 'ghidra.program.model.pcode.PcodeOpAST' object has no attribute 'getAddress'
+  CALL kalloc_type @ 0xFFFFFFF00A4BE028
+    size_arg: (register, 0x40a0, 8)
+    trace: ('arith', (u'INT_ZEXT', [('arith', (u'INT_MULT', [('phi', [('arith', (u'INT_ADD', [('cycle', None), ('arith', (u'INT_AND', [('arith', (u'INT_XOR', [('arith', (u'INT_ZEXT', [('load_dyn', None)])), ('const', 4294967295L)])), ('const', 1L)]))])), ('cycle', None)]), ('const', 9L)]))]))
+    tags: arith,const,cycle,load_dyn,phi
+    arith: INT_ADD,INT_AND,INT_MULT,INT_XOR,INT_ZEXT
+    bounds_seen: False
+    verdict: ARITH_SIZE
+
+  CALL copyout @ 0xFFFFFFF00A4BE138
+    size_arg: (register, 0x40a0, 8)
+    trace: ('arith', (u'INT_ZEXT', [('arith', (u'INT_MULT', [('phi', [('arith', (u'INT_ADD', [('cycle', None), ('arith', (u'INT_AND', [('arith', (u'INT_XOR', [('arith', (u'INT_ZEXT', [('load_dyn', None)])), ('const', 4294967295L)])), ('const', 1L)]))])), ('cycle', None)]), ('const', 9L)]))]))
+    tags: arith,const,cycle,load_dyn,phi
+    arith: INT_ADD,INT_AND,INT_MULT,INT_XOR,INT_ZEXT
+    bounds_seen: False
+    verdict: ARITH_SIZE
+
 
 ========================================================================
 ### FUN_fffffff00a4be40c  entry=0xFFFFFFF00A4BE40C  size=0x16AC
 ========================================================================
-  ANALYSIS EXCEPTION: 'ghidra.program.model.pcode.PcodeOpAST' object has no attribute 'getAddress'
+  CALL kalloc_type @ 0xFFFFFFF00A4BE540
+    size_arg: (register, 0x40a0, 8)
+    trace: ('load_dyn', None)
+    tags: load_dyn
+    bounds_seen: False
+    verdict: FIELD_SIZE
+
+  CALL kalloc_type @ 0xFFFFFFF00A4BEA7C
+    size_arg: (register, 0x4008, 8)
+    trace: ('arith', (u'INT_ZEXT', [('arith', (u'INT_ADD', [('arith', (u'INT_ADD', [('cycle', None), ('const', 42L)])), ('arith', (u'INT_ADD', [('phi', [('other', None), ('other', None), ('other', None)]), ('arith', (u'INT_MULT', [('phi', [('cycle', None), ('cycle', None), ('arith', (u'INT_ADD', [('cycle', None), ('const', 1L)]))]), ('const', 6L)]))]))]))]))
+    tags: arith,const,cycle,other,phi
+    arith: INT_ADD,INT_MULT,INT_ZEXT
+    bounds_seen: False
+    verdict: ARITH_SIZE
+
+  CALL kalloc_type @ 0xFFFFFFF00A4BEBE0
+    size_arg: (register, 0x4040, 8)
+    trace: ('arith', (u'INT_ZEXT', [('arith', (u'INT_ADD', [('phi', [('other', None), ('other', None), ('other', None)]), ('arith', (u'INT_MULT', [('phi', [('cycle', None), ('arith', (u'INT_ADD', [('cycle', None), ('phi', [('cycle', None), ('arith', (u'INT_ADD', [('cycle', None), ('const', 1L)]))])])), ('arith', (u'INT_ADD', [('arith', (u'INT_ADD', [('cycle', None), ('phi', [('cycle', None), ('arith', (u'INT_ADD', [('cycle', None), ('const', 1L)]))])])), ('const', 1L)]))]), ('const', 6L)]))]))]))
+    tags: arith,const,cycle,other,phi
+    arith: INT_ADD,INT_MULT,INT_ZEXT
+    bounds_seen: False
+    verdict: ARITH_SIZE
+
+  CALL copyout @ 0xFFFFFFF00A4BF920
+    size_arg: (unique, 0x23700, 8)
+    trace: ('arith', (u'INT_ADD', [('phi', [('cycle', None), ('cycle', None), ('cycle', None)]), ('const', 4L)]))
+    tags: arith,const,cycle,phi
+    arith: INT_ADD
+    bounds_seen: False
+    verdict: ARITH_SIZE
+
 
 ========================================================================
 ### FUN_fffffff00a4bfab8  entry=0xFFFFFFF00A4BFAB8  size=0x2E4
 ========================================================================
-  ANALYSIS EXCEPTION: 'ghidra.program.model.pcode.PcodeOpAST' object has no attribute 'getAddress'
+  CALL kalloc_type @ 0xFFFFFFF00A4BFB2C
+    size_arg: (register, 0x40a0, 8)
+    trace: ('load_dyn', None)
+    tags: load_dyn
+    bounds_seen: False
+    verdict: FIELD_SIZE
+
+  CALL copyin @ 0xFFFFFFF00A4BFB58
+    size_arg: (register, 0x40a0, 8)
+    trace: ('load_dyn', None)
+    tags: load_dyn
+    bounds_seen: False
+    verdict: FIELD_SIZE
+
+  CALL copyout @ 0xFFFFFFF00A4BFCE0
+    size_arg: (const, 0x4, 8)
+    trace: ('const', 4L)
+    tags: const
+    bounds_seen: False
+    verdict: SAFE_const
+
 
 ========================================================================
 ### FUN_fffffff00a4c0024  entry=0xFFFFFFF00A4C0024  size=0x2EC
 ========================================================================
-  ANALYSIS EXCEPTION: 'ghidra.program.model.pcode.PcodeOpAST' object has no attribute 'getAddress'
+  CALL kalloc_type @ 0xFFFFFFF00A4C00A0
+    size_arg: (register, 0x40a0, 8)
+    trace: ('load_dyn', None)
+    tags: load_dyn
+    bounds_seen: False
+    verdict: FIELD_SIZE
+
+  CALL copyin @ 0xFFFFFFF00A4C00CC
+    size_arg: (register, 0x40a0, 8)
+    trace: ('load_dyn', None)
+    tags: load_dyn
+    bounds_seen: False
+    verdict: FIELD_SIZE
+
+  CALL copyout @ 0xFFFFFFF00A4C0268
+    size_arg: (const, 0x4, 8)
+    trace: ('const', 4L)
+    tags: const
+    bounds_seen: False
+    verdict: SAFE_const
+
 
 ========================================================================
 ### FUN_fffffff00a4e60dc  entry=0xFFFFFFF00A4E60DC  size=0x107C
 ========================================================================
-  ANALYSIS EXCEPTION: 'ghidra.program.model.pcode.PcodeOpAST' object has no attribute 'getAddress'
+  CALL kalloc_zone @ 0xFFFFFFF00A4E6188
+    size_arg: (const, 0x8004, 8)
+    trace: ('const', 32772L)
+    tags: const
+    bounds_seen: False
+    verdict: SAFE_const
+
+  CALL kalloc_type @ 0xFFFFFFF00A4E61A4
+    size_arg: (register, 0x40d0, 8)
+    trace: ('load_dyn', None)
+    tags: load_dyn
+    bounds_seen: False
+    verdict: FIELD_SIZE
+
+  CALL copyin @ 0xFFFFFFF00A4E62DC
+    size_arg: (register, 0x40d0, 8)
+    trace: ('load_dyn', None)
+    tags: load_dyn
+    bounds_seen: False
+    verdict: FIELD_SIZE
+
+  CALL copyout @ 0xFFFFFFF00A4E6410
+    size_arg: (const, 0x10, 8)
+    trace: ('const', 16L)
+    tags: const
+    bounds_seen: False
+    verdict: SAFE_const
+
 
 ========================================================================
 ### FUN_fffffff00a4e80fc  entry=0xFFFFFFF00A4E80FC  size=0x340
 ========================================================================
-  ANALYSIS EXCEPTION: 'ghidra.program.model.pcode.PcodeOpAST' object has no attribute 'getAddress'
+  CALL copyin @ 0xFFFFFFF00A4E81B8
+    size_arg: (const, 0x4, 8)
+    trace: ('const', 4L)
+    tags: const
+    bounds_seen: False
+    verdict: SAFE_const
+
+  CALL kalloc_type @ 0xFFFFFFF00A4E8204
+    size_arg: (register, 0x4098, 8)
+    trace: ('arith', (u'INT_MULT', [('arith', (u'INT_ZEXT', [('other', None)])), ('const', 16L)]))
+    tags: arith,const,other
+    arith: INT_MULT,INT_ZEXT
+    bounds_seen: False
+    verdict: ARITH_SIZE
+
+  CALL copyout @ 0xFFFFFFF00A4E835C
+    size_arg: (const, 0x4, 8)
+    trace: ('const', 4L)
+    tags: const
+    bounds_seen: False
+    verdict: SAFE_const
+
+  CALL copyout @ 0xFFFFFFF00A4E83EC
+    size_arg: (register, 0x4098, 8)
+    trace: ('arith', (u'INT_MULT', [('arith', (u'INT_ZEXT', [('other', None)])), ('const', 16L)]))
+    tags: arith,const,other
+    arith: INT_MULT,INT_ZEXT
+    bounds_seen: False
+    verdict: ARITH_SIZE
+
 
 ========================================================================
 ### FUN_fffffff00a4e843c  entry=0xFFFFFFF00A4E843C  size=0xF88
 ========================================================================
-  ANALYSIS EXCEPTION: 'ghidra.program.model.pcode.PcodeOpAST' object has no attribute 'getAddress'
+  CALL copyin @ 0xFFFFFFF00A4E8504
+    size_arg: (const, 0x10, 8)
+    trace: ('const', 16L)
+    tags: const
+    bounds_seen: False
+    verdict: SAFE_const
+
+  CALL copyin @ 0xFFFFFFF00A4E8644
+    size_arg: (register, 0x4098, 8)
+    trace: ('load_dyn', None)
+    tags: load_dyn
+    bounds_seen: False
+    verdict: FIELD_SIZE
+
+  CALL kalloc_type @ 0xFFFFFFF00A4E8690
+    size_arg: (register, 0x4098, 8)
+    trace: ('load_dyn', None)
+    tags: load_dyn
+    bounds_seen: False
+    verdict: FIELD_SIZE
+
+  CALL copyin @ 0xFFFFFFF00A4E86C0
+    size_arg: (register, 0x4098, 8)
+    trace: ('load_dyn', None)
+    tags: load_dyn
+    bounds_seen: False
+    verdict: FIELD_SIZE
+
+  CALL copyout @ 0xFFFFFFF00A4E9110
+    size_arg: (register, 0x4098, 8)
+    trace: ('load_dyn', None)
+    tags: load_dyn
+    bounds_seen: False
+    verdict: FIELD_SIZE
+
 
 ========================================================================
 ### FUN_fffffff00a4ea0b4  entry=0xFFFFFFF00A4EA0B4  size=0x6C4
 ========================================================================
-  ANALYSIS EXCEPTION: 'ghidra.program.model.pcode.PcodeOpAST' object has no attribute 'getAddress'
+  CALL copyin @ 0xFFFFFFF00A4EA128
+    size_arg: (const, 0x10, 8)
+    trace: ('const', 16L)
+    tags: const
+    bounds_seen: False
+    verdict: SAFE_const
+
+  CALL kalloc_type @ 0xFFFFFFF00A4EA230
+    size_arg: (register, 0x40a0, 8)
+    trace: ('load_dyn', None)
+    tags: load_dyn
+    bounds_seen: False
+    verdict: FIELD_SIZE
+
+  CALL copyin @ 0xFFFFFFF00A4EA274
+    size_arg: (register, 0x40a0, 8)
+    trace: ('load_dyn', None)
+    tags: load_dyn
+    bounds_seen: False
+    verdict: FIELD_SIZE
+
 
 ========================================================================
 ### FUN_fffffff00a4ec5d8  entry=0xFFFFFFF00A4EC5D8  size=0x414
 ========================================================================
-  ANALYSIS EXCEPTION: 'ghidra.program.model.pcode.PcodeOpAST' object has no attribute 'getAddress'
+  CALL kalloc_type @ 0xFFFFFFF00A4EC748
+    size_arg: (register, 0x40a0, 8)
+    trace: ('load_dyn', None)
+    tags: load_dyn
+    bounds_seen: False
+    verdict: FIELD_SIZE
+
+  CALL copyin @ 0xFFFFFFF00A4EC788
+    size_arg: (register, 0x40a0, 8)
+    trace: ('load_dyn', None)
+    tags: load_dyn
+    bounds_seen: False
+    verdict: FIELD_SIZE
+
+  CALL copyout @ 0xFFFFFFF00A4EC924
+    size_arg: (const, 0x20, 8)
+    trace: ('const', 32L)
+    tags: const
+    bounds_seen: False
+    verdict: SAFE_const
+
 
 ========================================================================
 ### FUN_fffffff00a4ec9ec  entry=0xFFFFFFF00A4EC9EC  size=0x260
 ========================================================================
-  ANALYSIS EXCEPTION: 'ghidra.program.model.pcode.PcodeOpAST' object has no attribute 'getAddress'
+  CALL kalloc_type @ 0xFFFFFFF00A4ECB40
+    size_arg: (register, 0x40a0, 8)
+    trace: ('load_dyn', None)
+    tags: load_dyn
+    bounds_seen: False
+    verdict: FIELD_SIZE
+
+  CALL copyin @ 0xFFFFFFF00A4ECB70
+    size_arg: (register, 0x40a0, 8)
+    trace: ('load_dyn', None)
+    tags: load_dyn
+    bounds_seen: False
+    verdict: FIELD_SIZE
+
 
 ========================================================================
 ### FUN_fffffff00a4f2e70  entry=0xFFFFFFF00A4F2E70  size=0x7E4
 ========================================================================
-  ANALYSIS EXCEPTION: 'ghidra.program.model.pcode.PcodeOpAST' object has no attribute 'getAddress'
+  CALL copyout @ 0xFFFFFFF00A4F31AC
+    size_arg: (register, 0x40d0, 8)
+    trace: ('phi', [('cycle', None), ('arith', (u'INT_ADD', [('phi', [('cycle', None), ('cycle', None), ('cycle', None)]), ('const', 78L)])), ('cycle', None), ('other', None), ('other', None)])
+    tags: arith,const,cycle,other,phi
+    arith: INT_ADD
+    bounds_seen: False
+    verdict: ARITH_SIZE
+
+  CALL copyout @ 0xFFFFFFF00A4F3244
+    size_arg: (const, 0x11, 8)
+    trace: ('const', 17L)
+    tags: const
+    bounds_seen: False
+    verdict: SAFE_const
+
+  CALL copyout @ 0xFFFFFFF00A4F32AC
+    size_arg: (register, 0x40d8, 8)
+    trace: ('phi', [('cycle', None), ('cycle', None), ('cycle', None)])
+    tags: cycle,phi
+    bounds_seen: False
+    verdict: PHI_SIZE
+
+  CALL copyout @ 0xFFFFFFF00A4F3314
+    size_arg: (const, 0x9, 8)
+    trace: ('const', 9L)
+    tags: const
+    bounds_seen: False
+    verdict: SAFE_const
+
+  CALL kalloc_type @ 0xFFFFFFF00A4F3364
+    size_arg: (unique, 0x3b500, 8)
+    trace: ('phi', [('other', None), ('other', None)])
+    tags: other,phi
+    bounds_seen: False
+    verdict: PHI_SIZE
+
 
 ========================================================================
 ### FUN_fffffff00a5003b8  entry=0xFFFFFFF00A5003B8  size=0x6A4
 ========================================================================
-  ANALYSIS EXCEPTION: 'ghidra.program.model.pcode.PcodeOpAST' object has no attribute 'getAddress'
+  CALL kalloc_type @ 0xFFFFFFF00A5004F4
+    size_arg: (register, 0x40a0, 8)
+    trace: ('arith', (u'INT_ZEXT', [('load_dyn', None)]))
+    tags: arith,load_dyn
+    arith: INT_ZEXT
+    bounds_seen: False
+    verdict: FIELD_SIZE
+
+  CALL kalloc_type @ 0xFFFFFFF00A50072C
+    size_arg: (register, 0x40a0, 8)
+    trace: ('arith', (u'INT_ZEXT', [('load_dyn', None)]))
+    tags: arith,load_dyn
+    arith: INT_ZEXT
+    bounds_seen: False
+    verdict: FIELD_SIZE
+
 
 ========================================================================
 ### FUN_fffffff00a6c07c0  entry=0xFFFFFFF00A6C07C0  size=0x4A8
 ========================================================================
-  ANALYSIS EXCEPTION: 'ghidra.program.model.pcode.PcodeOpAST' object has no attribute 'getAddress'
+  CALL kalloc_zone @ 0xFFFFFFF00A6C07FC
+    size_arg: (const, 0x8004, 8)
+    trace: ('const', 32772L)
+    tags: const
+    bounds_seen: False
+    verdict: SAFE_const
+
+  CALL copyin @ 0xFFFFFFF00A6C0880
+    size_arg: (const, 0x38, 8)
+    trace: ('const', 56L)
+    tags: const
+    bounds_seen: False
+    verdict: SAFE_const
+
+  CALL copyin @ 0xFFFFFFF00A6C08E4
+    size_arg: (const, 0x50, 8)
+    trace: ('const', 80L)
+    tags: const
+    bounds_seen: False
+    verdict: SAFE_const
+
 
 ========================================================================
 ### FUN_fffffff00a6c4b10  entry=0xFFFFFFF00A6C4B10  size=0x148
 ========================================================================
-  ANALYSIS EXCEPTION: 'ghidra.program.model.pcode.PcodeOpAST' object has no attribute 'getAddress'
+  CALL copyin @ 0xFFFFFFF00A6C4B4C
+    size_arg: (const, 0x2c, 8)
+    trace: ('const', 44L)
+    tags: const
+    bounds_seen: False
+    verdict: SAFE_const
+
+  CALL kalloc_type @ 0xFFFFFFF00A6C4BC0
+    size_arg: (register, 0x4008, 4)
+    trace: ('phi', [('arith', (u'INT_ADD', [('arith', (u'INT_MULT', [('other', None), ('const', 24L)])), ('const', 44L)])), ('cycle', None)])
+    tags: arith,const,cycle,other,phi
+    arith: INT_ADD,INT_MULT
+    bounds_seen: False
+    verdict: ARITH_SIZE
+
+  CALL copyin @ 0xFFFFFFF00A6C4C1C
+    size_arg: (register, 0x4010, 8)
+    trace: ('arith', (u'INT_MULT', [('phi', [('cycle', None), ('cycle', None)]), ('const', 24L)]))
+    tags: arith,const,cycle,phi
+    arith: INT_MULT
+    bounds_seen: False
+    verdict: ARITH_SIZE
+
 
 ========================================================================
 ### FUN_fffffff00a6e1858  entry=0xFFFFFFF00A6E1858  size=0x27C
 ========================================================================
-  ANALYSIS EXCEPTION: 'ghidra.program.model.pcode.PcodeOpAST' object has no attribute 'getAddress'
+  CALL kalloc_type @ 0xFFFFFFF00A6E18D8
+    size_arg: (unique, 0x4fd00, 4)
+    trace: ('arith', (u'INT_LEFT', [('phi', [('arith', (u'INT_RIGHT', [('param', None), ('const', 3L)])), ('cycle', None)]), ('const', 3L)]))
+    tags: arith,const,cycle,param,phi
+    arith: INT_LEFT,INT_RIGHT
+    bounds_seen: False
+    verdict: PARAM_SIZE
+
+  CALL copyout @ 0xFFFFFFF00A6E1958
+    size_arg: (unique, 0x4fd00, 4)
+    trace: ('arith', (u'INT_LEFT', [('phi', [('other', None), ('other', None)]), ('const', 3L)]))
+    tags: arith,const,other,phi
+    arith: INT_LEFT
+    bounds_seen: False
+    verdict: ARITH_SIZE
+
 
 ========================================================================
 ### FUN_fffffff00a6e2020  entry=0xFFFFFFF00A6E2020  size=0x314
 ========================================================================
-  ANALYSIS EXCEPTION: 'ghidra.program.model.pcode.PcodeOpAST' object has no attribute 'getAddress'
+  CALL kalloc_type @ 0xFFFFFFF00A6E208C
+    size_arg: (register, 0x40a0, 8)
+    trace: ('arith', (u'INT_MULT', [('arith', (u'INT_ZEXT', [('phi', [('other', None), ('other', None)])])), ('const', 104L)]))
+    tags: arith,const,other,phi
+    arith: INT_MULT,INT_ZEXT
+    bounds_seen: False
+    verdict: ARITH_SIZE
+
+  CALL copyout @ 0xFFFFFFF00A6E22CC
+    size_arg: (register, 0x4010, 8)
+    trace: ('arith', (u'INT_MULT', [('phi', [('other', None), ('other', None)]), ('const', 104L)]))
+    tags: arith,const,other,phi
+    arith: INT_MULT
+    bounds_seen: False
+    verdict: ARITH_SIZE
+
 
 ========================================================================
 ### FUN_fffffff00a6f318c  entry=0xFFFFFFF00A6F318C  size=0xE2C
 ========================================================================
-  ANALYSIS EXCEPTION: 'ghidra.program.model.pcode.PcodeOpAST' object has no attribute 'getAddress'
+  CALL kalloc_type @ 0xFFFFFFF00A6F3228
+    size_arg: (const, 0x320, 8)
+    trace: ('const', 800L)
+    tags: const
+    bounds_seen: False
+    verdict: SAFE_const
+
+  CALL kalloc_type @ 0xFFFFFFF00A6F32D8
+    size_arg: (const, 0x5000, 8)
+    trace: ('const', 20480L)
+    tags: const
+    bounds_seen: False
+    verdict: SAFE_const
+
+  CALL copyout @ 0xFFFFFFF00A6F343C
+    size_arg: (unique, 0x4fd00, 4)
+    trace: ('arith', (u'INT_MULT', [('call_ret', 18446744005159837732L), ('const', 8L)]))
+    tags: arith,call_ret,const
+    arith: CALL@0xFFFFFFF00A1E6024,INT_MULT
+    bounds_seen: False
+    verdict: ARITH_SIZE
+
+  CALL copyout @ 0xFFFFFFF00A6F3488
+    size_arg: (const, 0x4, 8)
+    trace: ('const', 4L)
+    tags: const
+    bounds_seen: False
+    verdict: SAFE_const
+
+  CALL copyout @ 0xFFFFFFF00A6F3520
+    size_arg: (unique, 0x4fd00, 4)
+    trace: ('arith', (u'INT_MULT', [('call_ret', 18446744005159837732L), ('const', 8L)]))
+    tags: arith,call_ret,const
+    arith: CALL@0xFFFFFFF00A1E6024,INT_MULT
+    bounds_seen: False
+    verdict: ARITH_SIZE
+
+  CALL copyin @ 0xFFFFFFF00A6F3590
+    size_arg: (const, 0xb0, 8)
+    trace: ('const', 176L)
+    tags: const
+    bounds_seen: False
+    verdict: SAFE_const
+
+  CALL copyin @ 0xFFFFFFF00A6F362C
+    size_arg: (const, 0x158, 8)
+    trace: ('const', 344L)
+    tags: const
+    bounds_seen: False
+    verdict: SAFE_const
+
+  CALL copyout @ 0xFFFFFFF00A6F369C
+    size_arg: (register, 0x4010, 8)
+    trace: ('phi', [('cycle', None), ('cycle', None)])
+    tags: cycle,phi
+    bounds_seen: False
+    verdict: PHI_SIZE
+
+  CALL copyin @ 0xFFFFFFF00A6F37AC
+    size_arg: (unique, 0x55e00, 4)
+    trace: ('arith', (u'INT_MULT', [('phi', [('other', None), ('cycle', None), ('cycle', None), ('other', None)]), ('arith', (u'INT_ADD', [('arith', (u'INT_AND', [('load_dyn', None), ('const', 4L)])), ('const', 20L)]))]))
+    tags: arith,const,cycle,load_dyn,other,phi
+    arith: INT_ADD,INT_AND,INT_MULT
+    bounds_seen: False
+    verdict: ARITH_SIZE
+
+  CALL copyout @ 0xFFFFFFF00A6F38FC
+    size_arg: (const, 0x4, 8)
+    trace: ('const', 4L)
+    tags: const
+    bounds_seen: False
+    verdict: SAFE_const
+
+  CALL copyout @ 0xFFFFFFF00A6F393C
+    size_arg: (const, 0x4, 8)
+    trace: ('const', 4L)
+    tags: const
+    bounds_seen: False
+    verdict: SAFE_const
+
+  CALL copyout @ 0xFFFFFFF00A6F3984
+    size_arg: (const, 0x11, 8)
+    trace: ('const', 17L)
+    tags: const
+    bounds_seen: False
+    verdict: SAFE_const
+
+  CALL copyout @ 0xFFFFFFF00A6F39F0
+    size_arg: (const, 0x10, 8)
+    trace: ('const', 16L)
+    tags: const
+    bounds_seen: False
+    verdict: SAFE_const
+
+  CALL copyout @ 0xFFFFFFF00A6F3A68
+    size_arg: (const, 0x60, 8)
+    trace: ('const', 96L)
+    tags: const
+    bounds_seen: False
+    verdict: SAFE_const
+
+  CALL copyout @ 0xFFFFFFF00A6F3AC0
+    size_arg: (const, 0x4, 8)
+    trace: ('const', 4L)
+    tags: const
+    bounds_seen: False
+    verdict: SAFE_const
+
+  CALL copyout @ 0xFFFFFFF00A6F3B3C
+    size_arg: (const, 0x400, 8)
+    trace: ('const', 1024L)
+    tags: const
+    bounds_seen: False
+    verdict: SAFE_const
+
+  CALL copyout @ 0xFFFFFFF00A6F3BB0
+    size_arg: (const, 0x4, 8)
+    trace: ('const', 4L)
+    tags: const
+    bounds_seen: False
+    verdict: SAFE_const
+
+  CALL copyout @ 0xFFFFFFF00A6F3BF0
+    size_arg: (const, 0x4, 8)
+    trace: ('const', 4L)
+    tags: const
+    bounds_seen: False
+    verdict: SAFE_const
+
+  CALL copyout @ 0xFFFFFFF00A6F3C40
+    size_arg: (const, 0x4, 8)
+    trace: ('const', 4L)
+    tags: const
+    bounds_seen: False
+    verdict: SAFE_const
+
+  CALL copyout @ 0xFFFFFFF00A6F3CA0
+    size_arg: (const, 0x4, 8)
+    trace: ('const', 4L)
+    tags: const
+    bounds_seen: False
+    verdict: SAFE_const
+
+  CALL copyout @ 0xFFFFFFF00A6F3CE0
+    size_arg: (const, 0x4, 8)
+    trace: ('const', 4L)
+    tags: const
+    bounds_seen: False
+    verdict: SAFE_const
+
+  CALL copyout @ 0xFFFFFFF00A6F3D20
+    size_arg: (const, 0x4, 8)
+    trace: ('const', 4L)
+    tags: const
+    bounds_seen: False
+    verdict: SAFE_const
+
+  CALL copyout @ 0xFFFFFFF00A6F3D60
+    size_arg: (const, 0x4, 8)
+    trace: ('const', 4L)
+    tags: const
+    bounds_seen: False
+    verdict: SAFE_const
+
+  CALL copyout @ 0xFFFFFFF00A6F3DB4
+    size_arg: (unique, 0x4fd00, 4)
+    trace: ('arith', (u'INT_MULT', [('param', None), ('const', 8L)]))
+    tags: arith,const,param
+    arith: INT_MULT
+    bounds_seen: False
+    verdict: PARAM_SIZE
+
+  CALL copyout @ 0xFFFFFFF00A6F3E10
+    size_arg: (const, 0x14, 8)
+    trace: ('const', 20L)
+    tags: const
+    bounds_seen: False
+    verdict: SAFE_const
+
+  CALL copyout @ 0xFFFFFFF00A6F3E74
+    size_arg: (register, 0x4010, 8)
+    trace: ('arith', (u'INT_AND', [('arith', (u'INT_ADD', [('arith', (u'INT_SUB', [('load_dyn', None), ('load_dyn', None)])), ('const', 16L)])), ('const', 4294967295L)]))
+    tags: arith,const,load_dyn
+    arith: INT_ADD,INT_AND,INT_SUB
+    bounds_seen: False
+    verdict: ARITH_SIZE
+
+  CALL copyout @ 0xFFFFFFF00A6F3EE0
+    size_arg: (const, 0x40, 8)
+    trace: ('const', 64L)
+    tags: const
+    bounds_seen: False
+    verdict: SAFE_const
+
+  CALL copyout @ 0xFFFFFFF00A6F3F5C
+    size_arg: (const, 0x8, 8)
+    trace: ('const', 8L)
+    tags: const
+    bounds_seen: False
+    verdict: SAFE_const
+
+  CALL copyout @ 0xFFFFFFF00A6F3F80
+    size_arg: (const, 0x4, 8)
+    trace: ('const', 4L)
+    tags: const
+    bounds_seen: False
+    verdict: SAFE_const
+
 
 ========================================================================
 ### FUN_fffffff00a71705c  entry=0xFFFFFFF00A71705C  size=0x354
 ========================================================================
-  ANALYSIS EXCEPTION: 'ghidra.program.model.pcode.PcodeOpAST' object has no attribute 'getAddress'
+  CALL kalloc_type @ 0xFFFFFFF00A717190
+    size_arg: (const, 0x400, 8)
+    trace: ('const', 1024L)
+    tags: const
+    bounds_seen: False
+    verdict: SAFE_const
+
+  CALL copyout @ 0xFFFFFFF00A717308
+    size_arg: (register, 0x4010, 8)
+    trace: ('arith', (u'INT_AND', [('phi', [('other', None), ('other', None)]), ('const', 4294967295L)]))
+    tags: arith,const,other,phi
+    arith: INT_AND
+    bounds_seen: False
+    verdict: PHI_SIZE
+
+  CALL copyin @ 0xFFFFFFF00A717364
+    size_arg: (register, 0x4010, 8)
+    trace: ('arith', (u'INT_AND', [('phi', [('cycle', None), ('cycle', None)]), ('const', 4294967295L)]))
+    tags: arith,const,cycle,phi
+    arith: INT_AND
+    bounds_seen: False
+    verdict: PHI_SIZE
+
 
 ========================================================================
 ### FUN_fffffff00a731358  entry=0xFFFFFFF00A731358  size=0x9E0
 ========================================================================
-  ANALYSIS EXCEPTION: 'ghidra.program.model.pcode.PcodeOpAST' object has no attribute 'getAddress'
+  CALL kalloc_zone @ 0xFFFFFFF00A731498
+    size_arg: (const, 0x8004, 8)
+    trace: ('const', 32772L)
+    tags: const
+    bounds_seen: False
+    verdict: SAFE_const
+
+  CALL kalloc_type @ 0xFFFFFFF00A7314B4
+    size_arg: (const, 0x184, 8)
+    trace: ('const', 388L)
+    tags: const
+    bounds_seen: False
+    verdict: SAFE_const
+
+  CALL kalloc_type @ 0xFFFFFFF00A731A30
+    size_arg: (const, 0x648, 8)
+    trace: ('const', 1608L)
+    tags: const
+    bounds_seen: False
+    verdict: SAFE_const
+
+  CALL copyout @ 0xFFFFFFF00A731C10
+    size_arg: (const, 0x648, 8)
+    trace: ('const', 1608L)
+    tags: const
+    bounds_seen: False
+    verdict: SAFE_const
+
 
 ========================================================================
 ### FUN_fffffff00a734ba0  entry=0xFFFFFFF00A734BA0  size=0x1C8
 ========================================================================
-  ANALYSIS EXCEPTION: 'ghidra.program.model.pcode.PcodeOpAST' object has no attribute 'getAddress'
+  CALL kalloc_type @ 0xFFFFFFF00A734C04
+    size_arg: (register, 0x4008, 8)
+    trace: ('param', None)
+    tags: param
+    bounds_seen: False
+    verdict: PARAM_SIZE
+
+  CALL copyin @ 0xFFFFFFF00A734C1C
+    size_arg: (register, 0x4008, 8)
+    trace: ('param', None)
+    tags: param
+    bounds_seen: False
+    verdict: PARAM_SIZE
+
 
 ========================================================================
 ### FUN_fffffff00a747d48  entry=0xFFFFFFF00A747D48  size=0x24C
 ========================================================================
-  ANALYSIS EXCEPTION: 'ghidra.program.model.pcode.PcodeOpAST' object has no attribute 'getAddress'
+  CALL kalloc_type @ 0xFFFFFFF00A747DDC
+    size_arg: (unique, 0x22f00, 4)
+    trace: ('arith', (u'INT_ADD', [('load_dyn', None), ('const', 2L)]))
+    tags: arith,const,load_dyn
+    arith: INT_ADD
+    bounds_seen: False
+    verdict: ARITH_SIZE
+
+  CALL copyout @ 0xFFFFFFF00A747F20
+    size_arg: (unique, 0x100000cf, 4)
+    trace: ('phi', [('param', None), ('arith', (u'INT_ADD', [('phi', [('cycle', None), ('arith', (u'INT_ADD', [('cycle', None), ('const', 1L)]))]), ('const', 1L)]))])
+    tags: arith,const,cycle,param,phi
+    arith: INT_ADD
+    bounds_seen: False
+    verdict: PARAM_SIZE
+
 
 ========================================================================
 ### FUN_fffffff00a74c844  entry=0xFFFFFFF00A74C844  size=0x640
 ========================================================================
-  ANALYSIS EXCEPTION: 'ghidra.program.model.pcode.PcodeOpAST' object has no attribute 'getAddress'
+  CALL kalloc_type @ 0xFFFFFFF00A74C8E8
+    size_arg: (unique, 0x4fd00, 4)
+    trace: ('arith', (u'INT_MULT', [('other', None), ('const', 24L)]))
+    tags: arith,const,other
+    arith: INT_MULT
+    bounds_seen: False
+    verdict: ARITH_SIZE
+
+  CALL copyin @ 0xFFFFFFF00A74C9D0
+    size_arg: (unique, 0x4fd00, 4)
+    trace: ('arith', (u'INT_LEFT', [('other', None), ('const', 2L)]))
+    tags: arith,const,other
+    arith: INT_LEFT
+    bounds_seen: False
+    verdict: ARITH_SIZE
+
+  CALL copyin @ 0xFFFFFFF00A74CA1C
+    size_arg: (unique, 0x4fd00, 4)
+    trace: ('arith', (u'INT_LEFT', [('other', None), ('const', 2L)]))
+    tags: arith,const,other
+    arith: INT_LEFT
+    bounds_seen: False
+    verdict: ARITH_SIZE
+
+  CALL copyin @ 0xFFFFFFF00A74CA68
+    size_arg: (unique, 0x4fd00, 4)
+    trace: ('arith', (u'INT_LEFT', [('other', None), ('const', 2L)]))
+    tags: arith,const,other
+    arith: INT_LEFT
+    bounds_seen: False
+    verdict: ARITH_SIZE
+
 
 ========================================================================
 ### FUN_fffffff00a74d070  entry=0xFFFFFFF00A74D070  size=0x8C4
 ========================================================================
-  ANALYSIS EXCEPTION: 'ghidra.program.model.pcode.PcodeOpAST' object has no attribute 'getAddress'
+  CALL kalloc_zone @ 0xFFFFFFF00A74D408
+    size_arg: (const, 0x4, 8)
+    trace: ('const', 4L)
+    tags: const
+    bounds_seen: False
+    verdict: SAFE_const
+
+  CALL kalloc_zone @ 0xFFFFFFF00A74D420
+    size_arg: (const, 0x4, 8)
+    trace: ('const', 4L)
+    tags: const
+    bounds_seen: False
+    verdict: SAFE_const
+
+  CALL copyout @ 0xFFFFFFF00A74D7A8
+    size_arg: (unique, 0x4fd00, 4)
+    trace: ('arith', (u'INT_LEFT', [('other', None), ('const', 2L)]))
+    tags: arith,const,other
+    arith: INT_LEFT
+    bounds_seen: False
+    verdict: ARITH_SIZE
+
+  CALL copyout @ 0xFFFFFFF00A74D7E8
+    size_arg: (unique, 0x4fd00, 4)
+    trace: ('arith', (u'INT_LEFT', [('other', None), ('const', 2L)]))
+    tags: arith,const,other
+    arith: INT_LEFT
+    bounds_seen: False
+    verdict: ARITH_SIZE
+
+  CALL copyout @ 0xFFFFFFF00A74D828
+    size_arg: (unique, 0x4fd00, 4)
+    trace: ('arith', (u'INT_LEFT', [('other', None), ('const', 2L)]))
+    tags: arith,const,other
+    arith: INT_LEFT
+    bounds_seen: False
+    verdict: ARITH_SIZE
+
 
 ========================================================================
 ### FUN_fffffff00a753408  entry=0xFFFFFFF00A753408  size=0xF0
 ========================================================================
-  ANALYSIS EXCEPTION: 'ghidra.program.model.pcode.PcodeOpAST' object has no attribute 'getAddress'
+  CALL kalloc_type @ 0xFFFFFFF00A75345C
+    size_arg: (register, 0x4008, 8)
+    trace: ('arith', (u'INT_AND', [('phi', [('load_dyn', None), ('cycle', None)]), ('const', 4092L)]))
+    tags: arith,const,cycle,load_dyn,phi
+    arith: INT_AND
+    bounds_seen: False
+    verdict: FIELD_SIZE
+
 
 ========================================================================
 ### FUN_fffffff00a78a39c  entry=0xFFFFFFF00A78A39C  size=0x13C
 ========================================================================
-  ANALYSIS EXCEPTION: 'ghidra.program.model.pcode.PcodeOpAST' object has no attribute 'getAddress'
+  CALL kalloc_type @ 0xFFFFFFF00A78A414
+    size_arg: (register, 0x4018, 8)
+    trace: ('param', None)
+    tags: param
+    bounds_seen: False
+    verdict: PARAM_SIZE
+
 
 ========================================================================
 ### FUN_fffffff00a78e070  entry=0xFFFFFFF00A78E070  size=0x7C8
 ========================================================================
-  ANALYSIS EXCEPTION: 'ghidra.program.model.pcode.PcodeOpAST' object has no attribute 'getAddress'
+  CALL kalloc_type @ 0xFFFFFFF00A78E144
+    size_arg: (register, 0x40a8, 8)
+    trace: ('arith', (u'INT_MULT', [('arith', (u'INT_ZEXT', [('phi', [('load_dyn', None), ('phi', [('other', None), ('cycle', None)])])])), ('const', 56L)]))
+    tags: arith,const,cycle,load_dyn,other,phi
+    arith: INT_MULT,INT_ZEXT
+    bounds_seen: False
+    verdict: ARITH_SIZE
+
+  CALL kalloc_type @ 0xFFFFFFF00A78E184
+    size_arg: (register, 0x40b0, 8)
+    trace: ('arith', (u'INT_MULT', [('arith', (u'INT_ZEXT', [('load_dyn', None)])), ('const', 32L)]))
+    tags: arith,const,load_dyn
+    arith: INT_MULT,INT_ZEXT
+    bounds_seen: False
+    verdict: ARITH_SIZE
+
+  CALL kalloc_type @ 0xFFFFFFF00A78E1B0
+    size_arg: (register, 0x40b8, 8)
+    trace: ('arith', (u'INT_MULT', [('phi', [('cycle', None), ('cycle', None)]), ('arith', (u'INT_ZEXT', [('load_dyn', None)]))]))
+    tags: arith,cycle,load_dyn,phi
+    arith: INT_MULT,INT_ZEXT
+    bounds_seen: False
+    verdict: ARITH_SIZE
+
+  CALL copyin @ 0xFFFFFFF00A78E1F4
+    size_arg: (register, 0x4010, 8)
+    trace: ('arith', (u'INT_MULT', [('phi', [('cycle', None), ('cycle', None)]), ('arith', (u'INT_ZEXT', [('load_dyn', None)]))]))
+    tags: arith,cycle,load_dyn,phi
+    arith: INT_MULT,INT_ZEXT
+    bounds_seen: False
+    verdict: ARITH_SIZE
+
 
 ========================================================================
 ### FUN_fffffff00a7a6318  entry=0xFFFFFFF00A7A6318  size=0x29C4
 ========================================================================
-  ANALYSIS EXCEPTION: 'ghidra.program.model.pcode.PcodeOpAST' object has no attribute 'getAddress'
+  CALL copyin @ 0xFFFFFFF00A7A640C
+    size_arg: (const, 0x40, 8)
+    trace: ('const', 64L)
+    tags: const
+    bounds_seen: False
+    verdict: SAFE_const
+
+  CALL copyin @ 0xFFFFFFF00A7A66CC
+    size_arg: (const, 0x20, 8)
+    trace: ('const', 32L)
+    tags: const
+    bounds_seen: False
+    verdict: SAFE_const
+
+  CALL copyin @ 0xFFFFFFF00A7A67D0
+    size_arg: (const, 0x20, 8)
+    trace: ('const', 32L)
+    tags: const
+    bounds_seen: False
+    verdict: SAFE_const
+
+  CALL copyin @ 0xFFFFFFF00A7A682C
+    size_arg: (const, 0x40, 8)
+    trace: ('const', 64L)
+    tags: const
+    bounds_seen: False
+    verdict: SAFE_const
+
+  CALL kalloc_type @ 0xFFFFFFF00A7A6938
+    size_arg: (register, 0x40b8, 8)
+    trace: ('arith', (u'INT_ZEXT', [('arith', (u'INT_LEFT', [('phi', [('other', None), ('other', None)]), ('const', 2L)]))]))
+    tags: arith,const,other,phi
+    arith: INT_LEFT,INT_ZEXT
+    bounds_seen: False
+    verdict: ARITH_SIZE
+
+  CALL copyout @ 0xFFFFFFF00A7A6BC0
+    size_arg: (unique, 0x7ff00, 8)
+    trace: ('arith', (u'INT_LEFT', [('phi', [('cycle', None), ('phi', [('cycle', None), ('cycle', None)])]), ('const', 2L)]))
+    tags: arith,const,cycle,phi
+    arith: INT_LEFT
+    bounds_seen: False
+    verdict: ARITH_SIZE
+
+  CALL copyout @ 0xFFFFFFF00A7A7140
+    size_arg: (const, 0x40, 8)
+    trace: ('const', 64L)
+    tags: const
+    bounds_seen: False
+    verdict: SAFE_const
+
+  CALL copyin @ 0xFFFFFFF00A7A7360
+    size_arg: (const, 0x20, 8)
+    trace: ('const', 32L)
+    tags: const
+    bounds_seen: False
+    verdict: SAFE_const
+
+  CALL copyout @ 0xFFFFFFF00A7A74EC
+    size_arg: (register, 0x4010, 8)
+    trace: ('phi', [('cycle', None), ('cycle', None), ('cycle', None), ('cycle', None), ('cycle', None), ('cycle', None), ('cycle', None), ('cycle', None), ('cycle', None), ('cycle', None), ('cycle', None)])
+    tags: cycle,phi
+    bounds_seen: False
+    verdict: PHI_SIZE
+
+  CALL copyout @ 0xFFFFFFF00A7A752C
+    size_arg: (register, 0x4010, 8)
+    trace: ('phi', [('cycle', None), ('cycle', None)])
+    tags: cycle,phi
+    bounds_seen: False
+    verdict: PHI_SIZE
+
+  CALL kalloc_type @ 0xFFFFFFF00A7A7610
+    size_arg: (unique, 0x3b200, 4)
+    trace: ('phi', [('other', None), ('other', None)])
+    tags: other,phi
+    bounds_seen: False
+    verdict: PHI_SIZE
+
+  CALL copyin @ 0xFFFFFFF00A7A80F4
+    size_arg: (register, 0x4010, 8)
+    trace: ('arith', (u'INT_AND', [('param', None), ('const', 4294967295L)]))
+    tags: arith,const,param
+    arith: INT_AND
+    bounds_seen: False
+    verdict: PARAM_SIZE
+
+  CALL copyout @ 0xFFFFFFF00A7A8898
+    size_arg: (register, 0x40a0, 8)
+    trace: ('phi', [('cycle', None), ('cycle', None), ('cycle', None)])
+    tags: cycle,phi
+    bounds_seen: False
+    verdict: PHI_SIZE
+
+  CALL kalloc_type @ 0xFFFFFFF00A7A899C
+    size_arg: (register, 0x40b8, 8)
+    trace: ('arith', (u'INT_LEFT', [('call_ret', 18446744005159867752L), ('const', 4L)]))
+    tags: arith,call_ret,const
+    arith: CALL@0xFFFFFFF00A1ED568,INT_LEFT
+    bounds_seen: False
+    verdict: ARITH_SIZE
+
+  CALL copyout @ 0xFFFFFFF00A7A89DC
+    size_arg: (unique, 0x3b500, 8)
+    trace: ('phi', [('other', None), ('other', None)])
+    tags: other,phi
+    bounds_seen: False
+    verdict: PHI_SIZE
+
+  CALL copyout @ 0xFFFFFFF00A7A8CA4
+    size_arg: (const, 0x4, 8)
+    trace: ('const', 4L)
+    tags: const
+    bounds_seen: False
+    verdict: SAFE_const
+
 
 ========================================================================
 ### FUN_fffffff00a7aa018  entry=0xFFFFFFF00A7AA018  size=0x1F4
 ========================================================================
-  ANALYSIS EXCEPTION: 'ghidra.program.model.pcode.PcodeOpAST' object has no attribute 'getAddress'
+  CALL kalloc_type @ 0xFFFFFFF00A7AA070
+    size_arg: (unique, 0x7ff00, 8)
+    trace: ('arith', (u'INT_LEFT', [('arith', (u'INT_ZEXT', [('phi', [('other', None), ('other', None)])])), ('const', 3L)]))
+    tags: arith,const,other,phi
+    arith: INT_LEFT,INT_ZEXT
+    bounds_seen: False
+    verdict: ARITH_SIZE
+
+  CALL copyout @ 0xFFFFFFF00A7AA19C
+    size_arg: (register, 0x4010, 8)
+    trace: ('arith', (u'INT_AND', [('phi', [('cycle', None), ('cycle', None)]), ('const', 34359738360L)]))
+    tags: arith,const,cycle,phi
+    arith: INT_AND
+    bounds_seen: False
+    verdict: PHI_SIZE
+
 
 ========================================================================
 ### FUN_fffffff00a7aa95c  entry=0xFFFFFFF00A7AA95C  size=0xE8
 ========================================================================
-  ANALYSIS EXCEPTION: 'ghidra.program.model.pcode.PcodeOpAST' object has no attribute 'getAddress'
+  CALL kalloc_type @ 0xFFFFFFF00A7AA9C0
+    size_arg: (unique, 0x4fd00, 4)
+    trace: ('arith', (u'INT_LEFT', [('phi', [('other', None), ('other', None)]), ('const', 3L)]))
+    tags: arith,const,other,phi
+    arith: INT_LEFT
+    bounds_seen: False
+    verdict: ARITH_SIZE
+
+  CALL copyout @ 0xFFFFFFF00A7AA9FC
+    size_arg: (register, 0x4010, 8)
+    trace: ('arith', (u'INT_SEXT', [('call_ret', 18446744005160453204L)]))
+    tags: arith,call_ret
+    arith: CALL@0xFFFFFFF00A27C454,INT_SEXT
+    bounds_seen: False
+    verdict: CALL_RET_SIZE
+
 
 ========================================================================
 ### FUN_fffffff00a7ab224  entry=0xFFFFFFF00A7AB224  size=0xD0
 ========================================================================
-  ANALYSIS EXCEPTION: 'ghidra.program.model.pcode.PcodeOpAST' object has no attribute 'getAddress'
+  CALL kalloc_type @ 0xFFFFFFF00A7AB27C
+    size_arg: (register, 0x4098, 8)
+    trace: ('arith', (u'INT_AND', [('param', None), ('const', 4294967295L)]))
+    tags: arith,const,param
+    arith: INT_AND
+    bounds_seen: False
+    verdict: PARAM_SIZE
+
+  CALL copyout @ 0xFFFFFFF00A7AB2A8
+    size_arg: (register, 0x4010, 8)
+    trace: ('arith', (u'INT_SEXT', [('other', None)]))
+    tags: arith,other
+    arith: INT_SEXT
+    bounds_seen: False
+    verdict: unknown
+
 
 ========================================================================
 ### FUN_fffffff00a7ab31c  entry=0xFFFFFFF00A7AB31C  size=0x22C
 ========================================================================
-  ANALYSIS EXCEPTION: 'ghidra.program.model.pcode.PcodeOpAST' object has no attribute 'getAddress'
+  CALL kalloc_type @ 0xFFFFFFF00A7AB378
+    size_arg: (register, 0x40a8, 8)
+    trace: ('arith', (u'INT_LEFT', [('phi', [('other', None), ('other', None), ('other', None)]), ('const', 3L)]))
+    tags: arith,const,other,phi
+    arith: INT_LEFT
+    bounds_seen: False
+    verdict: ARITH_SIZE
+
+  CALL copyout @ 0xFFFFFFF00A7AB430
+    size_arg: (unique, 0x3b500, 8)
+    trace: ('phi', [('other', None), ('other', None)])
+    tags: other,phi
+    bounds_seen: False
+    verdict: PHI_SIZE
+
 
 ========================================================================
 ### FUN_fffffff00a7ab988  entry=0xFFFFFFF00A7AB988  size=0xF0
 ========================================================================
-  ANALYSIS EXCEPTION: 'ghidra.program.model.pcode.PcodeOpAST' object has no attribute 'getAddress'
+  CALL kalloc_type @ 0xFFFFFFF00A7AB9E4
+    size_arg: (register, 0x40a0, 8)
+    trace: ('arith', (u'INT_ZEXT', [('arith', (u'INT_AND', [('phi', [('other', None), ('other', None)]), ('const', 262136L)]))]))
+    tags: arith,const,other,phi
+    arith: INT_AND,INT_ZEXT
+    bounds_seen: False
+    verdict: PHI_SIZE
+
+  CALL copyout @ 0xFFFFFFF00A7ABA1C
+    size_arg: (unique, 0x3b500, 8)
+    trace: ('phi', [('other', None), ('other', None)])
+    tags: other,phi
+    bounds_seen: False
+    verdict: PHI_SIZE
+
 
 ========================================================================
 ### FUN_fffffff00a7ef890  entry=0xFFFFFFF00A7EF890  size=0xB90
 ========================================================================
-  ANALYSIS EXCEPTION: 'ghidra.program.model.pcode.PcodeOpAST' object has no attribute 'getAddress'
+  CALL kalloc_type @ 0xFFFFFFF00A7EFB0C
+    size_arg: (register, 0x40b0, 8)
+    trace: ('arith', (u'INT_AND', [('phi', [('cycle', None), ('cycle', None)]), ('const', 4294967295L)]))
+    tags: arith,const,cycle,phi
+    arith: INT_AND
+    bounds_seen: False
+    verdict: PHI_SIZE
+
 
 ========================================================================
 ### FUN_fffffff00a7f070c  entry=0xFFFFFFF00A7F070C  size=0xDC4
 ========================================================================
-  ANALYSIS EXCEPTION: 'ghidra.program.model.pcode.PcodeOpAST' object has no attribute 'getAddress'
+  CALL kalloc_type @ 0xFFFFFFF00A7F0D8C
+    size_arg: (register, 0x40a0, 8)
+    trace: ('arith', (u'INT_ZEXT', [('arith', (u'INT_LEFT', [('phi', [('other', None), ('cycle', None)]), ('const', 4L)]))]))
+    tags: arith,const,cycle,other,phi
+    arith: INT_LEFT,INT_ZEXT
+    bounds_seen: False
+    verdict: ARITH_SIZE
+
+  CALL kalloc_type @ 0xFFFFFFF00A7F1178
+    size_arg: (register, 0x40a0, 8)
+    trace: ('arith', (u'INT_ZEXT', [('arith', (u'INT_LEFT', [('phi', [('other', None), ('cycle', None)]), ('const', 4L)]))]))
+    tags: arith,const,cycle,other,phi
+    arith: INT_LEFT,INT_ZEXT
+    bounds_seen: False
+    verdict: ARITH_SIZE
+
