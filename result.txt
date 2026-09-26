@@ -3,154 +3,1068 @@ name = kernelcache.release.iPhone14,5
 has_disasm=True has_create=True
 SOURCES: 24
 SINKS: kalloc_type,kalloc_zone,copyin,copyout,memmove,memset
+MAX_DEPTH=8 MAX_ANALYZED=800 BUDGET=2400s
 
-  [FUN_fffffff00a4e5c28 @ 0xFFFFFFF00A4E5C28 d=0] no taint propagated
 
 ========================================================================
 ### SOURCE necp_client_action @ 0xFFFFFFF00A4E5C28
 ========================================================================
-  no tainted sinks reached
-  [FUN_fffffff00a4e843c @ 0xFFFFFFF00A4E843C d=0] no taint propagated
+    [FUN_fffffff00a4e5c28 @ 0xFFFFFFF00A4E5C28 d=0] params_found=3 cats=[0, 1, 2] ops=161 seed=3 tainted=11 iters=3
+    [FUN_fffffff00a6cc6f8 @ 0xFFFFFFF00A6CC6F8 d=1] params_found=5 cats=[0, 1, 2, 3, 4] ops=193 seed=2 tainted=54 iters=3
+    [FUN_fffffff00a9f8128 @ 0xFFFFFFF00A9F8128 d=1] params_found=3 cats=[0, 1, 2] ops=278 seed=2 tainted=40 iters=4
+    [FUN_fffffff00a6cc904 @ 0xFFFFFFF00A6CC904 d=1] params_found=4 cats=[0, 1, 2, 3] ops=200 seed=2 tainted=60 iters=5
+    [FUN_fffffff00a4e7be8 @ 0xFFFFFFF00A4E7BE8 d=1] params_found=3 cats=[0, 1, 2] ops=688 seed=2 tainted=112 iters=4
+    [FUN_fffffff00a4eba0c @ 0xFFFFFFF00A4EBA0C d=1] params_found=3 cats=[0, 1, 2] ops=525 seed=2 tainted=56 iters=3
+    [FUN_fffffff00a4e9904 @ 0xFFFFFFF00A4E9904 d=1] params_found=3 cats=[0, 1, 2] ops=4702 seed=2 tainted=121 iters=4
+    [FUN_fffffff00a4ece88 @ 0xFFFFFFF00A4ECE88 d=1] params_found=2 cats=[0, 1] ops=452 seed=2 tainted=44 iters=3
+    [FUN_fffffff00a4ebd58 @ 0xFFFFFFF00A4EBD58 d=1] params_found=3 cats=[0, 1, 2] ops=1677 seed=2 tainted=56 iters=3
+    [FUN_fffffff00a4ecc4c @ 0xFFFFFFF00A4ECC4C d=1] params_found=2 cats=[0, 1] ops=347 seed=2 tainted=31 iters=3
+    [FUN_fffffff00a4ea778 @ 0xFFFFFFF00A4EA778 d=1] params_found=2 cats=[0, 1] ops=87 seed=2 tainted=17 iters=3
+    [FUN_fffffff00a4ea8a0 @ 0xFFFFFFF00A4EA8A0 d=1] params_found=3 cats=[0, 1, 2] ops=321 seed=2 tainted=31 iters=3
+    [FUN_fffffff00a4e76f4 @ 0xFFFFFFF00A4E76F4 d=1] params_found=3 cats=[0, 1, 2] ops=1642 seed=2 tainted=69 iters=3
+    [FUN_fffffff00a4e843c @ 0xFFFFFFF00A4E843C d=1] params_found=3 cats=[0, 1, 2] ops=11359 seed=2 tainted=262 iters=4
+    [FUN_fffffff00a4ec5d8 @ 0xFFFFFFF00A4EC5D8 d=1] params_found=2 cats=[0, 1] ops=808 seed=2 tainted=67 iters=4
+    [FUN_fffffff00a4e60dc @ 0xFFFFFFF00A4E60DC d=1] params_found=4 cats=[0, 1, 2, 3] ops=10917 seed=3 tainted=184 iters=5
+    [FUN_fffffff00a4eb2b4 @ 0xFFFFFFF00A4EB2B4 d=1] params_found=2 cats=[0, 1] ops=1230 seed=2 tainted=27 iters=5
+    [FUN_fffffff00a4e93c4 @ 0xFFFFFFF00A4E93C4 d=1] params_found=3 cats=[0, 1, 2] ops=3333 seed=2 tainted=73 iters=5
+    [FUN_fffffff00a4e80fc @ 0xFFFFFFF00A4E80FC d=1] params_found=3 cats=[0, 1, 2] ops=329 seed=2 tainted=72 iters=4
+    [FUN_fffffff00a4ea0b4 @ 0xFFFFFFF00A4EA0B4 d=1] params_found=3 cats=[0, 1, 2] ops=3157 seed=2 tainted=108 iters=3
+    [FUN_fffffff00a4eac7c @ 0xFFFFFFF00A4EAC7C d=1] params_found=2 cats=[0, 1] ops=1705 seed=2 tainted=139 iters=5
+    [FUN_fffffff00a4eab50 @ 0xFFFFFFF00A4EAB50 d=1] params_found=2 cats=[0, 1] ops=86 seed=2 tainted=17 iters=3
+    [FUN_fffffff00a4eb704 @ 0xFFFFFFF00A4EB704 d=1] params_found=3 cats=[0, 1, 2] ops=451 seed=2 tainted=56 iters=3
+    [FUN_fffffff00a4e7158 @ 0xFFFFFFF00A4E7158 d=1] params_found=4 cats=[0, 1, 2, 3] ops=1405 seed=3 tainted=79 iters=5
+    [FUN_fffffff00a4ec264 @ 0xFFFFFFF00A4EC264 d=1] params_found=3 cats=[0, 1, 2] ops=252 seed=2 tainted=61 iters=5
+    [FUN_fffffff00a4ec9ec @ 0xFFFFFFF00A4EC9EC d=1] params_found=2 cats=[0, 1] ops=625 seed=2 tainted=44 iters=4
+    [FUN_fffffff00a4ed170 @ 0xFFFFFFF00A4ED170 d=1] params_found=3 cats=[0, 1, 2] ops=2211 seed=2 tainted=44 iters=3
+    [FUN_fffffff00a206b60 @ 0xFFFFFFF00A206B60 d=2] params_found=3 cats=[0, 1, 2] ops=164 seed=1 tainted=47 iters=4
+    [FUN_fffffff00a20602c @ 0xFFFFFFF00A20602C d=2] params_found=3 cats=[0, 1, 2] ops=767 seed=1 tainted=122 iters=4
+    [FUN_fffffff00aa3d104 @ 0xFFFFFFF00AA3D104 d=2] params_found=1 cats=[0] ops=8 seed=1 tainted=3 iters=2
+    [FUN_fffffff00aa380fc @ 0xFFFFFFF00AA380FC d=2] params_found=0 cats=[] ops=? seed=0 tainted=0 iters=?
+    [FUN_fffffff00a26c1cc @ 0xFFFFFFF00A26C1CC d=2] params_found=8 cats=[0, 1, 2, 3, 4] ops=92 seed=2 tainted=20 iters=5
+    [FUN_fffffff00aa3d0d4 @ 0xFFFFFFF00AA3D0D4 d=2] params_found=0 cats=[] ops=? seed=0 tainted=0 iters=?
+    [FUN_fffffff00a33372c @ 0xFFFFFFF00A33372C d=2] params_found=11 cats=[0, 1, 2] ops=23 seed=4 tainted=10 iters=3
+    [FUN_fffffff00a4db8d4 @ 0xFFFFFFF00A4DB8D4 d=2] params_found=2 cats=[0, 1] ops=323 seed=2 tainted=55 iters=6
+    [FUN_fffffff00a4f26f0 @ 0xFFFFFFF00A4F26F0 d=2] params_found=5 cats=[0, 1, 2, 3, 4] ops=1621 seed=4 tainted=264 iters=5
+    [FUN_fffffff00a4dc948 @ 0xFFFFFFF00A4DC948 d=2] params_found=1 cats=[0] ops=682 seed=1 tainted=43 iters=6
+    [FUN_fffffff00a701260 @ 0xFFFFFFF00A701260 d=2] params_found=1 cats=[0] ops=81 seed=1 tainted=32 iters=4
+    [FUN_fffffff00a700f94 @ 0xFFFFFFF00A700F94 d=2] params_found=1 cats=[0] ops=464 seed=1 tainted=74 iters=4
+    [FUN_fffffff00a4ed8bc @ 0xFFFFFFF00A4ED8BC d=2] params_found=2 cats=[0, 1] ops=935 seed=2 tainted=209 iters=4
+    [FUN_fffffff00a4db9f0 @ 0xFFFFFFF00A4DB9F0 d=2] params_found=2 cats=[0, 1] ops=387 seed=2 tainted=78 iters=4
+    [FUN_fffffff00a4edd74 @ 0xFFFFFFF00A4EDD74 d=2] params_found=4 cats=[0, 1, 2, 3] ops=278 seed=3 tainted=67 iters=4
+    [FUN_fffffff00a501454 @ 0xFFFFFFF00A501454 d=2] params_found=16 cats=[0, 1, 2, 3, 4, 5, 6, 7, 8] ops=3544 seed=10 tainted=286 iters=5
+    [FUN_fffffff00a4edce8 @ 0xFFFFFFF00A4EDCE8 d=2] params_found=1 cats=[0] ops=34 seed=1 tainted=10 iters=3
+    [FUN_fffffff00a4e19b4 @ 0xFFFFFFF00A4E19B4 d=2] params_found=9 cats=[0, 1, 2, 3, 4, 5, 6, 7, 8] ops=355 seed=7 tainted=126 iters=5
+    [FUN_fffffff00a4edf3c @ 0xFFFFFFF00A4EDF3C d=2] params_found=1 cats=[0] ops=1703 seed=1 tainted=44 iters=3
+    [FUN_fffffff00a4ee24c @ 0xFFFFFFF00A4EE24C d=2] params_found=4 cats=[0, 1, 2, 3] ops=1415 seed=4 tainted=114 iters=5
+    [FUN_fffffff00a4e3278 @ 0xFFFFFFF00A4E3278 d=2] params_found=1 cats=[0] ops=83 seed=1 tainted=33 iters=3
+    [FUN_fffffff00a206b60 @ 0xFFFFFFF00A206B60 d=2] params_found=3 cats=[0, 1, 2] ops=164 seed=2 tainted=49 iters=4
+    [FUN_fffffff00aa14ca8 @ 0xFFFFFFF00AA14CA8 d=2] params_found=2 cats=[0, 1] ops=239 seed=1 tainted=25 iters=4
+    [FUN_fffffff00aa14ecc @ 0xFFFFFFF00AA14ECC d=2] params_found=2 cats=[0, 1] ops=163 seed=1 tainted=4 iters=2
+    [FUN_fffffff00a4c30c8 @ 0xFFFFFFF00A4C30C8 d=2] params_found=4 cats=[0, 1, 2, 3] ops=175 seed=2 tainted=7 iters=2
+    [FUN_fffffff00a33372c @ 0xFFFFFFF00A33372C d=2] params_found=11 cats=[0, 1, 2] ops=23 seed=8 tainted=14 iters=3
+    [FUN_fffffff00a5af190 @ 0xFFFFFFF00A5AF190 d=2] params_found=3 cats=[0, 1, 2] ops=480 seed=3 tainted=80 iters=4
+    [FUN_fffffff00a5af698 @ 0xFFFFFFF00A5AF698 d=2] params_found=4 cats=[0, 1, 2, 3] ops=650 seed=4 tainted=120 iters=4
+    [FUN_fffffff00a4c2f08 @ 0xFFFFFFF00A4C2F08 d=2] params_found=4 cats=[0, 1, 2, 3] ops=152 seed=3 tainted=12 iters=3
+    [FUN_fffffff00a502390 @ 0xFFFFFFF00A502390 d=2] params_found=3 cats=[0, 1, 2] ops=121 seed=2 tainted=9 iters=3
+    [FUN_fffffff00a502284 @ 0xFFFFFFF00A502284 d=2] params_found=2 cats=[0, 1] ops=71 seed=2 tainted=5 iters=2
+    [FUN_fffffff00a8baa5c @ 0xFFFFFFF00A8BAA5C d=2] params_found=1 cats=[1] ops=3 seed=1 tainted=1 iters=1
+    [FUN_fffffff00a4e2e0c @ 0xFFFFFFF00A4E2E0C d=2] params_found=3 cats=[0, 1, 2] ops=346 seed=1 tainted=70 iters=3
+    [FUN_fffffff00a4db38c @ 0xFFFFFFF00A4DB38C d=2] params_found=2 cats=[0, 1] ops=194 seed=1 tainted=79 iters=3
+    [FUN_fffffff00a4daac8 @ 0xFFFFFFF00A4DAAC8 d=2] params_found=2 cats=[0, 1] ops=178 seed=2 tainted=71 iters=3
+    [FUN_fffffff00a4da150 @ 0xFFFFFFF00A4DA150 d=2] params_found=2 cats=[0, 1] ops=194 seed=1 tainted=79 iters=3
+    [FUN_fffffff00a4d97dc @ 0xFFFFFFF00A4D97DC d=2] params_found=2 cats=[0, 1] ops=178 seed=2 tainted=71 iters=3
+    [FUN_fffffff00a25a3a8 @ 0xFFFFFFF00A25A3A8 d=2] params_found=11 cats=[0, 1, 2, 3, 4, 5, 6] ops=695 seed=1 tainted=120 iters=7
+    [FUN_fffffff00a4e5284 @ 0xFFFFFFF00A4E5284 d=2] params_found=2 cats=[0, 1] ops=845 seed=2 tainted=112 iters=4
+    [FUN_fffffff00a201000 @ 0xFFFFFFF00A201000 d=2] params_found=6 cats=[0, 1, 2, 4] ops=269 seed=3 tainted=49 iters=4
+    [FUN_fffffff00a4ed864 @ 0xFFFFFFF00A4ED864 d=2] params_found=0 cats=[] ops=? seed=0 tainted=0 iters=?
+    [FUN_fffffff00a4f1aa4 @ 0xFFFFFFF00A4F1AA4 d=2] params_found=4 cats=[0, 1] ops=51 seed=4 tainted=23 iters=4
+    [FUN_fffffff00a4f1b5c @ 0xFFFFFFF00A4F1B5C d=2] params_found=2 cats=[0, 1] ops=531 seed=2 tainted=62 iters=5
+    [FUN_fffffff00a208a88 @ 0xFFFFFFF00A208A88 d=2] params_found=1 cats=[0] ops=126 seed=1 tainted=29 iters=3
+    [FUN_fffffff00a207ed8 @ 0xFFFFFFF00A207ED8 d=2] params_found=1 cats=[0] ops=38 seed=1 tainted=15 iters=4
+    [FUN_fffffff00a4e575c @ 0xFFFFFFF00A4E575C d=2] params_found=4 cats=[0, 1, 2, 3] ops=2184 seed=3 tainted=111 iters=4
+    [FUN_fffffff00a4dd078 @ 0xFFFFFFF00A4DD078 d=2] params_found=11 cats=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10] ops=287 seed=5 tainted=59 iters=5
+    [FUN_fffffff00a4c2acc @ 0xFFFFFFF00A4C2ACC d=2] params_found=6 cats=[0, 1, 2, 3, 4, 5] ops=159 seed=1 tainted=1 iters=1
+    [FUN_fffffff00a6c8d88 @ 0xFFFFFFF00A6C8D88 d=2] params_found=1 cats=[0] ops=38 seed=1 tainted=14 iters=3
+    [FUN_fffffff00a9ba918 @ 0xFFFFFFF00A9BA918 d=2] params_found=2 cats=[0, 1] ops=35 seed=1 tainted=7 iters=2
+    [FUN_fffffff00a8ba660 @ 0xFFFFFFF00A8BA660 d=2] params_found=1 cats=[0] ops=38 seed=1 tainted=10 iters=3
+    [FUN_fffffff00a201000 @ 0xFFFFFFF00A201000 d=2] params_found=6 cats=[0, 1, 2, 4] ops=269 seed=1 tainted=35 iters=4
+    [FUN_fffffff00a205f18 @ 0xFFFFFFF00A205F18 d=2] params_found=2 cats=[0, 1] ops=55 seed=1 tainted=20 iters=4
+    [FUN_fffffff00a277224 @ 0xFFFFFFF00A277224 d=2] params_found=4 cats=[0, 1] ops=99 seed=1 tainted=43 iters=4
+    [FUN_fffffff00a4dd4cc @ 0xFFFFFFF00A4DD4CC d=2] params_found=4 cats=[0, 1, 2, 3] ops=16140 seed=4 tainted=752 iters=7
+    [FUN_fffffff00a4ed5d4 @ 0xFFFFFFF00A4ED5D4 d=2] params_found=1 cats=[0] ops=39 seed=1 tainted=13 iters=2
+    [FUN_fffffff00a7003bc @ 0xFFFFFFF00A7003BC d=2] params_found=3 cats=[0, 1, 2] ops=18 seed=1 tainted=6 iters=3
+    [FUN_fffffff00a701958 @ 0xFFFFFFF00A701958 d=2] params_found=1 cats=[0] ops=52 seed=1 tainted=18 iters=3
+    [FUN_fffffff00a7cda50 @ 0xFFFFFFF00A7CDA50 d=2] params_found=2 cats=[0, 1] ops=116 seed=2 tainted=15 iters=2
+    [FUN_fffffff00a7037a8 @ 0xFFFFFFF00A7037A8 d=2] params_found=5 cats=[0, 1, 2] ops=16 seed=2 tainted=4 iters=2
+    [FUN_fffffff00a3336f0 @ 0xFFFFFFF00A3336F0 d=2] params_found=8 cats=[0, 1, 2] ops=31 seed=6 tainted=9 iters=2
+    [FUN_fffffff00a7c6378 @ 0xFFFFFFF00A7C6378 d=2] params_found=7 cats=[0, 1, 2, 3, 4, 5, 6] ops=384 seed=4 tainted=12 iters=3
+    [FUN_fffffff00aa3d104 @ 0xFFFFFFF00AA3D104 d=2] params_found=1 cats=[0] ops=? seed=0 tainted=0 iters=?
+    [FUN_fffffff00a7c848c @ 0xFFFFFFF00A7C848C d=2] params_found=7 cats=[0, 1, 2, 3, 4, 5, 6] ops=1548 seed=5 tainted=109 iters=4
+    [FUN_fffffff00a4f6e2c @ 0xFFFFFFF00A4F6E2C d=2] params_found=3 cats=[0, 1, 2] ops=185 seed=2 tainted=61 iters=3
+    [FUN_fffffff00a4f7044 @ 0xFFFFFFF00A4F7044 d=2] params_found=1 cats=[0] ops=18 seed=1 tainted=1 iters=1
+    [FUN_fffffff00a4d9940 @ 0xFFFFFFF00A4D9940 d=2] params_found=2 cats=[0, 1] ops=57 seed=2 tainted=22 iters=3
+    [FUN_fffffff00a207758 @ 0xFFFFFFF00A207758 d=2] params_found=1 cats=[0] ops=47 seed=1 tainted=22 iters=4
+    [FUN_fffffff00a4da2b8 @ 0xFFFFFFF00A4DA2B8 d=2] params_found=2 cats=[0, 1] ops=68 seed=1 tainted=29 iters=4
+    [FUN_fffffff00a4f3840 @ 0xFFFFFFF00A4F3840 d=2] params_found=4 cats=[0, 1, 2, 3] ops=8891 seed=3 tainted=467 iters=4
+    [FUN_fffffff00a4f709c @ 0xFFFFFFF00A4F709C d=2] params_found=9 cats=[0, 1, 2, 3, 4, 5, 6, 7] ops=266 seed=4 tainted=85 iters=5
+    [FUN_fffffff00a495610 @ 0xFFFFFFF00A495610 d=2] params_found=5 cats=[0, 1, 2, 3, 4] ops=460 seed=1 tainted=57 iters=4
+    [FUN_fffffff00a82ed98 @ 0xFFFFFFF00A82ED98 d=2] params_found=6 cats=[0, 1, 2, 3, 4, 5] ops=1517 seed=2 tainted=66 iters=4
+    [FUN_fffffff00a477594 @ 0xFFFFFFF00A477594 d=2] params_found=2 cats=[0, 1] ops=1364 seed=1 tainted=155 iters=3
+    [FUN_fffffff00a4e2e0c @ 0xFFFFFFF00A4E2E0C d=2] params_found=3 cats=[0, 1, 2] ops=346 seed=2 tainted=70 iters=3
+    [FUN_fffffff00a4e575c @ 0xFFFFFFF00A4E575C d=2] params_found=4 cats=[0, 1, 2, 3] ops=2184 seed=4 tainted=112 iters=4
+    [FUN_fffffff00a4dcae4 @ 0xFFFFFFF00A4DCAE4 d=2] params_found=2 cats=[0, 1] ops=75 seed=2 tainted=25 iters=3
+    [FUN_fffffff00a501454 @ 0xFFFFFFF00A501454 d=2] params_found=16 cats=[0, 1, 2, 3, 4, 5, 6, 7, 8] ops=3544 seed=16 tainted=290 iters=5
+    [FUN_fffffff00a4edc64 @ 0xFFFFFFF00A4EDC64 d=2] params_found=2 cats=[0, 1] ops=46 seed=2 tainted=20 iters=3
+    [FUN_fffffff00a501454 @ 0xFFFFFFF00A501454 d=2] params_found=16 cats=[0, 1, 2, 3, 4, 5, 6, 7, 8] ops=3544 seed=14 tainted=288 iters=5
+    [FUN_fffffff00a333dd0 @ 0xFFFFFFF00A333DD0 d=2] params_found=3 cats=[0, 1, 2] ops=15 seed=2 tainted=6 iters=2
+    [FUN_fffffff00a4393fc @ 0xFFFFFFF00A4393FC d=2] params_found=2 cats=[0, 1] ops=168 seed=1 tainted=39 iters=3
+    [FUN_fffffff00a80a6d8 @ 0xFFFFFFF00A80A6D8 d=2] params_found=3 cats=[0, 1, 2] ops=49 seed=3 tainted=17 iters=3
+    [FUN_fffffff00a455924 @ 0xFFFFFFF00A455924 d=2] params_found=5 cats=[0, 1, 2, 3, 4] ops=104 seed=4 tainted=27 iters=3
+    [FUN_fffffff00a477cc0 @ 0xFFFFFFF00A477CC0 d=2] params_found=6 cats=[0, 1, 2, 3] ops=1440 seed=2 tainted=146 iters=5
+    [FUN_fffffff00a50259c @ 0xFFFFFFF00A50259C d=2] params_found=4 cats=[0, 1, 2, 3] ops=332 seed=3 tainted=10 iters=3
+    [FUN_fffffff00a749df8 @ 0xFFFFFFF00A749DF8 d=2] params_found=3 cats=[0, 1, 2] ops=16 seed=1 tainted=3 iters=3
+    [FUN_fffffff00a7e1c14 @ 0xFFFFFFF00A7E1C14 d=2] params_found=1 cats=[1] ops=794 seed=1 tainted=1 iters=1
+    [FUN_fffffff00a7e2990 @ 0xFFFFFFF00A7E2990 d=2] params_found=2 cats=[0, 1] ops=64 seed=1 tainted=5 iters=2
+    [FUN_fffffff00a7e2024 @ 0xFFFFFFF00A7E2024 d=2] params_found=3 cats=[0, 1, 2] ops=132 seed=3 tainted=35 iters=3
+    [FUN_fffffff00a7e21b8 @ 0xFFFFFFF00A7E21B8 d=2] params_found=2 cats=[0, 1] ops=159 seed=2 tainted=48 iters=4
+    [FUN_fffffff00a7e1f8c @ 0xFFFFFFF00A7E1F8C d=2] params_found=1 cats=[0] ops=42 seed=1 tainted=15 iters=3
+    [FUN_fffffff00a7007c8 @ 0xFFFFFFF00A7007C8 d=2] params_found=1 cats=[0] ops=65 seed=1 tainted=20 iters=4
+    [FUN_fffffff00a4d97dc @ 0xFFFFFFF00A4D97DC d=2] params_found=2 cats=[0, 1] ops=178 seed=1 tainted=1 iters=1
+    [FUN_fffffff00a4d907c @ 0xFFFFFFF00A4D907C d=2] params_found=7 cats=[0, 1] ops=377 seed=7 tainted=115 iters=4
+    [FUN_fffffff00a4f3840 @ 0xFFFFFFF00A4F3840 d=2] params_found=4 cats=[0, 1, 2, 3] ops=8891 seed=2 tainted=467 iters=4
+    [FUN_fffffff00a4c2cc0 @ 0xFFFFFFF00A4C2CC0 d=2] params_found=6 cats=[0, 1, 2, 3, 4, 5] ops=214 seed=5 tainted=12 iters=3
+    [FUN_fffffff00a4ed510 @ 0xFFFFFFF00A4ED510 d=2] params_found=2 cats=[0, 1] ops=135 seed=2 tainted=34 iters=5
+    [FUN_fffffff00a4ed67c @ 0xFFFFFFF00A4ED67C d=2] params_found=2 cats=[0, 1] ops=579 seed=2 tainted=18 iters=3
+    [FUN_fffffff00a4ed7d8 @ 0xFFFFFFF00A4ED7D8 d=2] params_found=1 cats=[0] ops=32 seed=1 tainted=11 iters=4
+    [FUN_fffffff00a26795c @ 0xFFFFFFF00A26795C d=3] params_found=2 cats=[0, 1] ops=944 seed=1 tainted=188 iters=4
+    [FUN_fffffff00a206584 @ 0xFFFFFFF00A206584 d=3] params_found=1 cats=[0] ops=513 seed=1 tainted=79 iters=4
+    [FUN_fffffff00a265bf0 @ 0xFFFFFFF00A265BF0 d=3] params_found=3 cats=[0, 1, 2] ops=190 seed=2 tainted=58 iters=4
+    [FUN_fffffff00a254fd0 @ 0xFFFFFFF00A254FD0 d=3] params_found=1 cats=[0] ops=53 seed=1 tainted=19 iters=2
+    [FUN_fffffff00a26befc @ 0xFFFFFFF00A26BEFC d=3] params_found=4 cats=[0, 1, 2, 3] ops=68 seed=2 tainted=21 iters=5
+    [FUN_fffffff00a2063e4 @ 0xFFFFFFF00A2063E4 d=3] params_found=1 cats=[0] ops=198 seed=1 tainted=48 iters=5
+    [FUN_fffffff00a267020 @ 0xFFFFFFF00A267020 d=3] params_found=2 cats=[0, 1] ops=72 seed=2 tainted=33 iters=4
+    [FUN_fffffff00aa2b634 @ 0xFFFFFFF00AA2B634 d=3] params_found=0 cats=[] ops=? seed=0 tainted=0 iters=?
+    [FUN_fffffff00aa2b5c8 @ 0xFFFFFFF00AA2B5C8 d=3] params_found=1 cats=[0] ops=8 seed=1 tainted=5 iters=3
+    [FUN_fffffff00aa2b664 @ 0xFFFFFFF00AA2B664 d=3] params_found=0 cats=[] ops=? seed=0 tainted=0 iters=?
+    [FUN_fffffff00a20b9a4 @ 0xFFFFFFF00A20B9A4 d=3] params_found=4 cats=[0, 1, 2, 3] ops=55 seed=2 tainted=20 iters=3
+    [FUN_fffffff00a20bcc0 @ 0xFFFFFFF00A20BCC0 d=3] params_found=3 cats=[0, 1, 2] ops=69 seed=2 tainted=6 iters=2
+    [FUN_fffffff00a20bddc @ 0xFFFFFFF00A20BDDC d=3] params_found=2 cats=[0, 1] ops=32 seed=1 tainted=3 iters=2
+    [FUN_fffffff00a26a11c @ 0xFFFFFFF00A26A11C d=3] params_found=5 cats=[0, 1, 2, 3, 4] ops=103 seed=2 tainted=13 iters=3
+    [FUN_fffffff00a20b114 @ 0xFFFFFFF00A20B114 d=3] params_found=3 cats=[0, 1, 2] ops=107 seed=2 tainted=23 iters=4
+    [FUN_fffffff00a4c3558 @ 0xFFFFFFF00A4C3558 d=3] params_found=9 cats=[0, 1, 2, 3, 4, 5, 6] ops=124 seed=4 tainted=40 iters=4
+    [FUN_fffffff00a4f2e70 @ 0xFFFFFFF00A4F2E70 d=3] params_found=5 cats=[0, 1, 2, 3, 4] ops=2176 seed=5 tainted=248 iters=6
+    [FUN_fffffff00a229ce4 @ 0xFFFFFFF00A229CE4 d=3] params_found=3 cats=[0, 1, 2] ops=52 seed=1 tainted=16 iters=4
+    [FUN_fffffff00a701410 @ 0xFFFFFFF00A701410 d=3] params_found=2 cats=[0, 1] ops=151 seed=1 tainted=41 iters=3
+    [FUN_fffffff00aa3d148 @ 0xFFFFFFF00AA3D148 d=3] params_found=0 cats=[] ops=? seed=0 tainted=0 iters=?
+    [FUN_fffffff00a4d87b4 @ 0xFFFFFFF00A4D87B4 d=3] params_found=7 cats=[0, 1] ops=414 seed=7 tainted=135 iters=3
+    [FUN_fffffff00a4da368 @ 0xFFFFFFF00A4DA368 d=3] params_found=7 cats=[0, 1] ops=377 seed=7 tainted=115 iters=4
+    [FUN_fffffff00a4dac2c @ 0xFFFFFFF00A4DAC2C d=3] params_found=7 cats=[0, 1] ops=414 seed=6 tainted=134 iters=3
+    [FUN_fffffff00a495c54 @ 0xFFFFFFF00A495C54 d=3] params_found=2 cats=[0, 1] ops=115 seed=1 tainted=36 iters=3
+    [FUN_fffffff00a487544 @ 0xFFFFFFF00A487544 d=3] params_found=1 cats=[0] ops=130 seed=1 tainted=55 iters=4
+    [FUN_fffffff00a6e14a0 @ 0xFFFFFFF00A6E14A0 d=3] params_found=2 cats=[0, 1] ops=490 seed=1 tainted=87 iters=4
+    [FUN_fffffff00a208198 @ 0xFFFFFFF00A208198 d=3] params_found=1 cats=[0] ops=386 seed=1 tainted=48 iters=4
+    [FUN_fffffff00a6e656c @ 0xFFFFFFF00A6E656C d=3] params_found=5 cats=[0, 1, 2, 3, 4] ops=360 seed=3 tainted=122 iters=4
+    [FUN_fffffff00a8bab7c @ 0xFFFFFFF00A8BAB7C d=3] params_found=1 cats=[1] ops=3 seed=1 tainted=1 iters=1
+    [FUN_fffffff00a4dc378 @ 0xFFFFFFF00A4DC378 d=3] params_found=3 cats=[0, 1, 2] ops=183 seed=3 tainted=56 iters=3
+    [FUN_fffffff00a74e120 @ 0xFFFFFFF00A74E120 d=3] params_found=1 cats=[0] ops=66 seed=1 tainted=25 iters=4
+    [FUN_fffffff00a6d85f0 @ 0xFFFFFFF00A6D85F0 d=3] params_found=2 cats=[0, 1] ops=169 seed=1 tainted=49 iters=4
+    [FUN_fffffff00a4e1d78 @ 0xFFFFFFF00A4E1D78 d=3] params_found=1 cats=[0] ops=361 seed=1 tainted=76 iters=4
+    [FUN_fffffff00a7e8478 @ 0xFFFFFFF00A7E8478 d=3] params_found=1 cats=[0] ops=1124 seed=1 tainted=110 iters=3
+    [FUN_fffffff00a7e1854 @ 0xFFFFFFF00A7E1854 d=3] params_found=4 cats=[0, 1, 2, 3] ops=1129 seed=4 tainted=59 iters=3
+    [FUN_fffffff00a7e2990 @ 0xFFFFFFF00A7E2990 d=3] params_found=2 cats=[0, 1] ops=64 seed=2 tainted=26 iters=3
+    [FUN_fffffff00a4e2b2c @ 0xFFFFFFF00A4E2B2C d=3] params_found=1 cats=[0] ops=52 seed=1 tainted=10 iters=3
+    [FUN_fffffff00aa27974 @ 0xFFFFFFF00AA27974 d=3] params_found=0 cats=[] ops=? seed=0 tainted=0 iters=?
+    [FUN_fffffff00a7e5978 @ 0xFFFFFFF00A7E5978 d=3] params_found=5 cats=[0, 1, 2, 3, 4] ops=1130 seed=3 tainted=275 iters=5
+    [FUN_fffffff00a7e5978 @ 0xFFFFFFF00A7E5978 d=3] params_found=5 cats=[0, 1, 2, 3, 4] ops=1130 seed=1 tainted=266 iters=7
+    [FUN_fffffff00a7e63fc @ 0xFFFFFFF00A7E63FC d=3] params_found=4 cats=[0, 1, 2, 3] ops=157 seed=2 tainted=60 iters=3
+    [FUN_fffffff00a1e8d30 @ 0xFFFFFFF00A1E8D30 d=3] params_found=3 cats=[0, 1, 2] ops=44 seed=1 tainted=1 iters=1
+    [FUN_fffffff00a494808 @ 0xFFFFFFF00A494808 d=3] params_found=5 cats=[0, 1, 2, 3, 4] ops=424 seed=4 tainted=44 iters=5
+    [FUN_fffffff00aa409d8 @ 0xFFFFFFF00AA409D8 d=3] params_found=0 cats=[] ops=? seed=0 tainted=0 iters=?
+    [FUN_fffffff00a34a854 @ 0xFFFFFFF00A34A854 d=3] params_found=3 cats=[0, 1, 2] ops=1035 seed=2 tainted=678 iters=5
+    [FUN_fffffff00a5ad8cc @ 0xFFFFFFF00A5AD8CC d=3] params_found=3 cats=[0, 1, 2] ops=613 seed=2 tainted=87 iters=5
+    [FUN_fffffff00a5adecc @ 0xFFFFFFF00A5ADECC d=3] params_found=2 cats=[0, 1] ops=965 seed=1 tainted=86 iters=3
+    [FUN_fffffff00a5ad47c @ 0xFFFFFFF00A5AD47C d=3] params_found=2 cats=[0, 1] ops=670 seed=1 tainted=46 iters=3
+    [FUN_fffffff00a5acc88 @ 0xFFFFFFF00A5ACC88 d=3] params_found=2 cats=[0, 1] ops=663 seed=2 tainted=110 iters=5
+    [FUN_fffffff00aa40638 @ 0xFFFFFFF00AA40638 d=3] params_found=4 cats=[0, 1, 2, 3] ops=354 seed=1 tainted=75 iters=5
+    [FUN_fffffff00aa409d8 @ 0xFFFFFFF00AA409D8 d=3] params_found=0 cats=[] ops=? seed=0 tainted=0 iters=?
+    [FUN_fffffff00aa409d8 @ 0xFFFFFFF00AA409D8 d=3] params_found=0 cats=[] ops=? seed=0 tainted=0 iters=?
+    [FUN_fffffff00aa40a04 @ 0xFFFFFFF00AA40A04 d=3] params_found=3 cats=[0, 1, 2] ops=71 seed=2 tainted=28 iters=4
+    [FUN_fffffff00a33372c @ 0xFFFFFFF00A33372C d=3] params_found=11 cats=[0, 1, 2] ops=23 seed=4 tainted=10 iters=3
+    [FUN_fffffff00a749d04 @ 0xFFFFFFF00A749D04 d=3] params_found=3 cats=[0, 1, 2] ops=12 seed=1 tainted=3 iters=3
+    [FUN_fffffff00a5cc5c4 @ 0xFFFFFFF00A5CC5C4 d=3] params_found=4 cats=[0, 1] ops=1537 seed=4 tainted=322 iters=3
+    [FUN_fffffff00a4e3054 @ 0xFFFFFFF00A4E3054 d=3] params_found=1 cats=[0] ops=191 seed=1 tainted=80 iters=4
+    [FUN_fffffff00a7e5134 @ 0xFFFFFFF00A7E5134 d=3] params_found=10 cats=[0, 1, 2] ops=1198 seed=9 tainted=271 iters=4
+    [thunk_FUN_fffffff00a4daf20 @ 0xFFFFFFF00A4DAF04 d=3] params_found=0 cats=[] ops=? seed=0 tainted=0 iters=?
+    [thunk_FUN_fffffff00a4da65c @ 0xFFFFFFF00A4DA640 d=3] params_found=0 cats=[] ops=? seed=0 tainted=0 iters=?
+    [thunk_FUN_fffffff00a4d9ce4 @ 0xFFFFFFF00A4D9CC8 d=3] params_found=0 cats=[] ops=? seed=0 tainted=0 iters=?
+    [thunk_FUN_fffffff00a4d9370 @ 0xFFFFFFF00A4D9354 d=3] params_found=0 cats=[] ops=? seed=0 tainted=0 iters=?
+    [FUN_fffffff00a372810 @ 0xFFFFFFF00A372810 d=3] params_found=1 cats=[0] ops=45 seed=1 tainted=3 iters=2
+    [FUN_fffffff00a276184 @ 0xFFFFFFF00A276184 d=3] params_found=3 cats=[0, 1, 2] ops=67 seed=1 tainted=21 iters=3
+    [FUN_fffffff00a20b300 @ 0xFFFFFFF00A20B300 d=3] params_found=3 cats=[0, 1, 2] ops=84 seed=2 tainted=29 iters=3
+    [FUN_fffffff00a263c00 @ 0xFFFFFFF00A263C00 d=3] params_found=6 cats=[0, 1, 2, 3, 4] ops=309 seed=3 tainted=22 iters=4
+    [FUN_fffffff00a259518 @ 0xFFFFFFF00A259518 d=3] params_found=4 cats=[0, 1, 2, 3] ops=231 seed=4 tainted=94 iters=4
+    [FUN_fffffff00a2638bc @ 0xFFFFFFF00A2638BC d=3] params_found=11 cats=[0, 1, 2, 3, 4, 5] ops=584 seed=9 tainted=72 iters=4
+    [FUN_fffffff00a20b5a8 @ 0xFFFFFFF00A20B5A8 d=3] params_found=1 cats=[0] ops=37 seed=1 tainted=16 iters=3
+    [FUN_fffffff00a20b300 @ 0xFFFFFFF00A20B300 d=3] params_found=3 cats=[0, 1, 2] ops=84 seed=1 tainted=29 iters=3
+    [FUN_fffffff00a7c8c30 @ 0xFFFFFFF00A7C8C30 d=3] params_found=1 cats=[0] ops=1521 seed=1 tainted=95 iters=4
+    [FUN_fffffff00a501454 @ 0xFFFFFFF00A501454 d=3] params_found=16 cats=[0, 1, 2, 3, 4, 5, 6, 7, 8] ops=3544 seed=7 tainted=277 iters=5
+    [FUN_fffffff00a276074 @ 0xFFFFFFF00A276074 d=3] params_found=4 cats=[0, 1, 2, 3] ops=142 seed=1 tainted=37 iters=4
+    [FUN_fffffff00a20113c @ 0xFFFFFFF00A20113C d=3] params_found=9 cats=[0, 1, 3, 4] ops=86 seed=7 tainted=28 iters=4
+    [FUN_fffffff00a2be79c @ 0xFFFFFFF00A2BE79C d=3] params_found=11 cats=[0, 1, 2, 3, 4] ops=85 seed=6 tainted=38 iters=4
+    [FUN_fffffff00a203798 @ 0xFFFFFFF00A203798 d=3] params_found=5 cats=[0, 1, 2] ops=294 seed=4 tainted=80 iters=3
+    [FUN_fffffff00aa2b250 @ 0xFFFFFFF00AA2B250 d=3] params_found=0 cats=[] ops=? seed=0 tainted=0 iters=?
+    [FUN_fffffff00aa2b280 @ 0xFFFFFFF00AA2B280 d=3] params_found=1 cats=[0] ops=? seed=0 tainted=0 iters=?
+    [FUN_fffffff00aa2b308 @ 0xFFFFFFF00AA2B308 d=3] params_found=0 cats=[] ops=? seed=0 tainted=0 iters=?
+    [FUN_fffffff00a271e34 @ 0xFFFFFFF00A271E34 d=3] params_found=5 cats=[0, 1, 2, 3] ops=238 seed=5 tainted=72 iters=4
+    [FUN_fffffff00aa30d7c @ 0xFFFFFFF00AA30D7C d=3] params_found=0 cats=[] ops=? seed=0 tainted=0 iters=?
+    [FUN_fffffff00a56c374 @ 0xFFFFFFF00A56C374 d=3] params_found=3 cats=[0, 1, 2] ops=349 seed=2 tainted=3 iters=2
+    [FUN_fffffff00a4f1e54 @ 0xFFFFFFF00A4F1E54 d=3] params_found=2 cats=[0, 1] ops=124 seed=2 tainted=34 iters=3
+    [FUN_fffffff00a7ad1ec @ 0xFFFFFFF00A7AD1EC d=3] params_found=9 cats=[0, 1, 2, 3, 4, 5] ops=699 seed=2 tainted=113 iters=4
+    [FUN_fffffff00a4f1fc4 @ 0xFFFFFFF00A4F1FC4 d=3] params_found=3 cats=[0, 1, 2] ops=443 seed=1 tainted=6 iters=3
+    [FUN_fffffff00a207f70 @ 0xFFFFFFF00A207F70 d=3] params_found=2 cats=[0, 1] ops=257 seed=1 tainted=38 iters=3
+    [FUN_fffffff00a47a8cc @ 0xFFFFFFF00A47A8CC d=3] params_found=8 cats=[0, 1, 2, 3, 4] ops=288 seed=5 tainted=52 iters=3
+    [FUN_fffffff00a4d8f14 @ 0xFFFFFFF00A4D8F14 d=3] params_found=2 cats=[0, 1] ops=194 seed=2 tainted=79 iters=3
+    [FUN_fffffff00a4c0e2c @ 0xFFFFFFF00A4C0E2C d=3] params_found=6 cats=[0, 1, 2, 3, 4, 5] ops=84 seed=4 tainted=31 iters=4
+    [FUN_fffffff00a4c0e2c @ 0xFFFFFFF00A4C0E2C d=3] params_found=6 cats=[0, 1, 2, 3, 4, 5] ops=84 seed=3 tainted=30 iters=4
+    [FUN_fffffff00aa409d8 @ 0xFFFFFFF00AA409D8 d=3] params_found=0 cats=[] ops=? seed=0 tainted=0 iters=?
+    [FUN_fffffff00a7671dc @ 0xFFFFFFF00A7671DC d=3] params_found=4 cats=[0, 1, 2, 3] ops=178 seed=2 tainted=56 iters=3
+    [FUN_fffffff00a20113c @ 0xFFFFFFF00A20113C d=3] params_found=9 cats=[0, 1, 3, 4] ops=86 seed=7 tainted=28 iters=4
+    [FUN_fffffff00a2be79c @ 0xFFFFFFF00A2BE79C d=3] params_found=11 cats=[0, 1, 2, 3, 4] ops=85 seed=3 tainted=37 iters=4
+    [FUN_fffffff00aa2b250 @ 0xFFFFFFF00AA2B250 d=3] params_found=0 cats=[] ops=? seed=0 tainted=0 iters=?
+    [FUN_fffffff00aa2b280 @ 0xFFFFFFF00AA2B280 d=3] params_found=1 cats=[0] ops=? seed=0 tainted=0 iters=?
+    [FUN_fffffff00a271e34 @ 0xFFFFFFF00A271E34 d=3] params_found=5 cats=[0, 1, 2, 3] ops=238 seed=4 tainted=59 iters=4
+    [FUN_fffffff00a205d34 @ 0xFFFFFFF00A205D34 d=3] params_found=2 cats=[0, 1] ops=28 seed=1 tainted=6 iters=2
+    [FUN_fffffff00a2559cc @ 0xFFFFFFF00A2559CC d=3] params_found=1 cats=[0] ops=29 seed=1 tainted=17 iters=4
+    [FUN_fffffff00a8b95dc @ 0xFFFFFFF00A8B95DC d=3] params_found=4 cats=[0, 1, 2, 3] ops=806 seed=3 tainted=163 iters=3
+    [FUN_fffffff00a8b95dc @ 0xFFFFFFF00A8B95DC d=3] params_found=4 cats=[0, 1, 2, 3] ops=806 seed=2 tainted=161 iters=3
+    [FUN_fffffff00a49fae0 @ 0xFFFFFFF00A49FAE0 d=3] params_found=2 cats=[0, 1] ops=231 seed=2 tainted=51 iters=7
+    [FUN_fffffff00a4e131c @ 0xFFFFFFF00A4E131C d=3] params_found=1 cats=[0] ops=41 seed=1 tainted=16 iters=3
+    [FUN_fffffff00a4e136c @ 0xFFFFFFF00A4E136C d=3] params_found=4 cats=[0, 1, 2, 3] ops=39 seed=3 tainted=13 iters=3
+    [FUN_fffffff00a7c663c @ 0xFFFFFFF00A7C663C d=3] params_found=8 cats=[0, 1, 2, 3, 4, 5, 6, 7] ops=1709 seed=4 tainted=96 iters=3
+    [FUN_fffffff00a7cdf68 @ 0xFFFFFFF00A7CDF68 d=3] params_found=4 cats=[0, 1, 2, 3] ops=59 seed=1 tainted=5 iters=3
+    [FUN_fffffff00a7c6e9c @ 0xFFFFFFF00A7C6E9C d=3] params_found=5 cats=[0, 1, 2] ops=789 seed=4 tainted=34 iters=3
+    [FUN_fffffff00a7c663c @ 0xFFFFFFF00A7C663C d=3] params_found=8 cats=[0, 1, 2, 3, 4, 5, 6, 7] ops=1709 seed=6 tainted=105 iters=3
+    [FUN_fffffff00a7c563c @ 0xFFFFFFF00A7C563C d=3] params_found=2 cats=[0, 1] ops=178 seed=1 tainted=71 iters=3
+    [FUN_fffffff00a7c6068 @ 0xFFFFFFF00A7C6068 d=3] params_found=1 cats=[0] ops=386 seed=1 tainted=56 iters=4
+    [FUN_fffffff00a7cdf68 @ 0xFFFFFFF00A7CDF68 d=3] params_found=4 cats=[0, 1, 2, 3] ops=59 seed=3 tainted=21 iters=3
+    [FUN_fffffff00a34c0e4 @ 0xFFFFFFF00A34C0E4 d=3] params_found=6 cats=[0, 1] ops=32 seed=3 tainted=5 iters=2
+    [FUN_fffffff00a4e45f8 @ 0xFFFFFFF00A4E45F8 d=3] params_found=2 cats=[0, 1] ops=162 seed=1 tainted=61 iters=4
+    [FUN_fffffff00a207804 @ 0xFFFFFFF00A207804 d=3] params_found=2 cats=[0, 1] ops=490 seed=1 tainted=38 iters=3
+    [FUN_fffffff00a4d99f0 @ 0xFFFFFFF00A4D99F0 d=3] params_found=7 cats=[0, 1] ops=414 seed=7 tainted=135 iters=3
+    [FUN_fffffff00a4f516c @ 0xFFFFFFF00A4F516C d=3] params_found=9 cats=[0, 1, 2, 3, 4, 5, 6, 7, 8] ops=1789 seed=9 tainted=149 iters=4
+    [FUN_fffffff00a277224 @ 0xFFFFFFF00A277224 d=3] params_found=4 cats=[0, 1] ops=99 seed=4 tainted=43 iters=3
+    [FUN_fffffff00a500e50 @ 0xFFFFFFF00A500E50 d=3] params_found=3 cats=[0, 1, 2] ops=153 seed=3 tainted=11 iters=2
+    [FUN_fffffff00a1b14a0 @ 0xFFFFFFF00A1B14A0 d=3] params_found=2 cats=[0, 1] ops=699 seed=1 tainted=399 iters=5
+    [FUN_fffffff00a4f5954 @ 0xFFFFFFF00A4F5954 d=3] params_found=4 cats=[0, 1, 2, 3] ops=207 seed=3 tainted=88 iters=5
+    [FUN_fffffff00a4f5b38 @ 0xFFFFFFF00A4F5B38 d=3] params_found=2 cats=[0, 1] ops=220 seed=2 tainted=21 iters=3
+    [FUN_fffffff00a500d50 @ 0xFFFFFFF00A500D50 d=3] params_found=1 cats=[0] ops=67 seed=1 tainted=3 iters=2
+    [FUN_fffffff00a4f5c80 @ 0xFFFFFFF00A4F5C80 d=3] params_found=6 cats=[0, 1, 2, 3, 4, 5] ops=102 seed=3 tainted=32 iters=3
+    [FUN_fffffff00a4f5db8 @ 0xFFFFFFF00A4F5DB8 d=3] params_found=3 cats=[0, 1, 2] ops=68 seed=3 tainted=29 iters=3
+    [FUN_fffffff00a4f5e9c @ 0xFFFFFFF00A4F5E9C d=3] params_found=5 cats=[0, 1, 2, 3, 4] ops=224 seed=3 tainted=81 iters=3
+    [FUN_fffffff00a4e03e8 @ 0xFFFFFFF00A4E03E8 d=3] params_found=8 cats=[0, 1, 2, 3, 4, 5] ops=4668 seed=2 tainted=259 iters=3
+    [FUN_fffffff00a4f60d8 @ 0xFFFFFFF00A4F60D8 d=3] params_found=3 cats=[0, 1, 2] ops=114 seed=3 tainted=40 iters=3
+    [FUN_fffffff00a4f5c80 @ 0xFFFFFFF00A4F5C80 d=3] params_found=6 cats=[0, 1, 2, 3, 4, 5] ops=102 seed=5 tainted=34 iters=3
+    [FUN_fffffff00a4f622c @ 0xFFFFFFF00A4F622C d=3] params_found=3 cats=[0, 1, 2] ops=574 seed=3 tainted=181 iters=5
+    [FUN_fffffff00a4f6698 @ 0xFFFFFFF00A4F6698 d=3] params_found=1 cats=[0] ops=18 seed=1 tainted=1 iters=1
+    [FUN_fffffff00a48a4fc @ 0xFFFFFFF00A48A4FC d=3] params_found=5 cats=[0, 1, 2, 3, 4] ops=914 seed=3 tainted=93 iters=4
+    [FUN_fffffff00a277224 @ 0xFFFFFFF00A277224 d=3] params_found=4 cats=[0, 1] ops=99 seed=3 tainted=41 iters=4
+    [FUN_fffffff00a654a6c @ 0xFFFFFFF00A654A6C d=3] params_found=12 cats=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9] ops=17096 seed=9 tainted=914 iters=5
+    [FUN_fffffff00a333dd0 @ 0xFFFFFFF00A333DD0 d=3] params_found=3 cats=[0, 1, 2] ops=15 seed=1 tainted=5 iters=2
+    [FUN_fffffff00a8b95dc @ 0xFFFFFFF00A8B95DC d=3] params_found=4 cats=[0, 1, 2, 3] ops=806 seed=2 tainted=163 iters=5
+    [FUN_fffffff00a7cdf68 @ 0xFFFFFFF00A7CDF68 d=3] params_found=4 cats=[0, 1, 2, 3] ops=59 seed=2 tainted=21 iters=3
+    [FUN_fffffff00a7ce030 @ 0xFFFFFFF00A7CE030 d=3] params_found=5 cats=[0, 1, 2] ops=91 seed=3 tainted=25 iters=3
+    [FUN_fffffff00a7ce030 @ 0xFFFFFFF00A7CE030 d=3] params_found=5 cats=[0, 1, 2] ops=91 seed=1 tainted=25 iters=3
+    [FUN_fffffff00a870bec @ 0xFFFFFFF00A870BEC d=3] params_found=2 cats=[0, 1] ops=64 seed=1 tainted=10 iters=3
+    [FUN_fffffff00a47d23c @ 0xFFFFFFF00A47D23C d=3] params_found=1 cats=[0] ops=139 seed=1 tainted=39 iters=3
+    [FUN_fffffff00a206d70 @ 0xFFFFFFF00A206D70 d=3] params_found=1 cats=[0] ops=49 seed=1 tainted=17 iters=4
+    [FUN_fffffff00a47a714 @ 0xFFFFFFF00A47A714 d=3] params_found=1 cats=[0] ops=153 seed=1 tainted=45 iters=3
+    [FUN_fffffff00a7add00 @ 0xFFFFFFF00A7ADD00 d=3] params_found=1 cats=[0] ops=56 seed=1 tainted=18 iters=3
+    [FUN_fffffff00a47bdec @ 0xFFFFFFF00A47BDEC d=3] params_found=1 cats=[0] ops=134 seed=1 tainted=22 iters=3
+    [FUN_fffffff00a445ed0 @ 0xFFFFFFF00A445ED0 d=3] params_found=1 cats=[0] ops=57 seed=1 tainted=23 iters=5
+    [FUN_fffffff00a1b1550 @ 0xFFFFFFF00A1B1550 d=3] params_found=1 cats=[0] ops=357 seed=1 tainted=221 iters=5
+    [FUN_fffffff00a47820c @ 0xFFFFFFF00A47820C d=3] params_found=6 cats=[0, 1, 2, 3, 4, 5] ops=6477 seed=1 tainted=247 iters=5
+    [FUN_fffffff00a485b38 @ 0xFFFFFFF00A485B38 d=3] params_found=3 cats=[1, 2, 3] ops=79 seed=1 tainted=1 iters=1
+    [FUN_fffffff00a478ed8 @ 0xFFFFFFF00A478ED8 d=3] params_found=11 cats=[0, 1, 2, 3, 4, 5, 6] ops=16815 seed=5 tainted=563 iters=5
+    [FUN_fffffff00a4399c0 @ 0xFFFFFFF00A4399C0 d=3] params_found=2 cats=[0, 1] ops=26 seed=2 tainted=10 iters=2
+    [FUN_fffffff00a9c5a00 @ 0xFFFFFFF00A9C5A00 d=3] params_found=3 cats=[0, 1, 2] ops=147 seed=3 tainted=36 iters=4
+    [FUN_fffffff00a9c6158 @ 0xFFFFFFF00A9C6158 d=3] params_found=2 cats=[0, 1] ops=80 seed=2 tainted=21 iters=3
+    [thunk_FUN_fffffff00a4d9370 @ 0xFFFFFFF00A4D9354 d=3] params_found=0 cats=[] ops=? seed=0 tainted=0 iters=?
+    [FUN_fffffff00aa409d8 @ 0xFFFFFFF00AA409D8 d=3] params_found=0 cats=[] ops=? seed=0 tainted=0 iters=?
+    [FUN_fffffff00a56c6c4 @ 0xFFFFFFF00A56C6C4 d=3] params_found=2 cats=[0, 1] ops=350 seed=1 tainted=1 iters=1
+    [FUN_fffffff00a266af4 @ 0xFFFFFFF00A266AF4 d=4] params_found=1 cats=[0] ops=104 seed=1 tainted=43 iters=4
+    [FUN_fffffff00a262490 @ 0xFFFFFFF00A262490 d=4] params_found=1 cats=[0] ops=145 seed=1 tainted=40 iters=3
+    [FUN_fffffff00a2147d0 @ 0xFFFFFFF00A2147D0 d=4] params_found=2 cats=[0, 1] ops=127 seed=1 tainted=66 iters=4
+    [FUN_fffffff00a266e6c @ 0xFFFFFFF00A266E6C d=4] params_found=2 cats=[0, 1] ops=149 seed=2 tainted=48 iters=3
+    [FUN_fffffff00a20b55c @ 0xFFFFFFF00A20B55C d=4] params_found=1 cats=[0] ops=34 seed=1 tainted=10 iters=3
+    [FUN_fffffff00a266c2c @ 0xFFFFFFF00A266C2C d=4] params_found=2 cats=[0, 1] ops=214 seed=2 tainted=73 iters=5
+    [FUN_fffffff00a20c1d0 @ 0xFFFFFFF00A20C1D0 d=4] params_found=1 cats=[0] ops=28 seed=1 tainted=1 iters=1
+    [FUN_fffffff00a8b7400 @ 0xFFFFFFF00A8B7400 d=4] params_found=2 cats=[0, 1] ops=41 seed=2 tainted=23 iters=3
+    [FUN_fffffff00a8b7334 @ 0xFFFFFFF00A8B7334 d=4] params_found=2 cats=[0, 1] ops=63 seed=2 tainted=29 iters=3
+    [FUN_fffffff00a2127e8 @ 0xFFFFFFF00A2127E8 d=4] params_found=3 cats=[0, 1, 2] ops=93 seed=1 tainted=1 iters=1
+    [FUN_fffffff00a265b84 @ 0xFFFFFFF00A265B84 d=4] params_found=1 cats=[0] ops=28 seed=1 tainted=13 iters=3
+    [FUN_fffffff00a37521c @ 0xFFFFFFF00A37521C d=4] params_found=1 cats=[0] ops=72 seed=1 tainted=14 iters=3
+    [FUN_fffffff00a20c034 @ 0xFFFFFFF00A20C034 d=4] params_found=3 cats=[0, 1, 2] ops=62 seed=1 tainted=11 iters=3
+    [FUN_fffffff00a1b12d4 @ 0xFFFFFFF00A1B12D4 d=4] params_found=1 cats=[0] ops=6 seed=1 tainted=3 iters=2
+    [FUN_fffffff00a6bae5c @ 0xFFFFFFF00A6BAE5C d=4] params_found=0 cats=[] ops=? seed=0 tainted=0 iters=?
+    [FUN_fffffff00a6bae5c @ 0xFFFFFFF00A6BAE5C d=4] params_found=0 cats=[] ops=? seed=0 tainted=0 iters=?
+    [FUN_fffffff00a6b5494 @ 0xFFFFFFF00A6B5494 d=4] params_found=2 cats=[0, 1] ops=40 seed=1 tainted=20 iters=3
+    [FUN_fffffff00a6af0c0 @ 0xFFFFFFF00A6AF0C0 d=4] params_found=3 cats=[0, 1, 2] ops=1096 seed=1 tainted=251 iters=3
+    [FUN_fffffff00a20686c @ 0xFFFFFFF00A20686C d=4] params_found=1 cats=[0] ops=35 seed=1 tainted=16 iters=4
+    [FUN_fffffff00a2068e0 @ 0xFFFFFFF00A2068E0 d=4] params_found=1 cats=[0] ops=93 seed=1 tainted=32 iters=4
+    [FUN_fffffff00a20bec8 @ 0xFFFFFFF00A20BEC8 d=4] params_found=6 cats=[0, 1, 2] ops=59 seed=5 tainted=36 iters=4
+    [FUN_fffffff00a20ba54 @ 0xFFFFFFF00A20BA54 d=4] params_found=5 cats=[0, 1, 2, 3, 4] ops=214 seed=3 tainted=45 iters=4
+    [FUN_fffffff00a6bae5c @ 0xFFFFFFF00A6BAE5C d=4] params_found=0 cats=[] ops=? seed=0 tainted=0 iters=?
+    [FUN_fffffff00a269620 @ 0xFFFFFFF00A269620 d=4] params_found=7 cats=[0, 1, 2, 3, 4, 5, 6] ops=432 seed=2 tainted=74 iters=3
+    [FUN_fffffff00aa2f66c @ 0xFFFFFFF00AA2F66C d=4] params_found=0 cats=[] ops=? seed=0 tainted=0 iters=?
+    [FUN_fffffff00a266064 @ 0xFFFFFFF00A266064 d=4] params_found=5 cats=[0, 1, 2, 3, 4] ops=370 seed=3 tainted=49 iters=3
+    [FUN_fffffff00a20b9a4 @ 0xFFFFFFF00A20B9A4 d=4] params_found=4 cats=[0, 1, 2, 3] ops=55 seed=1 tainted=8 iters=3
+    [FUN_fffffff00a26a1e0 @ 0xFFFFFFF00A26A1E0 d=4] params_found=2 cats=[0, 1] ops=407 seed=2 tainted=121 iters=4
+    [FUN_fffffff00a26a588 @ 0xFFFFFFF00A26A588 d=4] params_found=2 cats=[0, 1] ops=197 seed=2 tainted=73 iters=4
+    [FUN_fffffff00a4f3654 @ 0xFFFFFFF00A4F3654 d=4] params_found=5 cats=[0, 1, 2, 3, 4] ops=214 seed=5 tainted=37 iters=3
+    [FUN_fffffff00a7015b0 @ 0xFFFFFFF00A7015B0 d=4] params_found=4 cats=[0, 1, 2, 3] ops=84 seed=3 tainted=18 iters=3
+    [FUN_fffffff00aa31738 @ 0xFFFFFFF00AA31738 d=4] params_found=1 cats=[0] ops=? seed=0 tainted=0 iters=?
+    [FUN_fffffff00a236b48 @ 0xFFFFFFF00A236B48 d=4] params_found=4 cats=[0, 1, 2, 3] ops=218 seed=1 tainted=47 iters=4
+    [FUN_fffffff00a494050 @ 0xFFFFFFF00A494050 d=4] params_found=3 cats=[0, 1, 2] ops=82 seed=2 tainted=17 iters=3
+    [FUN_fffffff00a76ce00 @ 0xFFFFFFF00A76CE00 d=4] params_found=2 cats=[0, 1] ops=173 seed=1 tainted=56 iters=5
+    [FUN_fffffff00a76ff04 @ 0xFFFFFFF00A76FF04 d=4] params_found=13 cats=[0, 1, 2, 3, 4, 5, 6] ops=824 seed=9 tainted=226 iters=4
+    [FUN_fffffff00a7873b8 @ 0xFFFFFFF00A7873B8 d=4] params_found=5 cats=[0, 1, 2] ops=414 seed=3 tainted=126 iters=4
+    [FUN_fffffff00a784d50 @ 0xFFFFFFF00A784D50 d=4] params_found=3 cats=[0, 1, 2] ops=385 seed=2 tainted=105 iters=5
+    [FUN_fffffff00a76b6b4 @ 0xFFFFFFF00A76B6B4 d=4] params_found=1 cats=[0] ops=436 seed=1 tainted=114 iters=4
+    [FUN_fffffff00a76b6b4 @ 0xFFFFFFF00A76B6B4 d=4] params_found=1 cats=[0] ops=436 seed=1 tainted=114 iters=4
+    [FUN_fffffff00a207d74 @ 0xFFFFFFF00A207D74 d=4] params_found=3 cats=[0, 1, 2] ops=141 seed=1 tainted=17 iters=4
+    [FUN_fffffff00a226990 @ 0xFFFFFFF00A226990 d=4] params_found=2 cats=[0, 1] ops=84 seed=1 tainted=23 iters=4
+    [FUN_fffffff00a20c418 @ 0xFFFFFFF00A20C418 d=4] params_found=2 cats=[0, 1] ops=35 seed=1 tainted=3 iters=2
+    [FUN_fffffff00a20c214 @ 0xFFFFFFF00A20C214 d=4] params_found=4 cats=[0, 1, 2, 3] ops=66 seed=1 tainted=9 iters=3
+    [FUN_fffffff00a6e5e9c @ 0xFFFFFFF00A6E5E9C d=4] params_found=3 cats=[0, 1, 2] ops=363 seed=3 tainted=72 iters=4
+    [FUN_fffffff00a6e6224 @ 0xFFFFFFF00A6E6224 d=4] params_found=4 cats=[0, 1, 2, 3] ops=249 seed=2 tainted=93 iters=4
+    [FUN_fffffff00a77582c @ 0xFFFFFFF00A77582C d=4] params_found=2 cats=[0, 1] ops=82 seed=2 tainted=36 iters=3
+    [FUN_fffffff00a76ee18 @ 0xFFFFFFF00A76EE18 d=4] params_found=9 cats=[0, 1, 2, 3, 4, 5] ops=1212 seed=2 tainted=254 iters=4
+    [FUN_fffffff00a786f6c @ 0xFFFFFFF00A786F6C d=4] params_found=3 cats=[0, 1, 2] ops=234 seed=2 tainted=69 iters=3
+    [FUN_fffffff00a785164 @ 0xFFFFFFF00A785164 d=4] params_found=1 cats=[0] ops=15 seed=1 tainted=11 iters=4
+    [FUN_fffffff00a77582c @ 0xFFFFFFF00A77582C d=4] params_found=2 cats=[0, 1] ops=82 seed=1 tainted=34 iters=3
+    [FUN_fffffff00a4c3dec @ 0xFFFFFFF00A4C3DEC d=4] params_found=11 cats=[3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13] ops=51399 seed=6 tainted=1934 iters=6
+    [FUN_fffffff00a500a5c @ 0xFFFFFFF00A500A5C d=4] params_found=1 cats=[0] ops=82 seed=1 tainted=3 iters=2
+    [FUN_fffffff00a26bd54 @ 0xFFFFFFF00A26BD54 d=4] params_found=3 cats=[0, 1, 2] ops=157 seed=1 tainted=40 iters=5
+    [FUN_fffffff00a262b48 @ 0xFFFFFFF00A262B48 d=4] params_found=2 cats=[0, 1] ops=63 seed=2 tainted=19 iters=6
+    [FUN_fffffff00a6d8814 @ 0xFFFFFFF00A6D8814 d=4] params_found=3 cats=[0, 1, 2] ops=263 seed=2 tainted=106 iters=5
+    [FUN_fffffff00a6d806c @ 0xFFFFFFF00A6D806C d=4] params_found=2 cats=[0, 1] ops=179 seed=2 tainted=65 iters=3
+    [FUN_fffffff00a45c2f0 @ 0xFFFFFFF00A45C2F0 d=4] params_found=1 cats=[0] ops=63 seed=1 tainted=16 iters=3
+    [FUN_fffffff00a49f19c @ 0xFFFFFFF00A49F19C d=4] params_found=3 cats=[0, 1, 2] ops=508 seed=2 tainted=21 iters=3
+    [FUN_fffffff00a45c3e0 @ 0xFFFFFFF00A45C3E0 d=4] params_found=1 cats=[0] ops=73 seed=1 tainted=25 iters=3
+    [FUN_fffffff00a47e2e8 @ 0xFFFFFFF00A47E2E8 d=4] params_found=4 cats=[0, 1, 2, 3] ops=35 seed=2 tainted=2 iters=1
+    [FUN_fffffff00a480268 @ 0xFFFFFFF00A480268 d=4] params_found=3 cats=[0, 1, 2] ops=6217 seed=3 tainted=359 iters=3
+    [FUN_fffffff00a7e65b8 @ 0xFFFFFFF00A7E65B8 d=4] params_found=1 cats=[0] ops=83 seed=1 tainted=7 iters=3
+    [FUN_fffffff00a7e8c34 @ 0xFFFFFFF00A7E8C34 d=4] params_found=4 cats=[1, 2, 3, 4] ops=2599 seed=1 tainted=244 iters=7
+    [FUN_fffffff00a7e99dc @ 0xFFFFFFF00A7E99DC d=4] params_found=2 cats=[0, 1] ops=161 seed=2 tainted=33 iters=3
+    [FUN_fffffff00a7e347c @ 0xFFFFFFF00A7E347C d=4] params_found=9 cats=[0, 1, 2, 3, 4, 5, 6, 7, 8] ops=4795 seed=3 tainted=192 iters=4
+    [FUN_fffffff00a7e0f4c @ 0xFFFFFFF00A7E0F4C d=4] params_found=1 cats=[0] ops=506 seed=1 tainted=32 iters=4
+    [FUN_fffffff00aa3a03c @ 0xFFFFFFF00AA3A03C d=4] params_found=1 cats=[0] ops=257 seed=1 tainted=42 iters=3
+    [FUN_fffffff00a7e111c @ 0xFFFFFFF00A7E111C d=4] params_found=1 cats=[0] ops=350 seed=1 tainted=58 iters=3
+    [FUN_fffffff00a7e4f90 @ 0xFFFFFFF00A7E4F90 d=4] params_found=5 cats=[0, 1, 2, 3, 4] ops=151 seed=5 tainted=69 iters=4
+    [FUN_fffffff00a7ec53c @ 0xFFFFFFF00A7EC53C d=4] params_found=6 cats=[0, 1, 2, 3] ops=183 seed=5 tainted=34 iters=4
+    [FUN_fffffff00a7ecb6c @ 0xFFFFFFF00A7ECB6C d=4] params_found=4 cats=[0, 1] ops=42 seed=4 tainted=17 iters=3
+    [FUN_fffffff00a7ec488 @ 0xFFFFFFF00A7EC488 d=4] params_found=4 cats=[0, 1, 2, 3] ops=34 seed=3 tainted=14 iters=3
+    [FUN_fffffff00a7ecac0 @ 0xFFFFFFF00A7ECAC0 d=4] params_found=2 cats=[0, 1] ops=40 seed=2 tainted=17 iters=3
+    [FUN_fffffff00aa3a31c @ 0xFFFFFFF00AA3A31C d=4] params_found=4 cats=[0, 1] ops=94 seed=1 tainted=40 iters=4
+    [FUN_fffffff00a7e4f90 @ 0xFFFFFFF00A7E4F90 d=4] params_found=5 cats=[0, 1, 2, 3, 4] ops=151 seed=4 tainted=63 iters=4
+    [FUN_fffffff00a7ec53c @ 0xFFFFFFF00A7EC53C d=4] params_found=6 cats=[0, 1, 2, 3] ops=183 seed=4 tainted=23 iters=4
+    [FUN_fffffff00a7ecb6c @ 0xFFFFFFF00A7ECB6C d=4] params_found=4 cats=[0, 1] ops=42 seed=1 tainted=11 iters=3
+    [FUN_fffffff00a7ec488 @ 0xFFFFFFF00A7EC488 d=4] params_found=4 cats=[0, 1, 2, 3] ops=34 seed=2 tainted=14 iters=4
+    [FUN_fffffff00a7ecac0 @ 0xFFFFFFF00A7ECAC0 d=4] params_found=2 cats=[0, 1] ops=40 seed=1 tainted=16 iters=3
+    [FUN_fffffff00a48a4fc @ 0xFFFFFFF00A48A4FC d=4] params_found=5 cats=[0, 1, 2, 3, 4] ops=914 seed=3 tainted=97 iters=5
+    [FUN_fffffff00aa402ac @ 0xFFFFFFF00AA402AC d=4] params_found=0 cats=[] ops=? seed=0 tainted=0 iters=?
+    [FUN_fffffff00a5ae374 @ 0xFFFFFFF00A5AE374 d=4] params_found=1 cats=[0] ops=188 seed=1 tainted=36 iters=4
+    [FUN_fffffff00a5ad8cc @ 0xFFFFFFF00A5AD8CC d=4] params_found=3 cats=[0, 1, 2] ops=613 seed=1 tainted=86 iters=5
+    [FUN_fffffff00a455924 @ 0xFFFFFFF00A455924 d=4] params_found=5 cats=[0, 1, 2, 3, 4] ops=104 seed=2 tainted=23 iters=3
+    [FUN_fffffff00aa402b4 @ 0xFFFFFFF00AA402B4 d=4] params_found=2 cats=[0, 1] ops=35 seed=2 tainted=19 iters=2
+    [FUN_fffffff00aa40324 @ 0xFFFFFFF00AA40324 d=4] params_found=8 cats=[0, 1, 2, 3] ops=223 seed=4 tainted=71 iters=3
+    [FUN_fffffff00aa40f90 @ 0xFFFFFFF00AA40F90 d=4] params_found=12 cats=[0, 1, 2] ops=90 seed=11 tainted=33 iters=3
+    [FUN_fffffff00a493500 @ 0xFFFFFFF00A493500 d=4] params_found=11 cats=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9] ops=146 seed=11 tainted=69 iters=3
+    [FUN_fffffff00a7e5134 @ 0xFFFFFFF00A7E5134 d=4] params_found=10 cats=[0, 1, 2] ops=1198 seed=1 tainted=271 iters=4
+    [FUN_fffffff00a7e4f90 @ 0xFFFFFFF00A7E4F90 d=4] params_found=5 cats=[0, 1, 2, 3, 4] ops=151 seed=4 tainted=64 iters=4
+    [FUN_fffffff00a7ecb6c @ 0xFFFFFFF00A7ECB6C d=4] params_found=4 cats=[0, 1] ops=42 seed=4 tainted=17 iters=3
+    [FUN_fffffff00a7ecac0 @ 0xFFFFFFF00A7ECAC0 d=4] params_found=2 cats=[0, 1] ops=40 seed=2 tainted=17 iters=3
+    [FUN_fffffff00aa3a31c @ 0xFFFFFFF00AA3A31C d=4] params_found=4 cats=[0, 1] ops=94 seed=4 tainted=46 iters=4
+    [FUN_fffffff00aa2c448 @ 0xFFFFFFF00AA2C448 d=4] params_found=0 cats=[] ops=? seed=0 tainted=0 iters=?
+    [FUN_fffffff00a8b75f8 @ 0xFFFFFFF00A8B75F8 d=4] params_found=2 cats=[0, 1] ops=62 seed=2 tainted=29 iters=3
+    [FUN_fffffff00a8b7490 @ 0xFFFFFFF00A8B7490 d=4] params_found=5 cats=[0, 1] ops=56 seed=5 tainted=30 iters=3
+    [FUN_fffffff00a8b76bc @ 0xFFFFFFF00A8B76BC d=4] params_found=2 cats=[0, 1] ops=41 seed=2 tainted=23 iters=3
+    [FUN_fffffff00a36ccd4 @ 0xFFFFFFF00A36CCD4 d=4] params_found=1 cats=[0] ops=64 seed=1 tainted=2 iters=2
+    [FUN_fffffff00a263fe8 @ 0xFFFFFFF00A263FE8 d=4] params_found=7 cats=[0, 1, 2, 3, 4, 5, 6] ops=280 seed=6 tainted=53 iters=5
+    [FUN_fffffff00a263e54 @ 0xFFFFFFF00A263E54 d=4] params_found=1 cats=[0] ops=218 seed=1 tainted=55 iters=4
+    [FUN_fffffff00a36adac @ 0xFFFFFFF00A36ADAC d=4] params_found=5 cats=[0, 1, 2, 3, 4] ops=427 seed=1 tainted=79 iters=4
+    [FUN_fffffff00a263df4 @ 0xFFFFFFF00A263DF4 d=4] params_found=2 cats=[0, 1] ops=22 seed=2 tainted=12 iters=3
+    [FUN_fffffff00a7c7f20 @ 0xFFFFFFF00A7C7F20 d=4] params_found=3 cats=[0, 1, 2] ops=456 seed=3 tainted=46 iters=4
+    [FUN_fffffff00a7c5900 @ 0xFFFFFFF00A7C5900 d=4] params_found=3 cats=[0, 1] ops=98 seed=1 tainted=34 iters=4
+    [FUN_fffffff00a44b7a8 @ 0xFFFFFFF00A44B7A8 d=4] params_found=1 cats=[0] ops=91 seed=1 tainted=28 iters=5
+    [FUN_fffffff00a7e5134 @ 0xFFFFFFF00A7E5134 d=4] params_found=10 cats=[0, 1, 2] ops=1198 seed=8 tainted=271 iters=5
+    [FUN_fffffff00a271e34 @ 0xFFFFFFF00A271E34 d=4] params_found=5 cats=[0, 1, 2, 3] ops=238 seed=3 tainted=58 iters=4
+    [FUN_fffffff00a2cb6e8 @ 0xFFFFFFF00A2CB6E8 d=4] params_found=0 cats=[] ops=? seed=0 tainted=0 iters=?
+    [FUN_fffffff00a209ff8 @ 0xFFFFFFF00A209FF8 d=4] params_found=3 cats=[0, 1, 2] ops=537 seed=1 tainted=142 iters=4
+    [FUN_fffffff00aa336ac @ 0xFFFFFFF00AA336AC d=4] params_found=0 cats=[] ops=? seed=0 tainted=0 iters=?
+    [FUN_fffffff00aa3367c @ 0xFFFFFFF00AA3367C d=4] params_found=0 cats=[] ops=? seed=0 tainted=0 iters=?
+    [FUN_fffffff00a203a1c @ 0xFFFFFFF00A203A1C d=4] params_found=4 cats=[0, 1, 2] ops=238 seed=3 tainted=73 iters=4
+    [FUN_fffffff00a20308c @ 0xFFFFFFF00A20308C d=4] params_found=5 cats=[0, 1, 2, 3] ops=257 seed=4 tainted=77 iters=4
+    [FUN_fffffff00a2035d4 @ 0xFFFFFFF00A2035D4 d=4] params_found=2 cats=[0, 1] ops=98 seed=2 tainted=63 iters=4
+    [FUN_fffffff00aa31100 @ 0xFFFFFFF00AA31100 d=4] params_found=2 cats=[0, 1] ops=142 seed=2 tainted=36 iters=3
+    [FUN_fffffff00a272510 @ 0xFFFFFFF00A272510 d=4] params_found=2 cats=[0, 1] ops=912 seed=2 tainted=167 iters=3
+    [FUN_fffffff00a7ad688 @ 0xFFFFFFF00A7AD688 d=4] params_found=1 cats=[0] ops=28 seed=1 tainted=13 iters=3
+    [FUN_fffffff00a57a4a8 @ 0xFFFFFFF00A57A4A8 d=4] params_found=10 cats=[0, 1, 2, 3, 4, 5] ops=2490 seed=1 tainted=147 iters=4
+    [FUN_fffffff00a677a9c @ 0xFFFFFFF00A677A9C d=4] params_found=6 cats=[0, 1, 2, 3, 4, 5] ops=2813 seed=1 tainted=275 iters=5
+    [FUN_fffffff00a207b8c @ 0xFFFFFFF00A207B8C d=4] params_found=3 cats=[0, 1, 2] ops=188 seed=1 tainted=23 iters=4
+    [FUN_fffffff00a55c82c @ 0xFFFFFFF00A55C82C d=4] params_found=1 cats=[0] ops=83 seed=1 tainted=7 iters=2
+    [thunk_FUN_fffffff00a4d8aa8 @ 0xFFFFFFF00A4D8A8C d=4] params_found=0 cats=[] ops=? seed=0 tainted=0 iters=?
+    [FUN_fffffff00aa38b44 @ 0xFFFFFFF00AA38B44 d=4] params_found=0 cats=[] ops=? seed=0 tainted=0 iters=?
+    [FUN_fffffff00aa3175c @ 0xFFFFFFF00AA3175C d=4] params_found=2 cats=[0, 1] ops=100 seed=1 tainted=23 iters=5
+    [FUN_fffffff00aa31100 @ 0xFFFFFFF00AA31100 d=4] params_found=2 cats=[0, 1] ops=142 seed=1 tainted=32 iters=3
+    [FUN_fffffff00a272510 @ 0xFFFFFFF00A272510 d=4] params_found=2 cats=[0, 1] ops=912 seed=1 tainted=167 iters=4
+    [FUN_fffffff00a749f0c @ 0xFFFFFFF00A749F0C d=4] params_found=3 cats=[0, 1, 2] ops=34 seed=1 tainted=3 iters=3
+    [FUN_fffffff00a333dd0 @ 0xFFFFFFF00A333DD0 d=4] params_found=3 cats=[0, 1, 2] ops=15 seed=1 tainted=6 iters=2
+    [FUN_fffffff00a7c71f8 @ 0xFFFFFFF00A7C71F8 d=4] params_found=3 cats=[0, 1, 2] ops=2051 seed=2 tainted=204 iters=5
+    [FUN_fffffff00a7e5978 @ 0xFFFFFFF00A7E5978 d=4] params_found=5 cats=[0, 1, 2, 3, 4] ops=1130 seed=2 tainted=266 iters=6
+    [FUN_fffffff00a7c8288 @ 0xFFFFFFF00A7C8288 d=4] params_found=2 cats=[0, 1] ops=297 seed=1 tainted=30 iters=3
+    [FUN_fffffff00a7c7ebc @ 0xFFFFFFF00A7C7EBC d=4] params_found=1 cats=[0] ops=20 seed=1 tainted=9 iters=3
+    [FUN_fffffff00a7c7f20 @ 0xFFFFFFF00A7C7F20 d=4] params_found=3 cats=[0, 1, 2] ops=456 seed=2 tainted=43 iters=4
+    [FUN_fffffff00a7c57a0 @ 0xFFFFFFF00A7C57A0 d=4] params_found=2 cats=[0, 1] ops=134 seed=1 tainted=45 iters=4
+    [thunk_FUN_fffffff00a7c51d0 @ 0xFFFFFFF00A7C51B4 d=4] params_found=0 cats=[] ops=? seed=0 tainted=0 iters=?
+    [FUN_fffffff00a7c4d78 @ 0xFFFFFFF00A7C4D78 d=4] params_found=2 cats=[0, 1] ops=178 seed=2 tainted=71 iters=3
+    [FUN_fffffff00a4e03e8 @ 0xFFFFFFF00A4E03E8 d=4] params_found=8 cats=[0, 1, 2, 3, 4, 5] ops=4668 seed=6 tainted=261 iters=3
+    [FUN_fffffff00a4e03e8 @ 0xFFFFFFF00A4E03E8 d=4] params_found=8 cats=[0, 1, 2, 3, 4, 5] ops=4668 seed=1 tainted=259 iters=4
+    [FUN_fffffff00a4c3dec @ 0xFFFFFFF00A4C3DEC d=4] params_found=11 cats=[3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13] ops=51399 seed=8 tainted=1927 iters=6
+    [FUN_fffffff00a494e60 @ 0xFFFFFFF00A494E60 d=4] params_found=2 cats=[0, 1] ops=317 seed=1 tainted=87 iters=6
+    [FUN_fffffff00a500e50 @ 0xFFFFFFF00A500E50 d=4] params_found=3 cats=[0, 1, 2] ops=153 seed=2 tainted=8 iters=2
+    [FUN_fffffff00a4f66f0 @ 0xFFFFFFF00A4F66F0 d=4] params_found=2 cats=[0, 1] ops=1228 seed=2 tainted=35 iters=2
+    [FUN_fffffff00a4f5e9c @ 0xFFFFFFF00A4F5E9C d=4] params_found=5 cats=[0, 1, 2, 3, 4] ops=224 seed=3 tainted=87 iters=3
+    [FUN_fffffff00a476b0c @ 0xFFFFFFF00A476B0C d=4] params_found=3 cats=[0, 1, 2] ops=490 seed=3 tainted=192 iters=4
+    [FUN_fffffff00a439f30 @ 0xFFFFFFF00A439F30 d=4] params_found=2 cats=[0, 1] ops=275 seed=2 tainted=52 iters=4
+    [FUN_fffffff00a4e1184 @ 0xFFFFFFF00A4E1184 d=4] params_found=5 cats=[0, 1, 2, 3] ops=300 seed=4 tainted=31 iters=3
+    [FUN_fffffff00a4f66f0 @ 0xFFFFFFF00A4F66F0 d=4] params_found=2 cats=[0, 1] ops=1228 seed=1 tainted=34 iters=2
+    [FUN_fffffff00a4f5e9c @ 0xFFFFFFF00A4F5E9C d=4] params_found=5 cats=[0, 1, 2, 3, 4] ops=224 seed=5 tainted=89 iters=3
+    [FUN_fffffff00a4dc274 @ 0xFFFFFFF00A4DC274 d=4] params_found=3 cats=[0, 1, 2] ops=115 seed=3 tainted=36 iters=4
+    [FUN_fffffff00a4e479c @ 0xFFFFFFF00A4E479C d=4] params_found=2 cats=[0, 1] ops=162 seed=1 tainted=59 iters=4
+    [FUN_fffffff00a73c3d0 @ 0xFFFFFFF00A73C3D0 d=4] params_found=4 cats=[0, 1, 2, 3] ops=60 seed=2 tainted=9 iters=2
+    [FUN_fffffff00a6e5d80 @ 0xFFFFFFF00A6E5D80 d=4] params_found=4 cats=[0, 1, 2, 3] ops=123 seed=2 tainted=25 iters=4
+    [FUN_fffffff00a271e34 @ 0xFFFFFFF00A271E34 d=4] params_found=5 cats=[0, 1, 2, 3] ops=238 seed=4 tainted=66 iters=4
+    [FUN_fffffff00a8b95dc @ 0xFFFFFFF00A8B95DC d=4] params_found=4 cats=[0, 1, 2, 3] ops=806 seed=1 tainted=151 iters=5
+    [FUN_fffffff00a68ff08 @ 0xFFFFFFF00A68FF08 d=4] params_found=3 cats=[0, 1, 2] ops=183 seed=3 tainted=73 iters=5
+    [FUN_fffffff00a687088 @ 0xFFFFFFF00A687088 d=4] params_found=3 cats=[0, 1, 2] ops=133 seed=2 tainted=5 iters=2
+    [FUN_fffffff00a69015c @ 0xFFFFFFF00A69015C d=4] params_found=4 cats=[0, 1, 2, 3] ops=51 seed=2 tainted=13 iters=2
+    [FUN_fffffff00a68f800 @ 0xFFFFFFF00A68F800 d=4] params_found=1 cats=[0] ops=53 seed=1 tainted=26 iters=6
+    [FUN_fffffff00a6853f4 @ 0xFFFFFFF00A6853F4 d=4] params_found=2 cats=[0, 1] ops=234 seed=1 tainted=47 iters=4
+    [FUN_fffffff00a684478 @ 0xFFFFFFF00A684478 d=4] params_found=1 cats=[0] ops=89 seed=1 tainted=27 iters=4
+    [FUN_fffffff00a6562b4 @ 0xFFFFFFF00A6562B4 d=4] params_found=1 cats=[0] ops=118 seed=1 tainted=37 iters=3
+    [FUN_fffffff00a644550 @ 0xFFFFFFF00A644550 d=4] params_found=2 cats=[0, 1] ops=57 seed=1 tainted=20 iters=4
+    [FUN_fffffff00a6563d0 @ 0xFFFFFFF00A6563D0 d=4] params_found=1 cats=[0] ops=14 seed=1 tainted=7 iters=2
+    [FUN_fffffff00a688e88 @ 0xFFFFFFF00A688E88 d=4] params_found=1 cats=[0] ops=68 seed=1 tainted=24 iters=4
+    [FUN_fffffff00a1b0ed8 @ 0xFFFFFFF00A1B0ED8 d=4] params_found=3 cats=[0, 1, 2] ops=39 seed=1 tainted=12 iters=3
+    [FUN_fffffff00a47dd78 @ 0xFFFFFFF00A47DD78 d=4] params_found=3 cats=[0, 1, 2] ops=480 seed=2 tainted=51 iters=5
+    [FUN_fffffff00a47c0cc @ 0xFFFFFFF00A47C0CC d=4] params_found=5 cats=[0, 1, 2, 3, 4] ops=306 seed=3 tainted=51 iters=4
+    [FUN_fffffff00a20697c @ 0xFFFFFFF00A20697C d=4] params_found=1 cats=[0] ops=22 seed=1 tainted=5 iters=2
+    [FUN_fffffff00a47dd78 @ 0xFFFFFFF00A47DD78 d=4] params_found=3 cats=[0, 1, 2] ops=480 seed=3 tainted=56 iters=5
+    [FUN_fffffff00a5906dc @ 0xFFFFFFF00A5906DC d=4] params_found=1 cats=[0] ops=86 seed=1 tainted=14 iters=3
+    [FUN_fffffff00a662ef4 @ 0xFFFFFFF00A662EF4 d=4] params_found=1 cats=[0] ops=158 seed=1 tainted=14 iters=3
+    [FUN_fffffff00a47a8cc @ 0xFFFFFFF00A47A8CC d=4] params_found=8 cats=[0, 1, 2, 3, 4] ops=288 seed=4 tainted=51 iters=3
+    [FUN_fffffff00a47ac40 @ 0xFFFFFFF00A47AC40 d=4] params_found=12 cats=[0, 1, 2, 3] ops=3332 seed=10 tainted=131 iters=3
+    [FUN_fffffff00a47ac40 @ 0xFFFFFFF00A47AC40 d=4] params_found=12 cats=[0, 1, 2, 3] ops=3332 seed=11 tainted=133 iters=3
+    [FUN_fffffff00a47ab64 @ 0xFFFFFFF00A47AB64 d=4] params_found=4 cats=[0, 1, 2, 3] ops=321 seed=4 tainted=152 iters=2
+    [FUN_fffffff00a1e7188 @ 0xFFFFFFF00A1E7188 d=4] params_found=2 cats=[0, 1] ops=167 seed=2 tainted=22 iters=4
+    [FUN_fffffff00a870bec @ 0xFFFFFFF00A870BEC d=4] params_found=2 cats=[0, 1] ops=64 seed=1 tainted=10 iters=3
+    [FUN_fffffff00a47b3f0 @ 0xFFFFFFF00A47B3F0 d=4] params_found=3 cats=[0, 1, 2] ops=3405 seed=3 tainted=202 iters=4
+    [FUN_fffffff00a47bf64 @ 0xFFFFFFF00A47BF64 d=4] params_found=3 cats=[0, 1, 2] ops=85 seed=3 tainted=38 iters=4
+    [FUN_fffffff00a47c030 @ 0xFFFFFFF00A47C030 d=4] params_found=2 cats=[0, 1] ops=44 seed=2 tainted=19 iters=3
+    [FUN_fffffff00a47ccec @ 0xFFFFFFF00A47CCEC d=4] params_found=2 cats=[0, 1] ops=107 seed=1 tainted=23 iters=2
+    [FUN_fffffff00a478ed8 @ 0xFFFFFFF00A478ED8 d=4] params_found=11 cats=[0, 1, 2, 3, 4, 5, 6] ops=16815 seed=8 tainted=564 iters=4
+    [FUN_fffffff00a47cc2c @ 0xFFFFFFF00A47CC2C d=4] params_found=1 cats=[0] ops=84 seed=1 tainted=22 iters=2
+    [FUN_fffffff00a47cbf0 @ 0xFFFFFFF00A47CBF0 d=4] params_found=1 cats=[0] ops=14 seed=1 tainted=7 iters=2
+    [FUN_fffffff00a4769a0 @ 0xFFFFFFF00A4769A0 d=4] params_found=2 cats=[0, 1] ops=48 seed=2 tainted=19 iters=3
+    [FUN_fffffff00a4769a0 @ 0xFFFFFFF00A4769A0 d=4] params_found=2 cats=[0, 1] ops=48 seed=1 tainted=8 iters=3
+    [FUN_fffffff00a47c3f0 @ 0xFFFFFFF00A47C3F0 d=4] params_found=3 cats=[0, 1, 2] ops=1390 seed=2 tainted=131 iters=5
+    [FUN_fffffff00a47c3f0 @ 0xFFFFFFF00A47C3F0 d=4] params_found=3 cats=[0, 1, 2] ops=1390 seed=1 tainted=124 iters=5
+    [FUN_fffffff00a492f24 @ 0xFFFFFFF00A492F24 d=4] params_found=1 cats=[0] ops=92 seed=1 tainted=12 iters=4
+    [FUN_fffffff00a9c51d8 @ 0xFFFFFFF00A9C51D8 d=4] params_found=3 cats=[0, 1, 2] ops=557 seed=3 tainted=76 iters=4
+    [FUN_fffffff00a9c5c04 @ 0xFFFFFFF00A9C5C04 d=4] params_found=2 cats=[0, 1] ops=154 seed=2 tainted=28 iters=3
+    [FUN_fffffff00a9c5da8 @ 0xFFFFFFF00A9C5DA8 d=4] params_found=3 cats=[0, 1, 2] ops=193 seed=2 tainted=36 iters=3
+    [FUN_fffffff00a25ebd4 @ 0xFFFFFFF00A25EBD4 d=5] params_found=7 cats=[0, 1, 2, 3, 4, 5] ops=293 seed=2 tainted=62 iters=4
+    [FUN_fffffff00a25f008 @ 0xFFFFFFF00A25F008 d=5] params_found=2 cats=[0, 1] ops=41 seed=2 tainted=26 iters=4
+    [FUN_fffffff00a22cd80 @ 0xFFFFFFF00A22CD80 d=5] params_found=3 cats=[0, 1, 2] ops=213 seed=1 tainted=54 iters=4
+    [FUN_fffffff00a22cd80 @ 0xFFFFFFF00A22CD80 d=5] params_found=3 cats=[0, 1, 2] ops=213 seed=2 tainted=58 iters=4
+    [FUN_fffffff00a8b70fc @ 0xFFFFFFF00A8B70FC d=5] params_found=5 cats=[0, 1] ops=56 seed=1 tainted=26 iters=4
+    [FUN_fffffff00a8b7168 @ 0xFFFFFFF00A8B7168 d=5] params_found=3 cats=[0] ops=141 seed=3 tainted=60 iters=4
+    [FUN_fffffff00a8b70fc @ 0xFFFFFFF00A8B70FC d=5] params_found=5 cats=[0, 1] ops=56 seed=5 tainted=30 iters=3
+    [FUN_fffffff00a20b9a4 @ 0xFFFFFFF00A20B9A4 d=5] params_found=4 cats=[0, 1, 2, 3] ops=55 seed=2 tainted=10 iters=3
+    [FUN_fffffff00a25b364 @ 0xFFFFFFF00A25B364 d=5] params_found=2 cats=[0, 1] ops=135 seed=1 tainted=42 iters=3
+    [FUN_fffffff00a6afac0 @ 0xFFFFFFF00A6AFAC0 d=5] params_found=5 cats=[0, 1, 2, 3, 4] ops=188 seed=2 tainted=78 iters=5
+    [FUN_fffffff00a6afc78 @ 0xFFFFFFF00A6AFC78 d=5] params_found=4 cats=[0, 1, 2, 3] ops=326 seed=2 tainted=116 iters=5
+    [FUN_fffffff00a2675d4 @ 0xFFFFFFF00A2675D4 d=5] params_found=2 cats=[0, 1] ops=78 seed=1 tainted=31 iters=5
+    [FUN_fffffff00a6b0360 @ 0xFFFFFFF00A6B0360 d=5] params_found=5 cats=[0, 1, 2, 3, 4] ops=181 seed=2 tainted=51 iters=4
+    [FUN_fffffff00a6af96c @ 0xFFFFFFF00A6AF96C d=5] params_found=1 cats=[0] ops=132 seed=1 tainted=45 iters=4
+    [FUN_fffffff00a6b0194 @ 0xFFFFFFF00A6B0194 d=5] params_found=4 cats=[0, 1, 2, 3] ops=199 seed=3 tainted=58 iters=3
+    [FUN_fffffff00a6aff6c @ 0xFFFFFFF00A6AFF6C d=5] params_found=4 cats=[0, 1, 2, 3] ops=205 seed=3 tainted=98 iters=5
+    [FUN_fffffff00a2672c4 @ 0xFFFFFFF00A2672C4 d=5] params_found=3 cats=[0, 1, 2] ops=193 seed=2 tainted=26 iters=3
+    [FUN_fffffff00a22b260 @ 0xFFFFFFF00A22B260 d=5] params_found=2 cats=[0, 1] ops=47 seed=2 tainted=16 iters=4
+    [FUN_fffffff00a2672c4 @ 0xFFFFFFF00A2672C4 d=5] params_found=3 cats=[0, 1, 2] ops=193 seed=3 tainted=30 iters=3
+    [FUN_fffffff00a20b9a4 @ 0xFFFFFFF00A20B9A4 d=5] params_found=4 cats=[0, 1, 2, 3] ops=55 seed=3 tainted=22 iters=3
+    [FUN_fffffff00a269a48 @ 0xFFFFFFF00A269A48 d=5] params_found=2 cats=[0, 1] ops=173 seed=1 tainted=51 iters=3
+    [FUN_fffffff00a267498 @ 0xFFFFFFF00A267498 d=5] params_found=2 cats=[0, 1] ops=108 seed=1 tainted=46 iters=5
+    [FUN_fffffff00a2638bc @ 0xFFFFFFF00A2638BC d=5] params_found=11 cats=[0, 1, 2, 3, 4, 5] ops=584 seed=1 tainted=65 iters=4
+    [FUN_fffffff00a26635c @ 0xFFFFFFF00A26635C d=5] params_found=1 cats=[0] ops=721 seed=1 tainted=146 iters=3
+    [FUN_fffffff00a26aa84 @ 0xFFFFFFF00A26AA84 d=5] params_found=3 cats=[0, 1, 2] ops=116 seed=3 tainted=48 iters=5
+    [FUN_fffffff00a26a7b4 @ 0xFFFFFFF00A26A7B4 d=5] params_found=3 cats=[0, 1, 2] ops=287 seed=3 tainted=75 iters=3
+    [FUN_fffffff00a20b4b0 @ 0xFFFFFFF00A20B4B0 d=5] params_found=2 cats=[0, 1] ops=52 seed=1 tainted=1 iters=1
+    [FUN_fffffff00a6d85f0 @ 0xFFFFFFF00A6D85F0 d=5] params_found=2 cats=[0, 1] ops=169 seed=2 tainted=50 iters=4
+    [FUN_fffffff00a5af074 @ 0xFFFFFFF00A5AF074 d=5] params_found=2 cats=[0, 1] ops=144 seed=2 tainted=31 iters=4
+    [FUN_fffffff00a5af478 @ 0xFFFFFFF00A5AF478 d=5] params_found=6 cats=[0, 1, 2, 3, 4, 5] ops=318 seed=5 tainted=53 iters=4
+    [FUN_fffffff00a2367dc @ 0xFFFFFFF00A2367DC d=5] params_found=1 cats=[0] ops=49 seed=1 tainted=15 iters=3
+    [FUN_fffffff00a48aad4 @ 0xFFFFFFF00A48AAD4 d=5] params_found=3 cats=[0, 1, 2] ops=134 seed=2 tainted=37 iters=3
+    [FUN_fffffff00a48c26c @ 0xFFFFFFF00A48C26C d=5] params_found=6 cats=[0, 1, 2, 3, 4, 5] ops=710 seed=2 tainted=177 iters=4
+    [FUN_fffffff00a48b758 @ 0xFFFFFFF00A48B758 d=5] params_found=6 cats=[0, 1, 2, 3, 4, 5] ops=727 seed=2 tainted=184 iters=4
+    [FUN_fffffff00a272a18 @ 0xFFFFFFF00A272A18 d=5] params_found=4 cats=[0, 1, 2] ops=1080 seed=2 tainted=257 iters=5
+    [FUN_fffffff00a76d114 @ 0xFFFFFFF00A76D114 d=5] params_found=1 cats=[0] ops=88 seed=1 tainted=45 iters=4
+    [FUN_fffffff00a76dff0 @ 0xFFFFFFF00A76DFF0 d=5] params_found=2 cats=[0, 1] ops=209 seed=2 tainted=111 iters=3
+    [FUN_fffffff00a76e160 @ 0xFFFFFFF00A76E160 d=5] params_found=3 cats=[0, 1, 2] ops=168 seed=3 tainted=96 iters=3
+    [FUN_fffffff00a55bc58 @ 0xFFFFFFF00A55BC58 d=5] params_found=1 cats=[0] ops=151 seed=1 tainted=53 iters=4
+    [FUN_fffffff00a7b2fec @ 0xFFFFFFF00A7B2FEC d=5] params_found=7 cats=[0, 1, 2, 3, 4, 5, 6] ops=3114 seed=3 tainted=213 iters=4
+    [FUN_fffffff00a7a4fe8 @ 0xFFFFFFF00A7A4FE8 d=5] params_found=5 cats=[0, 1, 2, 3, 4] ops=435 seed=2 tainted=73 iters=4
+    [FUN_fffffff00a55a834 @ 0xFFFFFFF00A55A834 d=5] params_found=4 cats=[0, 1, 2, 3] ops=694 seed=2 tainted=72 iters=3
+    [FUN_fffffff00a7871c8 @ 0xFFFFFFF00A7871C8 d=5] params_found=1 cats=[0] ops=238 seed=1 tainted=51 iters=3
+    [FUN_fffffff00a7b5310 @ 0xFFFFFFF00A7B5310 d=5] params_found=1 cats=[0] ops=49 seed=1 tainted=19 iters=4
+    [FUN_fffffff00a787d60 @ 0xFFFFFFF00A787D60 d=5] params_found=2 cats=[0, 1] ops=150 seed=2 tainted=55 iters=4
+    [FUN_fffffff00a78772c @ 0xFFFFFFF00A78772C d=5] params_found=9 cats=[0, 1, 2] ops=786 seed=1 tainted=251 iters=4
+    [FUN_fffffff00a787e9c @ 0xFFFFFFF00A787E9C d=5] params_found=1 cats=[0] ops=275 seed=1 tainted=77 iters=3
+    [FUN_fffffff00a703958 @ 0xFFFFFFF00A703958 d=5] params_found=1 cats=[1] ops=? seed=0 tainted=0 iters=?
+    [FUN_fffffff00a71751c @ 0xFFFFFFF00A71751C d=5] params_found=2 cats=[0, 1] ops=28 seed=1 tainted=2 iters=2
+    [FUN_fffffff00a778b34 @ 0xFFFFFFF00A778B34 d=5] params_found=2 cats=[0, 1] ops=64 seed=1 tainted=31 iters=3
+    [FUN_fffffff00a553de0 @ 0xFFFFFFF00A553DE0 d=5] params_found=2 cats=[0, 1] ops=556 seed=2 tainted=71 iters=3
+    [FUN_fffffff00a774974 @ 0xFFFFFFF00A774974 d=5] params_found=1 cats=[0] ops=25 seed=1 tainted=11 iters=3
+    [FUN_fffffff00a73d4ec @ 0xFFFFFFF00A73D4EC d=5] params_found=2 cats=[0, 1] ops=104 seed=1 tainted=35 iters=3
+    [FUN_fffffff00a76bdd4 @ 0xFFFFFFF00A76BDD4 d=5] params_found=1 cats=[0] ops=159 seed=1 tainted=49 iters=3
+    [FUN_fffffff00a276a34 @ 0xFFFFFFF00A276A34 d=5] params_found=2 cats=[0, 1] ops=246 seed=1 tainted=67 iters=4
+    [FUN_fffffff00a276a34 @ 0xFFFFFFF00A276A34 d=5] params_found=2 cats=[0, 1] ops=246 seed=1 tainted=73 iters=4
+    [FUN_fffffff00a27683c @ 0xFFFFFFF00A27683C d=5] params_found=12 cats=[0, 1, 2, 3] ops=249 seed=7 tainted=85 iters=4
+    [FUN_fffffff00a26befc @ 0xFFFFFFF00A26BEFC d=5] params_found=4 cats=[0, 1, 2, 3] ops=68 seed=3 tainted=22 iters=5
+    [FUN_fffffff00a226ad0 @ 0xFFFFFFF00A226AD0 d=5] params_found=1 cats=[0] ops=28 seed=1 tainted=13 iters=3
+    [FUN_fffffff00a6bae5c @ 0xFFFFFFF00A6BAE5C d=5] params_found=0 cats=[] ops=? seed=0 tainted=0 iters=?
+    [FUN_fffffff00a775c7c @ 0xFFFFFFF00A775C7C d=5] params_found=2 cats=[0, 1] ops=817 seed=1 tainted=134 iters=4
+    [FUN_fffffff00a27736c @ 0xFFFFFFF00A27736C d=5] params_found=3 cats=[0, 1, 2] ops=230 seed=2 tainted=99 iters=4
+    [FUN_fffffff00a277674 @ 0xFFFFFFF00A277674 d=5] params_found=4 cats=[0, 1, 2, 3] ops=205 seed=3 tainted=86 iters=4
+    [FUN_fffffff00a27683c @ 0xFFFFFFF00A27683C d=5] params_found=12 cats=[0, 1, 2, 3] ops=249 seed=11 tainted=86 iters=4
+    [FUN_fffffff00a276be0 @ 0xFFFFFFF00A276BE0 d=5] params_found=8 cats=[0, 1, 2] ops=377 seed=3 tainted=104 iters=4
+    [FUN_fffffff00a7873b8 @ 0xFFFFFFF00A7873B8 d=5] params_found=5 cats=[0, 1, 2] ops=414 seed=4 tainted=127 iters=4
+    [FUN_fffffff00a7a4fe8 @ 0xFFFFFFF00A7A4FE8 d=5] params_found=5 cats=[0, 1, 2, 3, 4] ops=435 seed=1 tainted=72 iters=4
+    [FUN_fffffff00a78772c @ 0xFFFFFFF00A78772C d=5] params_found=9 cats=[0, 1, 2] ops=786 seed=9 tainted=251 iters=4
+    [FUN_fffffff00a6c6648 @ 0xFFFFFFF00A6C6648 d=5] params_found=1 cats=[0] ops=291 seed=1 tainted=49 iters=4
+    [FUN_fffffff00a7019e8 @ 0xFFFFFFF00A7019E8 d=5] params_found=1 cats=[0] ops=53 seed=1 tainted=24 iters=5
+    [FUN_fffffff00a6c78b4 @ 0xFFFFFFF00A6C78B4 d=5] params_found=1 cats=[0] ops=92 seed=1 tainted=26 iters=3
+    [FUN_fffffff00a4c79cc @ 0xFFFFFFF00A4C79CC d=5] params_found=1 cats=[0] ops=21 seed=1 tainted=7 iters=2
+    [FUN_fffffff00a27acac @ 0xFFFFFFF00A27ACAC d=5] params_found=1 cats=[0] ops=43 seed=1 tainted=20 iters=3
+    [FUN_fffffff00a1ed808 @ 0xFFFFFFF00A1ED808 d=5] params_found=2 cats=[0, 1] ops=45 seed=2 tainted=19 iters=3
+    [FUN_fffffff00a1ed9c4 @ 0xFFFFFFF00A1ED9C4 d=5] params_found=1 cats=[0] ops=51 seed=1 tainted=17 iters=3
+    [FUN_fffffff00a2502bc @ 0xFFFFFFF00A2502BC d=5] params_found=1 cats=[0] ops=20 seed=1 tainted=9 iters=2
+    [FUN_fffffff00a703120 @ 0xFFFFFFF00A703120 d=5] params_found=1 cats=[0] ops=54 seed=1 tainted=25 iters=5
+    [FUN_fffffff00aa5051c @ 0xFFFFFFF00AA5051C d=5] params_found=4 cats=[0, 1] ops=19 seed=4 tainted=10 iters=2
+    [FUN_fffffff00a4c7a38 @ 0xFFFFFFF00A4C7A38 d=5] params_found=20 cats=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19] ops=11070 seed=15 tainted=963 iters=6
+    [FUN_fffffff00a4c9e20 @ 0xFFFFFFF00A4C9E20 d=5] params_found=4 cats=[0] ops=70 seed=4 tainted=16 iters=4
+    [FUN_fffffff00a4c9d9c @ 0xFFFFFFF00A4C9D9C d=5] params_found=2 cats=[0, 1] ops=48 seed=2 tainted=18 iters=4
+    [FUN_fffffff00a4c9eb8 @ 0xFFFFFFF00A4C9EB8 d=5] params_found=3 cats=[0, 1, 2] ops=184 seed=2 tainted=21 iters=3
+    [FUN_fffffff00a4ca030 @ 0xFFFFFFF00A4CA030 d=5] params_found=3 cats=[0, 1, 2] ops=66 seed=2 tainted=10 iters=3
+    [FUN_fffffff00a47edf8 @ 0xFFFFFFF00A47EDF8 d=5] params_found=2 cats=[0, 1] ops=92 seed=2 tainted=30 iters=3
+    [FUN_fffffff00a439c1c @ 0xFFFFFFF00A439C1C d=5] params_found=1 cats=[0] ops=7 seed=1 tainted=1 iters=1
+    [FUN_fffffff00a4ca0c8 @ 0xFFFFFFF00A4CA0C8 d=5] params_found=1 cats=[0] ops=50 seed=1 tainted=15 iters=3
+    [FUN_fffffff00a4ca144 @ 0xFFFFFFF00A4CA144 d=5] params_found=7 cats=[0, 1, 2, 3] ops=415 seed=5 tainted=73 iters=3
+    [FUN_fffffff00a4550a4 @ 0xFFFFFFF00A4550A4 d=5] params_found=2 cats=[0, 1] ops=19 seed=2 tainted=8 iters=3
+    [FUN_fffffff00a455c28 @ 0xFFFFFFF00A455C28 d=5] params_found=2 cats=[0, 1] ops=93 seed=2 tainted=51 iters=4
+    [FUN_fffffff00a4ca5a0 @ 0xFFFFFFF00A4CA5A0 d=5] params_found=7 cats=[0, 1, 2, 3, 4, 5, 6] ops=91 seed=5 tainted=14 iters=3
+    [FUN_fffffff00a4ca734 @ 0xFFFFFFF00A4CA734 d=5] params_found=4 cats=[0, 1, 2, 3] ops=67 seed=4 tainted=14 iters=3
+    [FUN_fffffff00a4ca848 @ 0xFFFFFFF00A4CA848 d=5] params_found=4 cats=[0, 1, 2, 3] ops=139 seed=2 tainted=23 iters=4
+    [FUN_fffffff00a20b55c @ 0xFFFFFFF00A20B55C d=5] params_found=1 cats=[0] ops=34 seed=1 tainted=10 iters=3
+    [FUN_fffffff00a20b044 @ 0xFFFFFFF00A20B044 d=5] params_found=1 cats=[0] ops=53 seed=1 tainted=21 iters=3
+    [FUN_fffffff00a25ebd4 @ 0xFFFFFFF00A25EBD4 d=5] params_found=7 cats=[0, 1, 2, 3, 4, 5] ops=293 seed=4 tainted=95 iters=5
+    [FUN_fffffff00a262620 @ 0xFFFFFFF00A262620 d=5] params_found=3 cats=[0, 1, 2] ops=77 seed=2 tainted=26 iters=3
+    [FUN_fffffff00a6d7790 @ 0xFFFFFFF00A6D7790 d=5] params_found=5 cats=[0, 1, 2] ops=505 seed=1 tainted=126 iters=3
+    [FUN_fffffff00a6d8464 @ 0xFFFFFFF00A6D8464 d=5] params_found=3 cats=[0, 1, 2] ops=112 seed=1 tainted=37 iters=4
+    [FUN_fffffff00a6d7be0 @ 0xFFFFFFF00A6D7BE0 d=5] params_found=5 cats=[0, 1, 2, 3] ops=153 seed=3 tainted=60 iters=6
+    [FUN_fffffff00a6d8214 @ 0xFFFFFFF00A6D8214 d=5] params_found=4 cats=[0, 1, 2, 3] ops=195 seed=3 tainted=65 iters=4
+    [FUN_fffffff00a6b5168 @ 0xFFFFFFF00A6B5168 d=5] params_found=1 cats=[0] ops=19 seed=1 tainted=12 iters=3
+    [FUN_fffffff00a45c500 @ 0xFFFFFFF00A45C500 d=5] params_found=2 cats=[0, 1] ops=152 seed=1 tainted=29 iters=4
+    [FUN_fffffff00a48155c @ 0xFFFFFFF00A48155C d=5] params_found=2 cats=[0, 1] ops=2014 seed=2 tainted=114 iters=3
+    [FUN_fffffff00a477cc0 @ 0xFFFFFFF00A477CC0 d=5] params_found=6 cats=[0, 1, 2, 3] ops=1440 seed=1 tainted=1 iters=1
+    [FUN_fffffff00a47c3f0 @ 0xFFFFFFF00A47C3F0 d=5] params_found=3 cats=[0, 1, 2] ops=1390 seed=3 tainted=172 iters=5
+    [FUN_fffffff00a7e840c @ 0xFFFFFFF00A7E840C d=5] params_found=1 cats=[0] ops=28 seed=1 tainted=13 iters=3
+    [FUN_fffffff00a9c6cc0 @ 0xFFFFFFF00A9C6CC0 d=5] params_found=3 cats=[0, 1, 2] ops=68 seed=3 tainted=11 iters=3
+    [FUN_fffffff00a7e93d0 @ 0xFFFFFFF00A7E93D0 d=5] params_found=1 cats=[0] ops=995 seed=1 tainted=126 iters=4
+    [FUN_fffffff00a273f28 @ 0xFFFFFFF00A273F28 d=5] params_found=10 cats=[0, 1, 2, 3, 4] ops=2767 seed=3 tainted=206 iters=5
+    [FUN_fffffff00a272a18 @ 0xFFFFFFF00A272A18 d=5] params_found=4 cats=[0, 1, 2] ops=1080 seed=2 tainted=257 iters=5
+    [FUN_fffffff00a7e9c4c @ 0xFFFFFFF00A7E9C4C d=5] params_found=3 cats=[0, 1, 2] ops=109 seed=2 tainted=35 iters=3
+    [FUN_fffffff00a7eb618 @ 0xFFFFFFF00A7EB618 d=5] params_found=1 cats=[0] ops=42 seed=1 tainted=15 iters=3
+    [FUN_fffffff00a7e3d1c @ 0xFFFFFFF00A7E3D1C d=5] params_found=1 cats=[0] ops=211 seed=1 tainted=58 iters=4
+    [FUN_fffffff00a7e3f04 @ 0xFFFFFFF00A7E3F04 d=5] params_found=1 cats=[0] ops=28 seed=1 tainted=13 iters=3
+    [FUN_fffffff00a9c6bc0 @ 0xFFFFFFF00A9C6BC0 d=5] params_found=2 cats=[0, 1] ops=68 seed=1 tainted=9 iters=3
+    [FUN_fffffff00a7e0ee0 @ 0xFFFFFFF00A7E0EE0 d=5] params_found=1 cats=[0] ops=28 seed=1 tainted=13 iters=3
+    [FUN_fffffff00a7e13ac @ 0xFFFFFFF00A7E13AC d=5] params_found=2 cats=[0, 1] ops=255 seed=1 tainted=68 iters=3
+    [FUN_fffffff00a8b74f8 @ 0xFFFFFFF00A8B74F8 d=5] params_found=6 cats=[0] ops=141 seed=6 tainted=62 iters=4
+    [FUN_fffffff00a8b7490 @ 0xFFFFFFF00A8B7490 d=5] params_found=5 cats=[0, 1] ops=56 seed=4 tainted=27 iters=4
+    [FUN_fffffff00a264254 @ 0xFFFFFFF00A264254 d=5] params_found=3 cats=[0, 1, 2] ops=155 seed=3 tainted=52 iters=3
+    [FUN_fffffff00a372810 @ 0xFFFFFFF00A372810 d=5] params_found=1 cats=[0] ops=45 seed=1 tainted=3 iters=2
+    [FUN_fffffff00a37b434 @ 0xFFFFFFF00A37B434 d=5] params_found=2 cats=[0, 1] ops=23 seed=2 tainted=8 iters=3
+    [FUN_fffffff00a37b434 @ 0xFFFFFFF00A37B434 d=5] params_found=2 cats=[0, 1] ops=23 seed=1 tainted=1 iters=1
+    [FUN_fffffff00a209520 @ 0xFFFFFFF00A209520 d=5] params_found=4 cats=[0, 1, 2, 3] ops=142 seed=3 tainted=46 iters=6
+    [FUN_fffffff00aa2bba8 @ 0xFFFFFFF00AA2BBA8 d=5] params_found=3 cats=[0, 1, 2] ops=91 seed=1 tainted=20 iters=6
+    [FUN_fffffff00aa37a9c @ 0xFFFFFFF00AA37A9C d=5] params_found=0 cats=[] ops=? seed=0 tainted=0 iters=?
+    [FUN_fffffff00aa2b7dc @ 0xFFFFFFF00AA2B7DC d=5] params_found=1 cats=[0] ops=7 seed=1 tainted=4 iters=3
+    [FUN_fffffff00aa2b9b4 @ 0xFFFFFFF00AA2B9B4 d=5] params_found=1 cats=[0] ops=7 seed=1 tainted=4 iters=3
+    [FUN_fffffff00aa2babc @ 0xFFFFFFF00AA2BABC d=5] params_found=1 cats=[0] ops=7 seed=1 tainted=4 iters=3
+    [FUN_fffffff00a20331c @ 0xFFFFFFF00A20331C d=5] params_found=3 cats=[0, 1, 2] ops=153 seed=3 tainted=63 iters=5
+    [FUN_fffffff00a203494 @ 0xFFFFFFF00A203494 d=5] params_found=2 cats=[0, 1] ops=111 seed=2 tainted=35 iters=4
+    [FUN_fffffff00a20308c @ 0xFFFFFFF00A20308C d=5] params_found=5 cats=[0, 1, 2, 3] ops=257 seed=5 tainted=79 iters=4
+    [FUN_fffffff00a26fe94 @ 0xFFFFFFF00A26FE94 d=5] params_found=1 cats=[0] ops=25 seed=1 tainted=12 iters=3
+    [FUN_fffffff00aa30df4 @ 0xFFFFFFF00AA30DF4 d=5] params_found=2 cats=[0, 2] ops=111 seed=2 tainted=34 iters=4
+    [FUN_fffffff00aa284f8 @ 0xFFFFFFF00AA284F8 d=5] params_found=1 cats=[0] ops=3 seed=1 tainted=1 iters=1
+    [FUN_fffffff00aa31458 @ 0xFFFFFFF00AA31458 d=5] params_found=0 cats=[] ops=? seed=0 tainted=0 iters=?
+    [FUN_fffffff00aa312dc @ 0xFFFFFFF00AA312DC d=5] params_found=0 cats=[] ops=? seed=0 tainted=0 iters=?
+    [FUN_fffffff00aa30f60 @ 0xFFFFFFF00AA30F60 d=5] params_found=0 cats=[] ops=? seed=0 tainted=0 iters=?
+    [FUN_fffffff00a480268 @ 0xFFFFFFF00A480268 d=5] params_found=3 cats=[0, 1, 2] ops=6217 seed=2 tainted=359 iters=3
+    [FUN_fffffff00a579dac @ 0xFFFFFFF00A579DAC d=5] params_found=2 cats=[0, 1] ops=118 seed=2 tainted=46 iters=4
+    [FUN_fffffff00a44ef30 @ 0xFFFFFFF00A44EF30 d=5] params_found=7 cats=[0, 1, 2, 3] ops=248 seed=2 tainted=68 iters=4
+    [FUN_fffffff00a57afd0 @ 0xFFFFFFF00A57AFD0 d=5] params_found=5 cats=[0, 1, 2, 3, 4] ops=310 seed=3 tainted=45 iters=3
+    [FUN_fffffff00a1f0e18 @ 0xFFFFFFF00A1F0E18 d=5] params_found=1 cats=[1] ops=? seed=0 tainted=0 iters=?
+    [FUN_fffffff00a57b20c @ 0xFFFFFFF00A57B20C d=5] params_found=1 cats=[0] ops=166 seed=1 tainted=31 iters=3
+    [FUN_fffffff00a44f324 @ 0xFFFFFFF00A44F324 d=5] params_found=6 cats=[1, 3, 5, 6] ops=457 seed=5 tainted=94 iters=5
+    [FUN_fffffff00a57b390 @ 0xFFFFFFF00A57B390 d=5] params_found=1 cats=[0] ops=14 seed=1 tainted=7 iters=2
+    [FUN_fffffff00a57b3cc @ 0xFFFFFFF00A57B3CC d=5] params_found=2 cats=[0, 1] ops=189 seed=1 tainted=14 iters=3
+    [FUN_fffffff00a44f324 @ 0xFFFFFFF00A44F324 d=5] params_found=6 cats=[1, 3, 5, 6] ops=457 seed=5 tainted=94 iters=5
+    [FUN_fffffff00a57b590 @ 0xFFFFFFF00A57B590 d=5] params_found=1 cats=[0] ops=184 seed=1 tainted=17 iters=3
+    [FUN_fffffff00a55e400 @ 0xFFFFFFF00A55E400 d=5] params_found=2 cats=[0, 1] ops=149 seed=2 tainted=58 iters=6
+    [FUN_fffffff00a76dc64 @ 0xFFFFFFF00A76DC64 d=5] params_found=2 cats=[0, 1] ops=234 seed=1 tainted=26 iters=3
+    [FUN_fffffff00a68ff08 @ 0xFFFFFFF00A68FF08 d=5] params_found=3 cats=[0, 1, 2] ops=183 seed=2 tainted=72 iters=5
+    [FUN_fffffff00a76fa00 @ 0xFFFFFFF00A76FA00 d=5] params_found=2 cats=[0, 3] ops=19 seed=1 tainted=3 iters=2
+    [FUN_fffffff00a63f69c @ 0xFFFFFFF00A63F69C d=5] params_found=2 cats=[0, 1] ops=92 seed=2 tainted=30 iters=3
+    [FUN_fffffff00a65640c @ 0xFFFFFFF00A65640C d=5] params_found=9 cats=[0, 1, 2, 3, 4, 5, 6, 7] ops=972 seed=4 tainted=77 iters=6
+    [FUN_fffffff00a6775ac @ 0xFFFFFFF00A6775AC d=5] params_found=1 cats=[0] ops=14 seed=1 tainted=7 iters=2
+    [FUN_fffffff00a6411f0 @ 0xFFFFFFF00A6411F0 d=5] params_found=1 cats=[0] ops=279 seed=1 tainted=72 iters=4
+    [FUN_fffffff00a64619c @ 0xFFFFFFF00A64619C d=5] params_found=7 cats=[0, 1, 2, 3] ops=169 seed=4 tainted=48 iters=5
+    [FUN_fffffff00a497e80 @ 0xFFFFFFF00A497E80 d=5] params_found=1 cats=[0] ops=252 seed=1 tainted=34 iters=3
+    [FUN_fffffff00a64d2dc @ 0xFFFFFFF00A64D2DC d=5] params_found=23 cats=[0, 1, 2, 3, 4, 5, 6, 7] ops=44208 seed=8 tainted=1996 iters=6
+    [FUN_fffffff00a654254 @ 0xFFFFFFF00A654254 d=5] params_found=1 cats=[0] ops=263 seed=1 tainted=63 iters=4
+    [FUN_fffffff00a6775e8 @ 0xFFFFFFF00A6775E8 d=5] params_found=1 cats=[0] ops=56 seed=1 tainted=28 iters=3
+    [FUN_fffffff00a26c1cc @ 0xFFFFFFF00A26C1CC d=5] params_found=8 cats=[0, 1, 2, 3, 4] ops=92 seed=1 tainted=19 iters=5
+    [FUN_fffffff00aa30df4 @ 0xFFFFFFF00AA30DF4 d=5] params_found=2 cats=[0, 2] ops=111 seed=1 tainted=30 iters=5
+    [FUN_fffffff00aa31458 @ 0xFFFFFFF00AA31458 d=5] params_found=0 cats=[] ops=? seed=0 tainted=0 iters=?
+    [FUN_fffffff00a7c4618 @ 0xFFFFFFF00A7C4618 d=5] params_found=7 cats=[0, 1] ops=377 seed=1 tainted=115 iters=4
+    [thunk_FUN_fffffff00a7c490c @ 0xFFFFFFF00A7C48F0 d=5] params_found=0 cats=[] ops=? seed=0 tainted=0 iters=?
+    [FUN_fffffff00a277224 @ 0xFFFFFFF00A277224 d=5] params_found=4 cats=[0, 1] ops=99 seed=3 tainted=41 iters=4
+    [FUN_fffffff00a48a110 @ 0xFFFFFFF00A48A110 d=5] params_found=2 cats=[0, 1] ops=732 seed=2 tainted=61 iters=4
+    [FUN_fffffff00a476ab0 @ 0xFFFFFFF00A476AB0 d=5] params_found=1 cats=[0] ops=15 seed=1 tainted=9 iters=3
+    [FUN_fffffff00a476dd8 @ 0xFFFFFFF00A476DD8 d=5] params_found=2 cats=[0, 1] ops=60 seed=2 tainted=23 iters=4
+    [FUN_fffffff00a3336f0 @ 0xFFFFFFF00A3336F0 d=5] params_found=8 cats=[0, 1, 2] ops=31 seed=3 tainted=6 iters=2
+    [FUN_fffffff00a500e50 @ 0xFFFFFFF00A500E50 d=5] params_found=3 cats=[0, 1, 2] ops=153 seed=1 tainted=5 iters=2
+    [FUN_fffffff00a77582c @ 0xFFFFFFF00A77582C d=5] params_found=2 cats=[0, 1] ops=82 seed=1 tainted=2 iters=2
+    [FUN_fffffff00a786f6c @ 0xFFFFFFF00A786F6C d=5] params_found=3 cats=[0, 1, 2] ops=234 seed=1 tainted=55 iters=4
+    [FUN_fffffff00aa31100 @ 0xFFFFFFF00AA31100 d=5] params_found=2 cats=[0, 1] ops=142 seed=1 tainted=35 iters=4
+    [FUN_fffffff00a272510 @ 0xFFFFFFF00A272510 d=5] params_found=2 cats=[0, 1] ops=912 seed=1 tainted=167 iters=4
+    [FUN_fffffff00a3336f0 @ 0xFFFFFFF00A3336F0 d=5] params_found=8 cats=[0, 1, 2] ops=31 seed=3 tainted=6 iters=2
+    [FUN_fffffff00a6445d0 @ 0xFFFFFFF00A6445D0 d=5] params_found=5 cats=[0, 1, 2, 3, 4] ops=111 seed=4 tainted=19 iters=3
+    [FUN_fffffff00a685270 @ 0xFFFFFFF00A685270 d=5] params_found=1 cats=[0] ops=74 seed=1 tainted=17 iters=3
+    [FUN_fffffff00a684394 @ 0xFFFFFFF00A684394 d=5] params_found=1 cats=[0] ops=44 seed=1 tainted=10 iters=3
+    [FUN_fffffff00a8b95dc @ 0xFFFFFFF00A8B95DC d=5] params_found=4 cats=[0, 1, 2, 3] ops=806 seed=3 tainted=164 iters=5
+    [FUN_fffffff00a333c9c @ 0xFFFFFFF00A333C9C d=5] params_found=5 cats=[0, 1, 2, 3] ops=30 seed=4 tainted=15 iters=2
+    [FUN_fffffff00a749d04 @ 0xFFFFFFF00A749D04 d=5] params_found=3 cats=[0, 1, 2] ops=12 seed=3 tainted=8 iters=3
+    [FUN_fffffff00a47c0cc @ 0xFFFFFFF00A47C0CC d=5] params_found=5 cats=[0, 1, 2, 3, 4] ops=306 seed=1 tainted=50 iters=4
+    [FUN_fffffff00a439c64 @ 0xFFFFFFF00A439C64 d=5] params_found=1 cats=[0] ops=26 seed=1 tainted=3 iters=2
+    [FUN_fffffff00a43a200 @ 0xFFFFFFF00A43A200 d=5] params_found=3 cats=[0, 1] ops=589 seed=3 tainted=99 iters=6
+    [FUN_fffffff00a439e50 @ 0xFFFFFFF00A439E50 d=5] params_found=2 cats=[0, 1] ops=90 seed=2 tainted=14 iters=3
+    [FUN_fffffff00a43a664 @ 0xFFFFFFF00A43A664 d=5] params_found=2 cats=[0, 1] ops=376 seed=2 tainted=92 iters=6
+    [FUN_fffffff00a1e72cc @ 0xFFFFFFF00A1E72CC d=5] params_found=4 cats=[0, 1, 2, 3] ops=151 seed=1 tainted=64 iters=4
+    [FUN_fffffff00a476b0c @ 0xFFFFFFF00A476B0C d=5] params_found=3 cats=[0, 1, 2] ops=490 seed=2 tainted=190 iters=4
+    [FUN_fffffff00a4769f8 @ 0xFFFFFFF00A4769F8 d=5] params_found=2 cats=[0, 1] ops=14 seed=2 tainted=8 iters=2
+    [FUN_fffffff00a47d3a4 @ 0xFFFFFFF00A47D3A4 d=5] params_found=2 cats=[0, 1] ops=14 seed=2 tainted=8 iters=2
+    [FUN_fffffff00a48a4fc @ 0xFFFFFFF00A48A4FC d=5] params_found=5 cats=[0, 1, 2, 3, 4] ops=914 seed=1 tainted=90 iters=5
+    [FUN_fffffff00a9c4f98 @ 0xFFFFFFF00A9C4F98 d=5] params_found=4 cats=[0, 1, 2, 3] ops=70 seed=4 tainted=18 iters=2
+    [FUN_fffffff00a2c49c8 @ 0xFFFFFFF00A2C49C8 d=5] params_found=21 cats=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] ops=4935 seed=5 tainted=343 iters=4
+    [FUN_fffffff00a9c5fb0 @ 0xFFFFFFF00A9C5FB0 d=5] params_found=4 cats=[0, 3, 4, 5] ops=131 seed=1 tainted=41 iters=4
+    [FUN_fffffff00a9c36bc @ 0xFFFFFFF00A9C36BC d=5] params_found=6 cats=[0, 3, 4, 5, 6, 7] ops=147 seed=1 tainted=38 iters=3
+    [FUN_fffffff00a25f0b4 @ 0xFFFFFFF00A25F0B4 d=6] params_found=3 cats=[0, 1, 2] ops=58 seed=2 tainted=18 iters=2
+    [FUN_fffffff00a215024 @ 0xFFFFFFF00A215024 d=6] params_found=2 cats=[0, 1] ops=44 seed=1 tainted=15 iters=3
+    [FUN_fffffff00a27b6f4 @ 0xFFFFFFF00A27B6F4 d=6] params_found=1 cats=[0] ops=52 seed=1 tainted=20 iters=4
+    [FUN_fffffff00a711f80 @ 0xFFFFFFF00A711F80 d=6] params_found=1 cats=[1] ops=307 seed=1 tainted=90 iters=3
+    [FUN_fffffff00a40db00 @ 0xFFFFFFF00A40DB00 d=6] params_found=1 cats=[0] ops=189 seed=1 tainted=48 iters=5
+    [FUN_fffffff00a23522c @ 0xFFFFFFF00A23522C d=6] params_found=1 cats=[0] ops=152 seed=1 tainted=36 iters=3
+    [FUN_fffffff00a21c968 @ 0xFFFFFFF00A21C968 d=6] params_found=1 cats=[0] ops=375 seed=1 tainted=134 iters=4
+    [FUN_fffffff00a22a3b0 @ 0xFFFFFFF00A22A3B0 d=6] params_found=1 cats=[0] ops=164 seed=1 tainted=64 iters=3
+    [FUN_fffffff00a225558 @ 0xFFFFFFF00A225558 d=6] params_found=2 cats=[0, 1] ops=3380 seed=1 tainted=241 iters=4
+    [FUN_fffffff00a22c844 @ 0xFFFFFFF00A22C844 d=6] params_found=3 cats=[0, 1, 2] ops=111 seed=2 tainted=42 iters=3
+    [FUN_fffffff00a2160b0 @ 0xFFFFFFF00A2160B0 d=6] params_found=4 cats=[0, 1, 2, 3] ops=182 seed=2 tainted=73 iters=3
+    [FUN_fffffff00a229bf8 @ 0xFFFFFFF00A229BF8 d=6] params_found=3 cats=[0, 1, 2] ops=89 seed=1 tainted=32 iters=3
+    [FUN_fffffff00a3723f0 @ 0xFFFFFFF00A3723F0 d=6] params_found=5 cats=[0, 1, 2, 3, 4] ops=256 seed=3 tainted=62 iters=3
+    [FUN_fffffff00a259174 @ 0xFFFFFFF00A259174 d=6] params_found=3 cats=[0, 1, 2] ops=222 seed=3 tainted=79 iters=3
+    [FUN_fffffff00a253218 @ 0xFFFFFFF00A253218 d=6] params_found=7 cats=[0, 1, 2, 3, 4, 5] ops=248 seed=1 tainted=29 iters=4
+    [FUN_fffffff00a25a3a8 @ 0xFFFFFFF00A25A3A8 d=6] params_found=11 cats=[0, 1, 2, 3, 4, 5, 6] ops=695 seed=3 tainted=120 iters=6
+    [FUN_fffffff00a6b2540 @ 0xFFFFFFF00A6B2540 d=6] params_found=3 cats=[0, 1] ops=178 seed=1 tainted=59 iters=3
+    [FUN_fffffff00a25cfa8 @ 0xFFFFFFF00A25CFA8 d=6] params_found=2 cats=[0, 1] ops=387 seed=2 tainted=79 iters=3
+    [FUN_fffffff00a260588 @ 0xFFFFFFF00A260588 d=6] params_found=4 cats=[0, 1, 2, 3] ops=80 seed=4 tainted=16 iters=3
+    [FUN_fffffff00a25cc58 @ 0xFFFFFFF00A25CC58 d=6] params_found=1 cats=[0] ops=17 seed=1 tainted=7 iters=2
+    [FUN_fffffff00a26c344 @ 0xFFFFFFF00A26C344 d=6] params_found=5 cats=[0, 1, 2, 3, 4] ops=56 seed=3 tainted=16 iters=4
+    [FUN_fffffff00a20b284 @ 0xFFFFFFF00A20B284 d=6] params_found=2 cats=[0, 1] ops=22 seed=1 tainted=8 iters=3
+    [FUN_fffffff00a263c00 @ 0xFFFFFFF00A263C00 d=6] params_found=6 cats=[0, 1, 2, 3, 4] ops=309 seed=2 tainted=22 iters=4
+    [FUN_fffffff00a263fe8 @ 0xFFFFFFF00A263FE8 d=6] params_found=7 cats=[0, 1, 2, 3, 4, 5, 6] ops=280 seed=5 tainted=52 iters=5
+    [FUN_fffffff00a8b7270 @ 0xFFFFFFF00A8B7270 d=6] params_found=2 cats=[0, 1] ops=62 seed=2 tainted=29 iters=3
+    [FUN_fffffff00a262444 @ 0xFFFFFFF00A262444 d=6] params_found=1 cats=[0] ops=23 seed=1 tainted=12 iters=3
+    [FUN_fffffff00a6bae5c @ 0xFFFFFFF00A6BAE5C d=6] params_found=0 cats=[] ops=? seed=0 tainted=0 iters=?
+    [FUN_fffffff00a2150ec @ 0xFFFFFFF00A2150EC d=6] params_found=3 cats=[0, 1] ops=132 seed=1 tainted=66 iters=4
+    [FUN_fffffff00a36dee4 @ 0xFFFFFFF00A36DEE4 d=6] params_found=2 cats=[0, 1] ops=34 seed=1 tainted=6 iters=2
+    [FUN_fffffff00a2251a4 @ 0xFFFFFFF00A2251A4 d=6] params_found=1 cats=[0] ops=714 seed=1 tainted=106 iters=3
+    [FUN_fffffff00a20b114 @ 0xFFFFFFF00A20B114 d=6] params_found=3 cats=[0, 1, 2] ops=107 seed=1 tainted=19 iters=4
+    [FUN_fffffff00a73c3d0 @ 0xFFFFFFF00A73C3D0 d=6] params_found=4 cats=[0, 1, 2, 3] ops=60 seed=3 tainted=12 iters=2
+    [FUN_fffffff00a1b13a0 @ 0xFFFFFFF00A1B13A0 d=6] params_found=5 cats=[0, 1] ops=953 seed=5 tainted=568 iters=5
+    [FUN_fffffff00aa3132c @ 0xFFFFFFF00AA3132C d=6] params_found=5 cats=[0, 1, 2] ops=38 seed=4 tainted=19 iters=3
+    [FUN_fffffff00a272bc8 @ 0xFFFFFFF00A272BC8 d=6] params_found=5 cats=[0, 1, 2, 3] ops=688 seed=1 tainted=170 iters=4
+    [FUN_fffffff00aa3132c @ 0xFFFFFFF00AA3132C d=6] params_found=5 cats=[0, 1, 2] ops=38 seed=5 tainted=21 iters=3
+    [FUN_fffffff00a235b8c @ 0xFFFFFFF00A235B8C d=6] params_found=5 cats=[0, 1, 2, 3, 4] ops=247 seed=4 tainted=73 iters=3
+    [FUN_fffffff00a273944 @ 0xFFFFFFF00A273944 d=6] params_found=3 cats=[0, 1, 2] ops=98 seed=3 tainted=41 iters=5
+    [FUN_fffffff00a273a70 @ 0xFFFFFFF00A273A70 d=6] params_found=9 cats=[0, 1, 2, 3, 4] ops=4759 seed=3 tainted=335 iters=4
+    [FUN_fffffff00a774a8c @ 0xFFFFFFF00A774A8C d=6] params_found=3 cats=[0, 1, 2] ops=122 seed=3 tainted=49 iters=4
+    [FUN_fffffff00a7b53bc @ 0xFFFFFFF00A7B53BC d=6] params_found=3 cats=[0, 1, 2] ops=80 seed=1 tainted=33 iters=4
+    [FUN_fffffff00a7b2be8 @ 0xFFFFFFF00A7B2BE8 d=6] params_found=5 cats=[0, 1, 2, 3, 4] ops=1210 seed=1 tainted=93 iters=4
+    [FUN_fffffff00a7b3aa0 @ 0xFFFFFFF00A7B3AA0 d=6] params_found=7 cats=[0, 1, 2, 3, 4] ops=487 seed=3 tainted=107 iters=4
+    [FUN_fffffff00a7b3ef8 @ 0xFFFFFFF00A7B3EF8 d=6] params_found=3 cats=[0, 1, 2] ops=76 seed=3 tainted=35 iters=3
+    [FUN_fffffff00a7b1d10 @ 0xFFFFFFF00A7B1D10 d=6] params_found=1 cats=[0] ops=290 seed=1 tainted=57 iters=5
+    [FUN_fffffff00a7b18a0 @ 0xFFFFFFF00A7B18A0 d=6] params_found=4 cats=[0, 1, 2, 3] ops=239 seed=1 tainted=57 iters=3
+    [FUN_fffffff00a7b1aa4 @ 0xFFFFFFF00A7B1AA4 d=6] params_found=4 cats=[0, 1, 2, 3] ops=268 seed=2 tainted=82 iters=4
+    [FUN_fffffff00a73dfb8 @ 0xFFFFFFF00A73DFB8 d=6] params_found=1 cats=[0] ops=47 seed=1 tainted=3 iters=2
+    [FUN_fffffff00a7b2a54 @ 0xFFFFFFF00A7B2A54 d=6] params_found=1 cats=[0] ops=28 seed=1 tainted=13 iters=3
+    [FUN_fffffff00a7b1f74 @ 0xFFFFFFF00A7B1F74 d=6] params_found=3 cats=[0, 1, 2] ops=457 seed=2 tainted=23 iters=3
+    [FUN_fffffff00a4cedb8 @ 0xFFFFFFF00A4CEDB8 d=6] params_found=8 cats=[0, 1, 2, 3] ops=19989 seed=1 tainted=299 iters=7
+    [FUN_fffffff00a558b90 @ 0xFFFFFFF00A558B90 d=6] params_found=6 cats=[0, 1, 2, 3, 4, 5] ops=3508 seed=3 tainted=154 iters=3
+    [FUN_fffffff00a559be8 @ 0xFFFFFFF00A559BE8 d=6] params_found=9 cats=[0, 1, 2, 3, 4, 5] ops=1493 seed=6 tainted=158 iters=4
+    [FUN_fffffff00a559a4c @ 0xFFFFFFF00A559A4C d=6] params_found=3 cats=[0, 1, 2] ops=1319 seed=1 tainted=1 iters=1
+    [FUN_fffffff00a559a4c @ 0xFFFFFFF00A559A4C d=6] params_found=3 cats=[0, 1, 2] ops=1319 seed=2 tainted=3 iters=2
+    [FUN_fffffff00a7880b0 @ 0xFFFFFFF00A7880B0 d=6] params_found=1 cats=[0] ops=28 seed=1 tainted=13 iters=3
+    [FUN_fffffff00a745aa8 @ 0xFFFFFFF00A745AA8 d=6] params_found=2 cats=[0, 1] ops=142 seed=1 tainted=43 iters=3
+    [FUN_fffffff00a58d9dc @ 0xFFFFFFF00A58D9DC d=6] params_found=2 cats=[0, 1] ops=31 seed=2 tainted=15 iters=3
+    [FUN_fffffff00a58da38 @ 0xFFFFFFF00A58DA38 d=6] params_found=2 cats=[0, 1] ops=31 seed=2 tainted=15 iters=3
+    [FUN_fffffff00a5541e4 @ 0xFFFFFFF00A5541E4 d=6] params_found=4 cats=[0, 1, 2, 3] ops=1238 seed=2 tainted=132 iters=4
+    [FUN_fffffff00a774844 @ 0xFFFFFFF00A774844 d=6] params_found=2 cats=[0, 1] ops=88 seed=1 tainted=22 iters=3
+    [FUN_fffffff00a774844 @ 0xFFFFFFF00A774844 d=6] params_found=2 cats=[0, 1] ops=88 seed=2 tainted=39 iters=4
+    [FUN_fffffff00a271fcc @ 0xFFFFFFF00A271FCC d=6] params_found=5 cats=[0, 1] ops=712 seed=5 tainted=180 iters=4
+    [FUN_fffffff00a271fcc @ 0xFFFFFFF00A271FCC d=6] params_found=5 cats=[0, 1] ops=712 seed=1 tainted=180 iters=4
+    [FUN_fffffff00a269620 @ 0xFFFFFFF00A269620 d=6] params_found=7 cats=[0, 1, 2, 3, 4, 5, 6] ops=432 seed=3 tainted=75 iters=3
+    [FUN_fffffff00a5f06f8 @ 0xFFFFFFF00A5F06F8 d=6] params_found=1 cats=[0] ops=192 seed=1 tainted=58 iters=4
+    [FUN_fffffff00a5584e0 @ 0xFFFFFFF00A5584E0 d=6] params_found=1 cats=[0] ops=84 seed=1 tainted=33 iters=3
+    [FUN_fffffff00a74e1f0 @ 0xFFFFFFF00A74E1F0 d=6] params_found=1 cats=[0] ops=66 seed=1 tainted=25 iters=4
+    [FUN_fffffff00a77619c @ 0xFFFFFFF00A77619C d=6] params_found=2 cats=[0, 1] ops=309 seed=2 tainted=76 iters=3
+    [FUN_fffffff00a7860c8 @ 0xFFFFFFF00A7860C8 d=6] params_found=2 cats=[0, 1] ops=166 seed=1 tainted=49 iters=3
+    [FUN_fffffff00a78673c @ 0xFFFFFFF00A78673C d=6] params_found=2 cats=[0, 1] ops=278 seed=1 tainted=73 iters=4
+    [FUN_fffffff00a785ef8 @ 0xFFFFFFF00A785EF8 d=6] params_found=1 cats=[0] ops=102 seed=1 tainted=27 iters=3
+    [FUN_fffffff00a7764f4 @ 0xFFFFFFF00A7764F4 d=6] params_found=1 cats=[0] ops=332 seed=1 tainted=64 iters=5
+    [FUN_fffffff00a7a21ec @ 0xFFFFFFF00A7A21EC d=6] params_found=1 cats=[0] ops=380 seed=1 tainted=70 iters=4
+    [FUN_fffffff00a2730e4 @ 0xFFFFFFF00A2730E4 d=6] params_found=7 cats=[0, 1, 2] ops=1280 seed=7 tainted=209 iters=4
+    [FUN_fffffff00a2775d0 @ 0xFFFFFFF00A2775D0 d=6] params_found=4 cats=[0, 1, 2, 3] ops=68 seed=3 tainted=31 iters=5
+    [FUN_fffffff00a272bc8 @ 0xFFFFFFF00A272BC8 d=6] params_found=5 cats=[0, 1, 2, 3] ops=688 seed=3 tainted=171 iters=4
+    [FUN_fffffff00a277878 @ 0xFFFFFFF00A277878 d=6] params_found=3 cats=[0, 1, 2] ops=143 seed=3 tainted=67 iters=4
+    [FUN_fffffff00a2775d0 @ 0xFFFFFFF00A2775D0 d=6] params_found=4 cats=[0, 1, 2, 3] ops=68 seed=4 tainted=31 iters=4
+    [FUN_fffffff00a703d58 @ 0xFFFFFFF00A703D58 d=6] params_found=1 cats=[0] ops=51 seed=1 tainted=20 iters=4
+    [FUN_fffffff00aa38138 @ 0xFFFFFFF00AA38138 d=6] params_found=0 cats=[] ops=? seed=0 tainted=0 iters=?
+    [FUN_fffffff00a6c6a1c @ 0xFFFFFFF00A6C6A1C d=6] params_found=1 cats=[0] ops=89 seed=1 tainted=4 iters=2
+    [FUN_fffffff00a4baf28 @ 0xFFFFFFF00A4BAF28 d=6] params_found=3 cats=[0, 1, 2] ops=107 seed=1 tainted=38 iters=4
+    [FUN_fffffff00a250230 @ 0xFFFFFFF00A250230 d=6] params_found=1 cats=[0] ops=54 seed=1 tainted=19 iters=2
+    [FUN_fffffff00a242378 @ 0xFFFFFFF00A242378 d=6] params_found=2 cats=[0, 1] ops=3055 seed=2 tainted=213 iters=4
+    [FUN_fffffff00a242378 @ 0xFFFFFFF00A242378 d=6] params_found=2 cats=[0, 1] ops=3055 seed=1 tainted=212 iters=4
+    [FUN_fffffff00a4cb9a8 @ 0xFFFFFFF00A4CB9A8 d=6] params_found=2 cats=[0, 1] ops=579 seed=2 tainted=34 iters=3
+    [FUN_fffffff00a4cbd04 @ 0xFFFFFFF00A4CBD04 d=6] params_found=28 cats=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27] ops=6029 seed=26 tainted=396 iters=4
+    [FUN_fffffff00a7032c0 @ 0xFFFFFFF00A7032C0 d=6] params_found=1 cats=[0] ops=61 seed=1 tainted=25 iters=5
+    [FUN_fffffff00a703400 @ 0xFFFFFFF00A703400 d=6] params_found=1 cats=[0] ops=61 seed=1 tainted=25 iters=5
+    [FUN_fffffff00a703360 @ 0xFFFFFFF00A703360 d=6] params_found=1 cats=[0] ops=62 seed=1 tainted=26 iters=5
+    [FUN_fffffff00a439a2c @ 0xFFFFFFF00A439A2C d=6] params_found=1 cats=[0] ops=191 seed=1 tainted=20 iters=2
+    [FUN_fffffff00a55f4c8 @ 0xFFFFFFF00A55F4C8 d=6] params_found=5 cats=[0, 1, 2, 3] ops=57 seed=1 tainted=20 iters=4
+    [FUN_fffffff00a4cade8 @ 0xFFFFFFF00A4CADE8 d=6] params_found=10 cats=[0, 1, 2, 3, 4, 5, 6] ops=1354 seed=6 tainted=290 iters=4
+    [FUN_fffffff00a4cade8 @ 0xFFFFFFF00A4CADE8 d=6] params_found=10 cats=[0, 1, 2, 3, 4, 5, 6] ops=1354 seed=7 tainted=291 iters=4
+    [FUN_fffffff00a4caac8 @ 0xFFFFFFF00A4CAAC8 d=6] params_found=3 cats=[0, 1, 2] ops=414 seed=2 tainted=41 iters=4
+    [FUN_fffffff00a4ca97c @ 0xFFFFFFF00A4CA97C d=6] params_found=2 cats=[1, 2] ops=151 seed=1 tainted=2 iters=2
+    [FUN_fffffff00a215024 @ 0xFFFFFFF00A215024 d=6] params_found=2 cats=[0, 1] ops=44 seed=2 tainted=18 iters=3
+    [FUN_fffffff00a262760 @ 0xFFFFFFF00A262760 d=6] params_found=1 cats=[0] ops=62 seed=1 tainted=14 iters=3
+    [FUN_fffffff00a6d7be0 @ 0xFFFFFFF00A6D7BE0 d=6] params_found=5 cats=[0, 1, 2, 3] ops=153 seed=5 tainted=63 iters=3
+    [FUN_fffffff00a26295c @ 0xFFFFFFF00A26295C d=6] params_found=2 cats=[0, 1] ops=52 seed=2 tainted=8 iters=2
+    [FUN_fffffff00a262864 @ 0xFFFFFFF00A262864 d=6] params_found=2 cats=[0, 1] ops=52 seed=2 tainted=8 iters=2
+    [FUN_fffffff00a6b4678 @ 0xFFFFFFF00A6B4678 d=6] params_found=4 cats=[0, 1, 2, 3] ops=226 seed=4 tainted=93 iters=4
+    [FUN_fffffff00a6b409c @ 0xFFFFFFF00A6B409C d=6] params_found=8 cats=[0, 1, 2, 3, 4] ops=430 seed=8 tainted=153 iters=5
+    [FUN_fffffff00aa3d074 @ 0xFFFFFFF00AA3D074 d=6] params_found=0 cats=[] ops=? seed=0 tainted=0 iters=?
+    [FUN_fffffff00a25cfa8 @ 0xFFFFFFF00A25CFA8 d=6] params_found=2 cats=[0, 1] ops=387 seed=1 tainted=79 iters=3
+    [FUN_fffffff00a262864 @ 0xFFFFFFF00A262864 d=6] params_found=2 cats=[0, 1] ops=52 seed=1 tainted=7 iters=2
+    [FUN_fffffff00a22b260 @ 0xFFFFFFF00A22B260 d=6] params_found=2 cats=[0, 1] ops=47 seed=1 tainted=15 iters=4
+    [FUN_fffffff00a476b0c @ 0xFFFFFFF00A476B0C d=6] params_found=3 cats=[0, 1, 2] ops=490 seed=1 tainted=44 iters=4
+    [FUN_fffffff00a9c6264 @ 0xFFFFFFF00A9C6264 d=6] params_found=4 cats=[0, 1, 2, 3] ops=117 seed=4 tainted=23 iters=2
+    [FUN_fffffff00a7e791c @ 0xFFFFFFF00A7E791C d=6] params_found=2 cats=[0, 1] ops=194 seed=2 tainted=79 iters=3
+    [FUN_fffffff00a206b60 @ 0xFFFFFFF00A206B60 d=6] params_found=3 cats=[0, 1, 2] ops=164 seed=2 tainted=51 iters=4
+    [FUN_fffffff00a26e89c @ 0xFFFFFFF00A26E89C d=6] params_found=3 cats=[0, 1, 2] ops=7170 seed=1 tainted=628 iters=4
+    [FUN_fffffff00a333dd0 @ 0xFFFFFFF00A333DD0 d=6] params_found=3 cats=[0, 1, 2] ops=15 seed=3 tainted=9 iters=2
+    [FUN_fffffff00a274888 @ 0xFFFFFFF00A274888 d=6] params_found=1 cats=[0] ops=181 seed=1 tainted=43 iters=4
+    [FUN_fffffff00aa314a0 @ 0xFFFFFFF00AA314A0 d=6] params_found=0 cats=[] ops=? seed=0 tainted=0 iters=?
+    [FUN_fffffff00aa314a0 @ 0xFFFFFFF00AA314A0 d=6] params_found=0 cats=[] ops=? seed=0 tainted=0 iters=?
+    [FUN_fffffff00a9c5608 @ 0xFFFFFFF00A9C5608 d=6] params_found=3 cats=[0, 1, 2] ops=183 seed=2 tainted=37 iters=4
+    [FUN_fffffff00a7eb56c @ 0xFFFFFFF00A7EB56C d=6] params_found=3 cats=[0, 1, 2] ops=29 seed=2 tainted=10 iters=3
+    [FUN_fffffff00a867130 @ 0xFFFFFFF00A867130 d=6] params_found=1 cats=[0] ops=34 seed=1 tainted=10 iters=3
+    [FUN_fffffff00a7e1640 @ 0xFFFFFFF00A7E1640 d=6] params_found=2 cats=[0, 1] ops=53 seed=1 tainted=12 iters=2
+    [FUN_fffffff00a269620 @ 0xFFFFFFF00A269620 d=6] params_found=7 cats=[0, 1, 2, 3, 4, 5, 6] ops=432 seed=3 tainted=101 iters=4
+    [FUN_fffffff00a226b3c @ 0xFFFFFFF00A226B3C d=6] params_found=4 cats=[0, 1, 2, 3] ops=208 seed=1 tainted=44 iters=5
+    [FUN_fffffff00a271794 @ 0xFFFFFFF00A271794 d=6] params_found=1 cats=[0] ops=9 seed=1 tainted=4 iters=2
+    [FUN_fffffff00a1ef420 @ 0xFFFFFFF00A1EF420 d=6] params_found=9 cats=[0, 1, 3, 4, 5, 6, 7] ops=2110 seed=1 tainted=72 iters=6
+    [FUN_fffffff00a208a88 @ 0xFFFFFFF00A208A88 d=6] params_found=1 cats=[0] ops=126 seed=1 tainted=29 iters=3
+    [FUN_fffffff00a45c678 @ 0xFFFFFFF00A45C678 d=6] params_found=1 cats=[0] ops=379 seed=1 tainted=58 iters=4
+    analyzed limit reached
+  SINK copyin       @ 0xFFFFFFF00A4E8644  in FUN_fffffff00a4e843c (0xFFFFFFF00A4E843C)  depth=1
+  SINK copyin       @ 0xFFFFFFF00A4E86C0  in FUN_fffffff00a4e843c (0xFFFFFFF00A4E843C)  depth=1
+  SINK copyout      @ 0xFFFFFFF00A4E9110  in FUN_fffffff00a4e843c (0xFFFFFFF00A4E843C)  depth=1
+  SINK copyin       @ 0xFFFFFFF00A4EC788  in FUN_fffffff00a4ec5d8 (0xFFFFFFF00A4EC5D8)  depth=1
+  SINK copyin       @ 0xFFFFFFF00A4E62DC  in FUN_fffffff00a4e60dc (0xFFFFFFF00A4E60DC)  depth=1
+  SINK copyin       @ 0xFFFFFFF00A4EB3FC  in FUN_fffffff00a4eb2b4 (0xFFFFFFF00A4EB2B4)  depth=1
+  SINK copyin       @ 0xFFFFFFF00A4E951C  in FUN_fffffff00a4e93c4 (0xFFFFFFF00A4E93C4)  depth=1
+  SINK copyout      @ 0xFFFFFFF00A4E83EC  in FUN_fffffff00a4e80fc (0xFFFFFFF00A4E80FC)  depth=1
+  SINK copyin       @ 0xFFFFFFF00A4EA274  in FUN_fffffff00a4ea0b4 (0xFFFFFFF00A4EA0B4)  depth=1
+  SINK copyout      @ 0xFFFFFFF00A4EB210  in FUN_fffffff00a4eac7c (0xFFFFFFF00A4EAC7C)  depth=1
+  SINK copyin       @ 0xFFFFFFF00A4ECB70  in FUN_fffffff00a4ec9ec (0xFFFFFFF00A4EC9EC)  depth=1
+  SINK memmove      @ 0xFFFFFFF00A5AF98C  in FUN_fffffff00a5af698 (0xFFFFFFF00A5AF698)  depth=2
+  SINK memmove      @ 0xFFFFFFF00A4DEE28  in FUN_fffffff00a4dd4cc (0xFFFFFFF00A4DD4CC)  depth=2
+  SINK memmove      @ 0xFFFFFFF00A4DF0E0  in FUN_fffffff00a4dd4cc (0xFFFFFFF00A4DD4CC)  depth=2
+  SINK memmove      @ 0xFFFFFFF00A4DF5E0  in FUN_fffffff00a4dd4cc (0xFFFFFFF00A4DD4CC)  depth=2
+  SINK memmove      @ 0xFFFFFFF00A4F3D04  in FUN_fffffff00a4f3840 (0xFFFFFFF00A4F3840)  depth=2
+  SINK memmove      @ 0xFFFFFFF00A4F3D04  in FUN_fffffff00a4f3840 (0xFFFFFFF00A4F3840)  depth=2
+  SINK memmove      @ 0xFFFFFFF00A4F3020  in FUN_fffffff00a4f2e70 (0xFFFFFFF00A4F2E70)  depth=3
+  SINK copyout      @ 0xFFFFFFF00A4F31AC  in FUN_fffffff00a4f2e70 (0xFFFFFFF00A4F2E70)  depth=3
+  SINK copyout      @ 0xFFFFFFF00A4F32AC  in FUN_fffffff00a4f2e70 (0xFFFFFFF00A4F2E70)  depth=3
+  SINK memmove      @ 0xFFFFFFF00A6E66E4  in FUN_fffffff00a6e656c (0xFFFFFFF00A6E656C)  depth=3
+  SINK memmove      @ 0xFFFFFFF00AA4095C  in FUN_fffffff00aa40638 (0xFFFFFFF00AA40638)  depth=3
+  SINK memmove      @ 0xFFFFFFF00A7C6AF4  in FUN_fffffff00a7c663c (0xFFFFFFF00A7C663C)  depth=3
+  SINK memmove      @ 0xFFFFFFF00A7C708C  in FUN_fffffff00a7c6e9c (0xFFFFFFF00A7C6E9C)  depth=3
+  SINK memmove      @ 0xFFFFFFF00A7C6AF4  in FUN_fffffff00a7c663c (0xFFFFFFF00A7C663C)  depth=3
+  SINK memmove      @ 0xFFFFFFF00A4E46B0  in FUN_fffffff00a4e45f8 (0xFFFFFFF00A4E45F8)  depth=3
+  SINK memmove      @ 0xFFFFFFF00A479F4C  in FUN_fffffff00a478ed8 (0xFFFFFFF00A478ED8)  depth=3
+  SINK memmove      @ 0xFFFFFFF00A4C4800  in FUN_fffffff00a4c3dec (0xFFFFFFF00A4C3DEC)  depth=4
+  SINK memmove      @ 0xFFFFFFF00A49F258  in FUN_fffffff00a49f19c (0xFFFFFFF00A49F19C)  depth=4
+  SINK memmove      @ 0xFFFFFFF00A480618  in FUN_fffffff00a480268 (0xFFFFFFF00A480268)  depth=4
+  SINK memmove      @ 0xFFFFFFF00A480C04  in FUN_fffffff00a480268 (0xFFFFFFF00A480268)  depth=4
+  SINK memmove      @ 0xFFFFFFF00AA402E0  in FUN_fffffff00aa402b4 (0xFFFFFFF00AA402B4)  depth=4
+  SINK memmove      @ 0xFFFFFFF00AA40430  in FUN_fffffff00aa40324 (0xFFFFFFF00AA40324)  depth=4
+  SINK memmove      @ 0xFFFFFFF00A57A75C  in FUN_fffffff00a57a4a8 (0xFFFFFFF00A57A4A8)  depth=4
+  SINK memmove      @ 0xFFFFFFF00A57A960  in FUN_fffffff00a57a4a8 (0xFFFFFFF00A57A4A8)  depth=4
+  SINK memmove      @ 0xFFFFFFF00A4C4800  in FUN_fffffff00a4c3dec (0xFFFFFFF00A4C3DEC)  depth=4
+  SINK memmove      @ 0xFFFFFFF00A4E4858  in FUN_fffffff00a4e479c (0xFFFFFFF00A4E479C)  depth=4
+  SINK memmove      @ 0xFFFFFFF00A47B5E8  in FUN_fffffff00a47b3f0 (0xFFFFFFF00A47B3F0)  depth=4
+  SINK memmove      @ 0xFFFFFFF00A479F4C  in FUN_fffffff00a478ed8 (0xFFFFFFF00A478ED8)  depth=4
+  SINK memmove      @ 0xFFFFFFF00A7879E0  in FUN_fffffff00a78772c (0xFFFFFFF00A78772C)  depth=5
+  SINK memmove      @ 0xFFFFFFF00A7879E0  in FUN_fffffff00a78772c (0xFFFFFFF00A78772C)  depth=5
+  SINK memmove      @ 0xFFFFFFF00A4C9674  in FUN_fffffff00a4c7a38 (0xFFFFFFF00A4C7A38)  depth=5
+  SINK memmove      @ 0xFFFFFFF00A4C9690  in FUN_fffffff00a4c7a38 (0xFFFFFFF00A4C7A38)  depth=5
+  SINK memmove      @ 0xFFFFFFF00A480618  in FUN_fffffff00a480268 (0xFFFFFFF00A480268)  depth=5
+  SINK memmove      @ 0xFFFFFFF00A480C04  in FUN_fffffff00a480268 (0xFFFFFFF00A480268)  depth=5
+  SINK memmove      @ 0xFFFFFFF00A64E4F8  in FUN_fffffff00a64d2dc (0xFFFFFFF00A64D2DC)  depth=5
+  SINK memmove      @ 0xFFFFFFF00A333D0C  in FUN_fffffff00a333c9c (0xFFFFFFF00A333C9C)  depth=5
+  SINK memmove      @ 0xFFFFFFF00A333D28  in FUN_fffffff00a333c9c (0xFFFFFFF00A333C9C)  depth=5
+  SINK memmove      @ 0xFFFFFFF00A333E2C  in FUN_fffffff00a333dd0 (0xFFFFFFF00A333DD0)  depth=6
 
 ========================================================================
 ### SOURCE necp_client_add_flow @ 0xFFFFFFF00A4E843C
 ========================================================================
-  no tainted sinks reached
-  [FUN_fffffff00a4e60dc @ 0xFFFFFFF00A4E60DC d=0] no taint propagated
+    [FUN_fffffff00a4e843c @ 0xFFFFFFF00A4E843C d=0] params_found=3 cats=[0, 1, 2] ops=11359 seed=3 tainted=262 iters=4
+  SINK copyin       @ 0xFFFFFFF00A4E8644  in FUN_fffffff00a4e843c (0xFFFFFFF00A4E843C)  depth=0
+  SINK copyin       @ 0xFFFFFFF00A4E86C0  in FUN_fffffff00a4e843c (0xFFFFFFF00A4E843C)  depth=0
+  SINK copyout      @ 0xFFFFFFF00A4E9110  in FUN_fffffff00a4e843c (0xFFFFFFF00A4E843C)  depth=0
 
 ========================================================================
 ### SOURCE necp_client_add_client @ 0xFFFFFFF00A4E60DC
 ========================================================================
-  no tainted sinks reached
-  [FUN_fffffff00a4e93c4 @ 0xFFFFFFF00A4E93C4 d=0] no taint propagated
+    [FUN_fffffff00a4e60dc @ 0xFFFFFFF00A4E60DC d=0] params_found=4 cats=[0, 1, 2, 3] ops=10917 seed=4 tainted=184 iters=5
+  SINK copyin       @ 0xFFFFFFF00A4E62DC  in FUN_fffffff00a4e60dc (0xFFFFFFF00A4E60DC)  depth=0
 
 ========================================================================
 ### SOURCE necp_client_remove_flow @ 0xFFFFFFF00A4E93C4
 ========================================================================
-  no tainted sinks reached
-  [FUN_fffffff00a4e76f4 @ 0xFFFFFFF00A4E76F4 d=0] no taint propagated
+    [FUN_fffffff00a4e93c4 @ 0xFFFFFFF00A4E93C4 d=0] params_found=3 cats=[0, 1, 2] ops=3333 seed=3 tainted=73 iters=5
+  SINK copyin       @ 0xFFFFFFF00A4E951C  in FUN_fffffff00a4e93c4 (0xFFFFFFF00A4E93C4)  depth=0
 
 ========================================================================
 ### SOURCE necp_client_remove_client @ 0xFFFFFFF00A4E76F4
 ========================================================================
+    [FUN_fffffff00a4e76f4 @ 0xFFFFFFF00A4E76F4 d=0] params_found=3 cats=[0, 1, 2] ops=1642 seed=3 tainted=69 iters=3
   no tainted sinks reached
-  [FUN_fffffff00a4e7be8 @ 0xFFFFFFF00A4E7BE8 d=0] no taint propagated
 
 ========================================================================
 ### SOURCE necp_client_copy_result @ 0xFFFFFFF00A4E7BE8
 ========================================================================
+    [FUN_fffffff00a4e7be8 @ 0xFFFFFFF00A4E7BE8 d=0] params_found=3 cats=[0, 1, 2] ops=688 seed=3 tainted=112 iters=4
   no tainted sinks reached
-  [FUN_fffffff00a4e80fc @ 0xFFFFFFF00A4E80FC d=0] no taint propagated
 
 ========================================================================
 ### SOURCE necp_client_copy_list @ 0xFFFFFFF00A4E80FC
 ========================================================================
-  no tainted sinks reached
-  [FUN_fffffff00a4eac7c @ 0xFFFFFFF00A4EAC7C d=0] no taint propagated
+    [FUN_fffffff00a4e80fc @ 0xFFFFFFF00A4E80FC d=0] params_found=3 cats=[0, 1, 2] ops=329 seed=3 tainted=72 iters=4
+  SINK copyout      @ 0xFFFFFFF00A4E83EC  in FUN_fffffff00a4e80fc (0xFFFFFFF00A4E80FC)  depth=0
 
 ========================================================================
 ### SOURCE necp_client_copy_interface @ 0xFFFFFFF00A4EAC7C
 ========================================================================
-  no tainted sinks reached
-  [FUN_fffffff00a4eb704 @ 0xFFFFFFF00A4EB704 d=0] no taint propagated
+    [FUN_fffffff00a4eac7c @ 0xFFFFFFF00A4EAC7C d=0] params_found=2 cats=[0, 1] ops=1705 seed=2 tainted=139 iters=5
+  SINK copyout      @ 0xFFFFFFF00A4EB210  in FUN_fffffff00a4eac7c (0xFFFFFFF00A4EAC7C)  depth=0
 
 ========================================================================
 ### SOURCE necp_client_sysctl_arena @ 0xFFFFFFF00A4EB704
 ========================================================================
+    [FUN_fffffff00a4eb704 @ 0xFFFFFFF00A4EB704 d=0] params_found=3 cats=[0, 1, 2] ops=451 seed=3 tainted=56 iters=3
   no tainted sinks reached
-  [FUN_fffffff00a4ebd58 @ 0xFFFFFFF00A4EBD58 d=0] no taint propagated
 
 ========================================================================
 ### SOURCE necp_client_update_cache @ 0xFFFFFFF00A4EBD58
 ========================================================================
+    [FUN_fffffff00a4ebd58 @ 0xFFFFFFF00A4EBD58 d=0] params_found=3 cats=[0, 1, 2] ops=1677 seed=3 tainted=56 iters=3
   no tainted sinks reached
-  [FUN_fffffff00a4ec264 @ 0xFFFFFFF00A4EC264 d=0] no taint propagated
 
 ========================================================================
 ### SOURCE necp_client_copy_update @ 0xFFFFFFF00A4EC264
 ========================================================================
+    [FUN_fffffff00a4ec264 @ 0xFFFFFFF00A4EC264 d=0] params_found=3 cats=[0, 1, 2] ops=252 seed=3 tainted=61 iters=4
   no tainted sinks reached
-  [FUN_fffffff00a4e9904 @ 0xFFFFFFF00A4E9904 d=0] no taint propagated
 
 ========================================================================
 ### SOURCE necp_client_request_nexus @ 0xFFFFFFF00A4E9904
 ========================================================================
+    [FUN_fffffff00a4e9904 @ 0xFFFFFFF00A4E9904 d=0] params_found=3 cats=[0, 1, 2] ops=4702 seed=3 tainted=121 iters=4
   no tainted sinks reached
-  [FUN_fffffff00a4ea0b4 @ 0xFFFFFFF00A4EA0B4 d=0] no taint propagated
 
 ========================================================================
 ### SOURCE necp_client_agent_action @ 0xFFFFFFF00A4EA0B4
 ========================================================================
-  no tainted sinks reached
-  [FUN_fffffff00a4ea778 @ 0xFFFFFFF00A4EA778 d=0] no taint propagated
+    [FUN_fffffff00a4ea0b4 @ 0xFFFFFFF00A4EA0B4 d=0] params_found=3 cats=[0, 1, 2] ops=3157 seed=3 tainted=108 iters=3
+  SINK copyin       @ 0xFFFFFFF00A4EA274  in FUN_fffffff00a4ea0b4 (0xFFFFFFF00A4EA0B4)  depth=0
 
 ========================================================================
 ### SOURCE necp_client_copy_agent @ 0xFFFFFFF00A4EA778
 ========================================================================
+    [FUN_fffffff00a4ea778 @ 0xFFFFFFF00A4EA778 d=0] params_found=2 cats=[0, 1] ops=87 seed=2 tainted=17 iters=3
   no tainted sinks reached
-  [FUN_fffffff00a4eba0c @ 0xFFFFFFF00A4EBA0C d=0] no taint propagated
 
 ========================================================================
 ### SOURCE necp_client_copy_route_stats @ 0xFFFFFFF00A4EBA0C
 ========================================================================
+    [FUN_fffffff00a4eba0c @ 0xFFFFFFF00A4EBA0C d=0] params_found=3 cats=[0, 1, 2] ops=525 seed=3 tainted=56 iters=3
   no tainted sinks reached
-  [FUN_fffffff00a4ea8a0 @ 0xFFFFFFF00A4EA8A0 d=0] no taint propagated
 
 ========================================================================
 ### SOURCE necp_client_copy_parameters @ 0xFFFFFFF00A4EA8A0
 ========================================================================
+    [FUN_fffffff00a4ea8a0 @ 0xFFFFFFF00A4EA8A0 d=0] params_found=3 cats=[0, 1, 2] ops=321 seed=3 tainted=31 iters=2
   no tainted sinks reached
-  [FUN_fffffff00a4e7158 @ 0xFFFFFFF00A4E7158 d=0] no taint propagated
 
 ========================================================================
 ### SOURCE necp_client_claim @ 0xFFFFFFF00A4E7158
 ========================================================================
+    [FUN_fffffff00a4e7158 @ 0xFFFFFFF00A4E7158 d=0] params_found=4 cats=[0, 1, 2, 3] ops=1405 seed=4 tainted=90 iters=5
   no tainted sinks reached
-  [FUN_fffffff00a4ec5d8 @ 0xFFFFFFF00A4EC5D8 d=0] no taint propagated
 
 ========================================================================
 ### SOURCE necp_client_sign @ 0xFFFFFFF00A4EC5D8
 ========================================================================
-  no tainted sinks reached
-  [FUN_fffffff00a4eb2b4 @ 0xFFFFFFF00A4EB2B4 d=0] no taint propagated
+    [FUN_fffffff00a4ec5d8 @ 0xFFFFFFF00A4EC5D8 d=0] params_found=2 cats=[0, 1] ops=808 seed=2 tainted=67 iters=4
+  SINK copyin       @ 0xFFFFFFF00A4EC788  in FUN_fffffff00a4ec5d8 (0xFFFFFFF00A4EC5D8)  depth=0
 
 ========================================================================
 ### SOURCE necp_client_get_iface_addr @ 0xFFFFFFF00A4EB2B4
 ========================================================================
-  no tainted sinks reached
-  [FUN_fffffff00a4eab50 @ 0xFFFFFFF00A4EAB50 d=0] no taint propagated
+    [FUN_fffffff00a4eb2b4 @ 0xFFFFFFF00A4EB2B4 d=0] params_found=2 cats=[0, 1] ops=1230 seed=2 tainted=27 iters=5
+  SINK copyin       @ 0xFFFFFFF00A4EB3FC  in FUN_fffffff00a4eb2b4 (0xFFFFFFF00A4EB2B4)  depth=0
 
 ========================================================================
 ### SOURCE necp_client_copy_agent_alt @ 0xFFFFFFF00A4EAB50
 ========================================================================
+    [FUN_fffffff00a4eab50 @ 0xFFFFFFF00A4EAB50 d=0] params_found=2 cats=[0, 1] ops=86 seed=2 tainted=17 iters=3
   no tainted sinks reached
-  [FUN_fffffff00a4ec9ec @ 0xFFFFFFF00A4EC9EC d=0] no taint propagated
 
 ========================================================================
 ### SOURCE necp_client_validate @ 0xFFFFFFF00A4EC9EC
 ========================================================================
-  no tainted sinks reached
-  [FUN_fffffff00a4ecc4c @ 0xFFFFFFF00A4ECC4C d=0] no taint propagated
+    [FUN_fffffff00a4ec9ec @ 0xFFFFFFF00A4EC9EC d=0] params_found=2 cats=[0, 1] ops=625 seed=2 tainted=44 iters=4
+  SINK copyin       @ 0xFFFFFFF00A4ECB70  in FUN_fffffff00a4ec9ec (0xFFFFFFF00A4EC9EC)  depth=0
 
 ========================================================================
 ### SOURCE necp_client_get_signed_id @ 0xFFFFFFF00A4ECC4C
 ========================================================================
+    [FUN_fffffff00a4ecc4c @ 0xFFFFFFF00A4ECC4C d=0] params_found=2 cats=[0, 1] ops=347 seed=2 tainted=31 iters=3
   no tainted sinks reached
-  [FUN_fffffff00a4ece88 @ 0xFFFFFFF00A4ECE88 d=0] no taint propagated
 
 ========================================================================
 ### SOURCE necp_client_set_signed_id @ 0xFFFFFFF00A4ECE88
 ========================================================================
+    [FUN_fffffff00a4ece88 @ 0xFFFFFFF00A4ECE88 d=0] params_found=2 cats=[0, 1] ops=452 seed=2 tainted=44 iters=3
   no tainted sinks reached
-  [FUN_fffffff00a4ed170 @ 0xFFFFFFF00A4ED170 d=0] no taint propagated
 
 ========================================================================
 ### SOURCE necp_client_get_flow_stats @ 0xFFFFFFF00A4ED170
 ========================================================================
+    [FUN_fffffff00a4ed170 @ 0xFFFFFFF00A4ED170 d=0] params_found=3 cats=[0, 1, 2] ops=2211 seed=3 tainted=44 iters=3
   no tainted sinks reached
 
 ========================================================================
 ### SUMMARY
 ========================================================================
-total findings: 0
+total findings: 60
 
+  copyin: 16
+    from necp_client_action           sink @ 0xFFFFFFF00A4E8644  in FUN_fffffff00a4e843c  d=1
+    from necp_client_action           sink @ 0xFFFFFFF00A4E86C0  in FUN_fffffff00a4e843c  d=1
+    from necp_client_action           sink @ 0xFFFFFFF00A4EC788  in FUN_fffffff00a4ec5d8  d=1
+    from necp_client_action           sink @ 0xFFFFFFF00A4E62DC  in FUN_fffffff00a4e60dc  d=1
+    from necp_client_action           sink @ 0xFFFFFFF00A4EB3FC  in FUN_fffffff00a4eb2b4  d=1
+    from necp_client_action           sink @ 0xFFFFFFF00A4E951C  in FUN_fffffff00a4e93c4  d=1
+    from necp_client_action           sink @ 0xFFFFFFF00A4EA274  in FUN_fffffff00a4ea0b4  d=1
+    from necp_client_action           sink @ 0xFFFFFFF00A4ECB70  in FUN_fffffff00a4ec9ec  d=1
+    from necp_client_add_flow         sink @ 0xFFFFFFF00A4E8644  in FUN_fffffff00a4e843c  d=0
+    from necp_client_add_flow         sink @ 0xFFFFFFF00A4E86C0  in FUN_fffffff00a4e843c  d=0
+    from necp_client_add_client       sink @ 0xFFFFFFF00A4E62DC  in FUN_fffffff00a4e60dc  d=0
+    from necp_client_remove_flow      sink @ 0xFFFFFFF00A4E951C  in FUN_fffffff00a4e93c4  d=0
+    from necp_client_agent_action     sink @ 0xFFFFFFF00A4EA274  in FUN_fffffff00a4ea0b4  d=0
+    from necp_client_sign             sink @ 0xFFFFFFF00A4EC788  in FUN_fffffff00a4ec5d8  d=0
+    from necp_client_get_iface_addr   sink @ 0xFFFFFFF00A4EB3FC  in FUN_fffffff00a4eb2b4  d=0
+    from necp_client_validate         sink @ 0xFFFFFFF00A4ECB70  in FUN_fffffff00a4ec9ec  d=0
+  copyout: 8
+    from necp_client_action           sink @ 0xFFFFFFF00A4E9110  in FUN_fffffff00a4e843c  d=1
+    from necp_client_action           sink @ 0xFFFFFFF00A4E83EC  in FUN_fffffff00a4e80fc  d=1
+    from necp_client_action           sink @ 0xFFFFFFF00A4EB210  in FUN_fffffff00a4eac7c  d=1
+    from necp_client_action           sink @ 0xFFFFFFF00A4F31AC  in FUN_fffffff00a4f2e70  d=3
+    from necp_client_action           sink @ 0xFFFFFFF00A4F32AC  in FUN_fffffff00a4f2e70  d=3
+    from necp_client_add_flow         sink @ 0xFFFFFFF00A4E9110  in FUN_fffffff00a4e843c  d=0
+    from necp_client_copy_list        sink @ 0xFFFFFFF00A4E83EC  in FUN_fffffff00a4e80fc  d=0
+    from necp_client_copy_interface   sink @ 0xFFFFFFF00A4EB210  in FUN_fffffff00a4eac7c  d=0
+  memmove: 36
+    from necp_client_action           sink @ 0xFFFFFFF00A5AF98C  in FUN_fffffff00a5af698  d=2
+    from necp_client_action           sink @ 0xFFFFFFF00A4DEE28  in FUN_fffffff00a4dd4cc  d=2
+    from necp_client_action           sink @ 0xFFFFFFF00A4DF0E0  in FUN_fffffff00a4dd4cc  d=2
+    from necp_client_action           sink @ 0xFFFFFFF00A4DF5E0  in FUN_fffffff00a4dd4cc  d=2
+    from necp_client_action           sink @ 0xFFFFFFF00A4F3D04  in FUN_fffffff00a4f3840  d=2
+    from necp_client_action           sink @ 0xFFFFFFF00A4F3D04  in FUN_fffffff00a4f3840  d=2
+    from necp_client_action           sink @ 0xFFFFFFF00A4F3020  in FUN_fffffff00a4f2e70  d=3
+    from necp_client_action           sink @ 0xFFFFFFF00A6E66E4  in FUN_fffffff00a6e656c  d=3
+    from necp_client_action           sink @ 0xFFFFFFF00AA4095C  in FUN_fffffff00aa40638  d=3
+    from necp_client_action           sink @ 0xFFFFFFF00A7C6AF4  in FUN_fffffff00a7c663c  d=3
+    from necp_client_action           sink @ 0xFFFFFFF00A7C708C  in FUN_fffffff00a7c6e9c  d=3
+    from necp_client_action           sink @ 0xFFFFFFF00A7C6AF4  in FUN_fffffff00a7c663c  d=3
+    from necp_client_action           sink @ 0xFFFFFFF00A4E46B0  in FUN_fffffff00a4e45f8  d=3
+    from necp_client_action           sink @ 0xFFFFFFF00A479F4C  in FUN_fffffff00a478ed8  d=3
+    from necp_client_action           sink @ 0xFFFFFFF00A4C4800  in FUN_fffffff00a4c3dec  d=4
+    from necp_client_action           sink @ 0xFFFFFFF00A49F258  in FUN_fffffff00a49f19c  d=4
+    from necp_client_action           sink @ 0xFFFFFFF00A480618  in FUN_fffffff00a480268  d=4
+    from necp_client_action           sink @ 0xFFFFFFF00A480C04  in FUN_fffffff00a480268  d=4
+    from necp_client_action           sink @ 0xFFFFFFF00AA402E0  in FUN_fffffff00aa402b4  d=4
+    from necp_client_action           sink @ 0xFFFFFFF00AA40430  in FUN_fffffff00aa40324  d=4
+    from necp_client_action           sink @ 0xFFFFFFF00A57A75C  in FUN_fffffff00a57a4a8  d=4
+    from necp_client_action           sink @ 0xFFFFFFF00A57A960  in FUN_fffffff00a57a4a8  d=4
+    from necp_client_action           sink @ 0xFFFFFFF00A4C4800  in FUN_fffffff00a4c3dec  d=4
+    from necp_client_action           sink @ 0xFFFFFFF00A4E4858  in FUN_fffffff00a4e479c  d=4
+    from necp_client_action           sink @ 0xFFFFFFF00A47B5E8  in FUN_fffffff00a47b3f0  d=4
+    from necp_client_action           sink @ 0xFFFFFFF00A479F4C  in FUN_fffffff00a478ed8  d=4
+    from necp_client_action           sink @ 0xFFFFFFF00A7879E0  in FUN_fffffff00a78772c  d=5
+    from necp_client_action           sink @ 0xFFFFFFF00A7879E0  in FUN_fffffff00a78772c  d=5
+    from necp_client_action           sink @ 0xFFFFFFF00A4C9674  in FUN_fffffff00a4c7a38  d=5
+    from necp_client_action           sink @ 0xFFFFFFF00A4C9690  in FUN_fffffff00a4c7a38  d=5
+    from necp_client_action           sink @ 0xFFFFFFF00A480618  in FUN_fffffff00a480268  d=5
+    from necp_client_action           sink @ 0xFFFFFFF00A480C04  in FUN_fffffff00a480268  d=5
+    from necp_client_action           sink @ 0xFFFFFFF00A64E4F8  in FUN_fffffff00a64d2dc  d=5
+    from necp_client_action           sink @ 0xFFFFFFF00A333D0C  in FUN_fffffff00a333c9c  d=5
+    from necp_client_action           sink @ 0xFFFFFFF00A333D28  in FUN_fffffff00a333c9c  d=5
+    from necp_client_action           sink @ 0xFFFFFFF00A333E2C  in FUN_fffffff00a333dd0  d=6
