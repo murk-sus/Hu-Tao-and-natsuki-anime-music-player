@@ -5,20 +5,16 @@ import os, re, json, traceback, time
 
 from jarray import zeros
 from ghidra.util.task import TaskMonitor
-try:
-    from ghidra.program.model.address import Address
-except:
-    Address = None
 
 WS = os.environ.get("GITHUB_WORKSPACE", "/tmp")
 OUT = os.path.join(WS, "result.txt")
 OUT_JSON = os.path.join(WS, "offsets.json")
 
-NEEDLE = b"necp_client_copy_result"
+NEEDLE = "necp_client_copy_result"   # plain str, not bytes
 MAX_HITS = 60
 MAX_FUNCS = 6
 MAX_DISASM = 500
-HINT_ADDR = 0xFFFFFFF0070D2AC8  # where we saw the string last run
+HINT_ADDR = 0xFFFFFFF0070D2AC8
 
 def _u(v): return int(v) & 0xFFFFFFFFFFFFFFFF
 def fmt(v):
@@ -53,19 +49,21 @@ def inblk(a):
         if s <= a < e: return (s, e, n, x)
     return None
 
-# ---------- find string via native findBytes ----------
+def _to_jbyte_array(s):
+    """str -> Java byte[] (signed)."""
+    jb = zeros(len(s), 'b')
+    for i in range(len(s)):
+        v = ord(s[i])
+        if v > 127: v -= 256
+        jb[i] = v
+    return jb
+
 def find_string_occurrences():
     hits = []
     mem = currentProgram.getMemory()
-
-    # convert Python bytes to Java byte[] (signed)
-    jneedle = zeros(len(NEEDLE), 'b')
-    for i, c in enumerate(NEEDLE):
-        jneedle[i] = c if c < 128 else c - 256
-
+    jneedle = _to_jbyte_array(NEEDLE)
     start = mem.getMinAddress()
-    if start is None:
-        return hits
+    if start is None: return hits
     monitor = TaskMonitor.DUMMY
     addr = start
     while True:
@@ -313,7 +311,12 @@ def dump_bytes(a, n=64):
         mem.getBytes(ga, jbuf)
         s = ""
         for i in range(n):
-            c = (jbuf[i] + 256) & 0xFF
+            raw = jbuf[i]
+            try:
+                v = int(raw)
+            except:
+                v = ord(str(raw)[0])
+            c = v & 0xFF
             s += chr(c) if 0x20 <= c < 0x7F else "."
         return [s]
     except Exception as e:
@@ -335,7 +338,6 @@ def main():
     except: pass
     lines.append("")
 
-    # sanity: dump bytes at HINT to confirm string is present
     lines.append("=== HINT DUMP (0x%X) ===" % HINT_ADDR)
     for l in dump_bytes(HINT_ADDR, 64):
         lines.append("  " + l)
@@ -352,12 +354,10 @@ def main():
     lines.append("")
 
     if not hits:
-        lines.append("VERDICT: findBytes found nothing. String may be in")
-        lines.append("    a compressed/uninitialized segment, OR split across blocks.")
+        lines.append("VERDICT: findBytes found nothing.")
         write(lines, {})
         return
 
-    # xrefs
     print("[+] resolving xrefs...")
     func_set = {}
     for h in hits:
@@ -373,7 +373,7 @@ def main():
     lines.append("")
 
     if not func_set:
-        lines.append("VERDICT: no funcs found via xrefs. Dumping raw xrefs:")
+        lines.append("VERDICT: no funcs found via xrefs. Raw xrefs:")
         for h in hits[:4]:
             refs = get_refs_to(h)
             lines.append("  str %s xrefs=%d" % (fmt(h), len(refs)))
@@ -436,9 +436,7 @@ def main():
         for f, pc, b, i, body in seq_all[:8]:
             lines.append("  func=%s  %s" % (fmt(f), body))
     else:
-        lines.append("No flow-reg LDRs in top funcs.")
-        lines.append("Likely necp_client_copy_result does not read")
-        lines.append("flow->assigned_results directly.")
+        lines.append("No flow-reg LDRs.")
 
     jout = {
         "string_hits": [fmt(h) for h in hits],
@@ -467,5 +465,7 @@ except Exception as e:
     print("[-] FATAL: " + str(e))
     traceback.print_exc()
     try:
-        with open(OUT, "w") as fh: fh.write("FATAL: " + str(e) + "\n")
+        with open(OUT, "a") as fh:
+            fh.write("FATAL: " + str(e) + "\n")
+            fh.write(traceback.format_exc())
     except: pass
