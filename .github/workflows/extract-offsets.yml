@@ -16,14 +16,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Log workspace start
+      - name: Log workspace
         run: |
-          echo "=== workspace at start ==="
+          echo "=== workspace ==="
           ls -la "$GITHUB_WORKSPACE" || true
-          echo "=== sizes ==="
           du -sh "$GITHUB_WORKSPACE"/* 2>/dev/null | sort -hr | head -30 || true
-          echo "=== find dirs ==="
-          find "$GITHUB_WORKSPACE" -maxdepth 3 -type d 2>/dev/null | head -60 || true
 
       - uses: actions/setup-java@v4
         with:
@@ -34,7 +31,7 @@ jobs:
         id: cache-ghidra
         with:
           path: ${{ github.workspace }}/ghidra
-          key: ghidra-12.1.2-jython-v2
+          key: ghidra-12.1.2-jython-v3
 
       - if: steps.cache-ghidra.outputs.cache-hit != 'true'
         run: |
@@ -53,7 +50,7 @@ jobs:
         id: cache-ipsw
         with:
           path: /usr/local/bin/ipsw
-          key: ipsw-3.1.716-v2
+          key: ipsw-3.1.716-v3
 
       - if: steps.cache-ipsw.outputs.cache-hit != 'true'
         run: |
@@ -65,7 +62,7 @@ jobs:
         id: cache-symbolicator
         with:
           path: ${{ github.workspace }}/symbolicator
-          key: symbolicator-v2
+          key: symbolicator-v3
 
       - if: steps.cache-symbolicator.outputs.cache-hit != 'true'
         run: |
@@ -91,7 +88,7 @@ jobs:
         id: cache-kernelcache
         with:
           path: ${{ github.workspace }}/kernelcache
-          key: kernelcache-iPhone14_5-24A437-v2
+          key: kernelcache-iPhone14_5-24A437-v3
 
       - if: steps.cache-kernelcache.outputs.cache-hit != 'true'
         run: |
@@ -117,7 +114,7 @@ jobs:
         id: cache-symbols
         with:
           path: ${{ github.workspace }}/symbols.json
-          key: symbols-24A437-v2
+          key: symbols-24A437-v3
 
       - if: steps.cache-symbols.outputs.cache-hit != 'true'
         run: |
@@ -141,53 +138,41 @@ jobs:
         id: cache-project
         with:
           path: ${{ github.workspace }}/ghidra_project
-          key: ghidra-project-24A437-v2
+          key: ghidra-project-24A437-v3
 
-      - id: warm
-        if: steps.cache-project.outputs.cache-hit == 'true'
+      - name: Run
         continue-on-error: true
         env:
           _JAVA_OPTIONS: "-Xmx8g -Djava.awt.headless=true"
           SYMBOLS_JSON: ${{ github.workspace }}/symbols.json
           GITHUB_WORKSPACE: ${{ github.workspace }}
         run: |
-          "$GHIDRA_ROOT/support/analyzeHeadless" \
-            "$GITHUB_WORKSPACE/ghidra_project" KernelProject \
-            -process "$KERNEL_NAME" -noanalysis \
-            -postScript kernel_rw.py \
-            -scriptPath "$GITHUB_WORKSPACE/scripts" \
-            2>&1 | tee kernel.log || true
+          if [ "${{ steps.cache-project.outputs.cache-hit }}" = "true" ]; then
+            echo "=== warm: project cached ==="
+            "$GHIDRA_ROOT/support/analyzeHeadless" \
+              "$GITHUB_WORKSPACE/ghidra_project" KernelProject \
+              -process "$KERNEL_NAME" -noanalysis \
+              -postScript kernel_rw.py \
+              -scriptPath "$GITHUB_WORKSPACE/scripts" \
+              2>&1 | tee kernel.log || true
+          else
+            echo "=== cold: importing ==="
+            rm -rf ghidra_project
+            mkdir -p ghidra_project
+            "$GHIDRA_ROOT/support/analyzeHeadless" \
+              "$GITHUB_WORKSPACE/ghidra_project" KernelProject \
+              -import "$KERNEL" \
+              -processor "AARCH64:LE:64:AppleSilicon" \
+              -loader BinaryLoader \
+              -loader-baseAddr 0xFFFFFFF007004000 \
+              -postScript kernel_rw.py \
+              -scriptPath "$GITHUB_WORKSPACE/scripts" \
+              -analysisTimeoutPerFile 12000 \
+              -max-cpu 4 \
+              2>&1 | tee kernel.log || true
+          fi
 
-      - if: steps.cache-project.outputs.cache-hit != 'true' || steps.warm.outcome != 'success'
-        continue-on-error: true
-        env:
-          _JAVA_OPTIONS: "-Xmx8g -Djava.awt.headless=true"
-          SYMBOLS_JSON: ${{ github.workspace }}/symbols.json
-          GITHUB_WORKSPACE: ${{ github.workspace }}
-        run: |
-          rm -rf ghidra_project
-          mkdir -p ghidra_project
-          "$GHIDRA_ROOT/support/analyzeHeadless" \
-            "$GITHUB_WORKSPACE/ghidra_project" KernelProject \
-            -import "$KERNEL" \
-            -processor "AARCH64:LE:64:AppleSilicon" \
-            -loader BinaryLoader \
-            -loader-baseAddr 0xFFFFFFF007004000 \
-            -postScript kernel_rw.py \
-            -scriptPath "$GITHUB_WORKSPACE/scripts" \
-            -analysisTimeoutPerFile 12000 \
-            -max-cpu 4 \
-            2>&1 | tee kernel.log || true
-
-      - name: Log workspace end
-        if: always()
-        run: |
-          echo "=== workspace at end ==="
-          ls -la "$GITHUB_WORKSPACE" || true
-          echo "=== sizes ==="
-          du -sh "$GITHUB_WORKSPACE"/* 2>/dev/null | sort -hr | head -30 || true
-
-      - name: Upload artifacts
+      - name: Upload
         uses: actions/upload-artifact@v4
         if: always()
         with:
