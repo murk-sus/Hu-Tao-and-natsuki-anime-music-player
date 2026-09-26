@@ -1,7 +1,8 @@
-name: Extract Kernel
+name: Extract Offsets
 
 on:
   push:
+    branches: [ main ]
   workflow_dispatch:
 
 permissions:
@@ -64,7 +65,7 @@ jobs:
           tar -C /usr/local/bin -xzf /tmp/ipsw.tar.gz ipsw
           ipsw version
 
-      # ---------- symbolicator (только для подписи, если понадобится) ----------
+      # ---------- symbolicator (сигнатуры) ----------
       - name: Cache symbolicator
         id: cache-symbolicator
         uses: actions/cache@v4
@@ -78,6 +79,7 @@ jobs:
         run: |
           set -euo pipefail
           git clone --depth 1 "https://github.com/blacktop/symbolicator.git" "$GITHUB_WORKSPACE/symbolicator"
+          echo "=== symbolicator/kernel contents ==="
           ls -la "$GITHUB_WORKSPACE/symbolicator/kernel" | head -20
 
       # ---------- kernelcache ----------
@@ -121,10 +123,11 @@ jobs:
           fi
           echo "KERNEL=$KERNEL" >> "$GITHUB_ENV"
           echo "KERNEL_NAME=$(basename "$KERNEL")" >> "$GITHUB_ENV"
+          echo "=== File type check ==="
           file "$KERNEL"
           ls -lh "$KERNEL"
 
-      # ---------- символикация (полный цикл) ----------
+      # ---------- Full symbolication ----------
       - name: Cache symbols
         id: cache-symbols
         uses: actions/cache@v4
@@ -132,96 +135,47 @@ jobs:
           path: ${{ github.workspace }}/symbols.json
           key: symbols-${{ hashFiles('kernelcache/**') }}
 
-      - name: Full symbolication (signatures + built-in tables + C++)
+      - name: Full symbolication (signatures + built-in syscall/mach/MIG)
         if: steps.cache-symbols.outputs.cache-hit != 'true'
         shell: bash
         run: |
           set -uo pipefail
           SIGDIR="$GITHUB_WORKSPACE/symbolicator/kernel"
 
-          echo "=== Step 1: Signature-based symbolication ==="
-          ipsw kernel symbolicate --signatures "$SIGDIR" --json "$KERNEL" > /tmp/sym_sig.json 2>&1 || true
-          echo "Signature engine output size: $(wc -c < /tmp/sym_sig.json 2>/dev/null || echo 0) bytes"
+          echo "=== Step 1: signature-based + built-in symbolication (ipsw v3.1.667+) ==="
+          ipsw kernel symbolicate --signatures "$SIGDIR" --json "$KERNEL" 2>&1 | tee /tmp/sym1.log || true
 
-          echo "=== Step 2: Built-in syscall table ==="
-          ipsw kernel syscall "$KERNEL" --json > /tmp/sym_syscall.json 2>&1 || true
-          echo "Syscall table output size: $(wc -c < /tmp/sym_syscall.json 2>/dev/null || echo 0) bytes"
+          echo "=== Step 2: standalone syscall table dump ==="
+          ipsw kernel syscall "$KERNEL" --json > "$GITHUB_WORKSPACE/syscalls.json" 2>&1 || true
+          echo "syscalls.json: $(wc -c < "$GITHUB_WORKSPACE/syscalls.json") bytes"
 
-          echo "=== Step 3: Built-in mach trap table ==="
-          ipsw kernel mach "$KERNEL" --json > /tmp/sym_mach.json 2>&1 || true
-          echo "Mach trap table output size: $(wc -c < /tmp/sym_mach.json 2>/dev/null || echo 0) bytes"
+          echo "=== Step 3: mach trap table dump ==="
+          ipsw kernel mach "$KERNEL" --json > /tmp/machtraps.json 2>&1 || true
+          echo "machtraps.json: $(wc -c < /tmp/machtraps.json) bytes"
 
-          echo "=== Step 4: Built-in MIG subsystem ==="
-          ipsw kernel mig "$KERNEL" --json > /tmp/sym_mig.json 2>&1 || true
-          echo "MIG output size: $(wc -c < /tmp/sym_mig.json 2>/dev/null || echo 0) bytes"
+          echo "=== Step 4: MIG subsystem dump ==="
+          ipsw kernel mig "$KERNEL" --json > /tmp/mig.json 2>&1 || true
+          echo "mig.json: $(wc -c < /tmp/mig.json) bytes"
 
           echo "=== Step 5: C++ runtime recovery ==="
-          ipsw kernel cpp "$KERNEL" --json > /tmp/sym_cpp.json 2>&1 || true
-          echo "C++ output size: $(wc -c < /tmp/sym_cpp.json 2>/dev/null || echo 0) bytes"
+          ipsw kernel cpp "$KERNEL" --json > /tmp/cpp.json 2>&1 || true
+          echo "cpp.json: $(wc -c < /tmp/cpp.json) bytes"
 
-          echo "=== Merging all symbol sources ==="
-          python3 - <<'PYEOF'
-          import json, os, sys
-
-          sources = [
-              "/tmp/sym_sig.json",
-              "/tmp/sym_syscall.json",
-              "/tmp/sym_mach.json",
-              "/tmp/sym_mig.json",
-              "/tmp/sym_cpp.json",
-          ]
-
-          merged = {}
-
-          def add(entry):
-              if not isinstance(entry, dict): return
-              name = entry.get("name") or entry.get("symbol") or entry.get("n")
-              addr = entry.get("addr") or entry.get("address") or entry.get("a")
-              if not name or addr is None: return
-              try:
-                  if isinstance(addr, str):
-                      addr = int(addr, 16) if addr.startswith("0x") else int(addr)
-                  merged[name] = addr
-              except: pass
-
-          for path in sources:
-              if not os.path.exists(path): continue
-              size = os.path.getsize(path)
-              if size < 10: continue
-              try:
-                  with open(path) as f: data = json.load(f)
-              except Exception as e:
-                  print("[-] parse %s failed: %s" % (path, e))
-                  continue
-
-              if isinstance(data, list):
-                  for e in data: add(e)
-              elif isinstance(data, dict):
-                  # syscall/mach/mig формат: {"syscalls": [...]} или {"name": addr}
-                  for key in ("syscalls", "traps", "mig", "symbols", "cpp"):
-                      if key in data and isinstance(data[key], list):
-                          for e in data[key]: add(e)
-                  for k, v in data.items():
-                      if isinstance(v, (int, str)):
-                          try:
-                              merged[k] = int(v, 16) if isinstance(v, str) and v.startswith("0x") else int(v)
-                          except: pass
-
-          print("[+] Total symbols merged: %d" % len(merged))
-          # Специально проверяем NECP
-          for name in ["necp_open", "necp_client_action", "necp_client_add_flow", "necp_client_remove_flow", "necp_client_copy_result"]:
-              if name in merged:
-                  print("[+]   %s = 0x%016X" % (name, merged[name]))
-              else:
-                  print("[!]   %s NOT FOUND" % name)
-
-          with open(os.path.join(os.environ.get("GITHUB_WORKSPACE", "/tmp"), "symbols.json"), "w") as f:
-              json.dump(merged, f, indent=2, sort_keys=True)
-          PYEOF
-
+          echo "=== Collecting symbols.json ==="
+          SRC=$(find . -type f -name "*symbols*.json" | head -n1)
+          if [ -z "$SRC" ] || [ ! -f "$SRC" ]; then
+            echo "No *_symbols.json produced; using syscalls.json as fallback"
+            if [ -s "$GITHUB_WORKSPACE/syscalls.json" ]; then
+              cp "$GITHUB_WORKSPACE/syscalls.json" "$GITHUB_WORKSPACE/symbols.json"
+            else
+              echo "[]" > "$GITHUB_WORKSPACE/symbols.json"
+            fi
+          else
+            cp "$SRC" "$GITHUB_WORKSPACE/symbols.json"
+          fi
           echo "symbols.json size: $(wc -c < "$GITHUB_WORKSPACE/symbols.json") bytes"
 
-      # ---------- Ghidra ----------
+      # ---------- Ghidra project ----------
       - name: Cache ghidra project
         id: cache-project
         uses: actions/cache@v4
@@ -281,12 +235,13 @@ jobs:
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: kernel-${{ github.sha }}
+          name: kernel-offsets-${{ github.sha }}
           path: |
             result.txt
             offsets.json
             kernel.log
             symbols.json
+            syscalls.json
           retention-days: 30
           if-no-files-found: warn
           overwrite: true
