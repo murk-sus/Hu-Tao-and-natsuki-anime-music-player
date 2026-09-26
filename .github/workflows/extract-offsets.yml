@@ -19,7 +19,7 @@ jobs:
       - name: Clean stale outputs
         run: |
           rm -f result.txt offsets.json kernel.log symbols.json
-          rm -f /tmp/sym_out.txt /tmp/sym_err.txt /tmp/dl.log /tmp/files.txt
+          rm -f /tmp/so.txt /tmp/se.txt /tmp/sym_out.txt /tmp/sym_err.txt /tmp/dl.log
           rm -rf /tmp/sigs /tmp/sig.tar.gz
           ls -la
 
@@ -28,7 +28,6 @@ jobs:
           java-version: "25"
           distribution: temurin
 
-      # ==================== GHIDRA ====================
       - uses: actions/cache@v4
         id: cache-ghidra
         with:
@@ -60,9 +59,10 @@ jobs:
           echo "GHIDRA_ROOT=$GHIDRA_ROOT"
           test -x "$GHIDRA_ROOT/support/analyzeHeadless"
           test -d "$GHIDRA_ROOT/Ghidra/Extensions/Jython"
+          ls -la "$GHIDRA_ROOT/support/analyzeHeadless"
+          ls -la "$GHIDRA_ROOT/Ghidra/Extensions/Jython" | head -5
           echo "Ghidra OK"
 
-      # ==================== IPSW ====================
       - uses: actions/cache@v4
         id: cache-ipsw
         with:
@@ -85,7 +85,6 @@ jobs:
           /usr/local/bin/ipsw version
           echo "ipsw OK"
 
-      # ==================== SYMBOLICATOR ====================
       - uses: actions/cache@v4
         id: cache-symbolicator
         with:
@@ -105,13 +104,22 @@ jobs:
           set -euo pipefail
           ROOT="$GITHUB_WORKSPACE/symbolicator/kernel"
           test -d "$ROOT"
+          echo "=== versions ==="
           ls -1 "$ROOT"
+          if [ -d "$ROOT/27.0" ]; then
+            ls -la "$ROOT/27.0"
+            if [ -d "$ROOT/27.0/kexts" ]; then
+              N=$(find "$ROOT/27.0/kexts" -maxdepth 1 -type f -name "*.json" | wc -l)
+              echo "kexts json: $N"
+            fi
+          fi
 
       - id: sigs
         name: Pick signature dir
         run: |
           set -uo pipefail
           ROOT="$GITHUB_WORKSPACE/symbolicator/kernel"
+          test -d "$ROOT" || { echo "::error::no symbolicator"; exit 1; }
           SIGDIR=""
           SIG_VER=""
           for V in 27.0 27.1 27.2 27.3 26.0 26.1 26.2 26.3 25.6 25.5 25.4 25.3; do
@@ -122,27 +130,13 @@ jobs:
             fi
           done
           if [ -z "$SIGDIR" ]; then
-            echo "::error::no version dir in symbolicator"
-            exit 1
+            echo "::error::no version dir"; exit 1
           fi
-          SIG_KEXTS="$SIGDIR/kexts"
-          if [ -d "$SIG_KEXTS" ]; then
-            JCOUNT=$(find "$SIG_KEXTS" -maxdepth 1 -type f -name "*.json" | wc -l)
-            echo "kexts json: $JCOUNT"
-            test "$JCOUNT" -gt 0 || { echo "::error::empty kexts"; exit 1; }
-            SIG_PATH="$SIG_KEXTS"
-          else
-            JCOUNT=$(find "$SIGDIR" -maxdepth 1 -type f -name "*.json" | wc -l)
-            echo "flat json: $JCOUNT"
-            test "$JCOUNT" -gt 0 || { echo "::error::no json"; exit 1; }
-            SIG_PATH="$SIGDIR"
-          fi
-          echo "SIGDIR=$SIGDIR"     >> "$GITHUB_ENV"
-          echo "SIG_VER=$SIG_VER"   >> "$GITHUB_ENV"
-          echo "SIG_PATH=$SIG_PATH" >> "$GITHUB_ENV"
-          echo "selected: ver=$SIG_VER path=$SIG_PATH"
+          echo "SIGDIR=$SIGDIR"   >> "$GITHUB_ENV"
+          echo "SIG_VER=$SIG_VER" >> "$GITHUB_ENV"
+          echo "selected version: $SIG_VER"
+          ls -la "$SIGDIR"
 
-      # ==================== KERNELCACHE ====================
       - uses: actions/cache@v4
         id: cache-kernelcache
         with:
@@ -156,7 +150,8 @@ jobs:
           echo "=== kernelcache cache MISS ==="
           mkdir -p ipsw kernelcache
           ipsw download ipsw --device iPhone14,5 --build 24A437 --output ipsw 2>&1 | tee /tmp/dl.log || true
-          IPSW=$(find ipsw -name "*.ipsw" -type f | head -n1)
+          IPS -W=$(find ipsw -namen "*.ipsw" -type f | head -n1)
+          echo "IPSW=$IPSW"
           test -n "$IPSW"
           test -s "$IPSW"
           ipsw extract --kernel "$IPSW" --output kernelcache
@@ -169,10 +164,13 @@ jobs:
         run: |
           set -euo pipefail
           KERNEL=$(find "$GITHUB_WORKSPACE/kernelcache" -type f -name "kernelcache*" | head -n1)
-          test -n "$KERNEL"
+          echo "KERNEL=$KERNEL"
+          test "$KERNEL"
           test -s "$KERNEL"
           file "$KERNEL" | grep -qi "Mach-O" || { echo "::error::not Mach-O"; exit 1; }
+          ls -la "$KERNEL"
           echo "KERNEL=$KERNEL" >> "$GITHUB_ENV"
+          echo "KERNEL_DIR=$(dirname "$KERNEL")" >> "$GITHUB_ENV"
           echo "KERNEL_NAME=$(basename "$KERNEL")" >> "$GITHUB_ENV"
 
       - name: Validate scripts
@@ -182,12 +180,11 @@ jobs:
           python3 -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "$GITHUB_WORKSPACE/scripts/kernel_rw.py"
           echo "kernel_rw.py OK"
 
-      # ==================== SYMBOLICATE ====================
       - uses: actions/cache@v4
         id: cache-symbols
         with:
           path: ${{ github.workspace }}/symbols.json
-          key: symbols-24A437-v7
+          key: symbols-24A437-v8
 
       - name: Symbolicate
         if: steps.cache-symbols.outputs.cache-hit != 'true'
@@ -200,54 +197,89 @@ jobs:
             jq 'if type=="array" then length elif type=="object" then (keys|length) else 0 end' "$1" 2>/dev/null || echo 0
           }
 
-          try_sign() {
-            SIG="$1"
-            TAG="$2"
-            if [ -z "$SIG" ] || [ ! -e "$SIG" ]; then
-              return 1
-            fi
-            echo "--- try [$TAG] signatures=$SIG ---"
-            ipsw kernel symbolicate --signatures "$SIG" --json "$KERNEL" \
-              > /tmp/sym_out.txt 2>/tmp/sym_err.txt || true
-            local SO=$(wc -c < /tmp/sym_out.txt 2>/dev/null || echo 0)
-            echo "stdout bytes: $SO"
-            tail -n 3 /tmp/sym_err.txt || true
-            if [ -s /tmp/sym_out.txt ] && jq empty /tmp/sym_out.txt 2>/dev/null; then
-              local N=$(count_entries /tmp/sym_out.txt)
-              if [ "$N" -gt 0 ]; then
-                cp /tmp/sym_out.txt "$OUT"
-                echo "OK [$TAG]: entries=$N"
+          grab() {
+            local f="$1"
+            if [ -s "$f" ] && jq empty "$f" 2>/dev/null; then
+              local N=$(count_entries "$f")
+              if [ "$N" -gt 100 ]; then
+                cp "$f" "$OUT"
+                echo "    GRAB $f -> $N entries"
                 return 0
               fi
             fi
             return 1
           }
 
-          echo "=== [1] primary SIG_PATH=$SIG_PATH ==="
-          try_sign "$SIG_PATH" "primary" || true
+          run_one() {
+            local SIG="$1"
+            local TAG="$2"
+            echo ""
+            echo "=== [$TAG] sig=$SIG ==="
+            rm -f /tmp/so.txt /tmp/se.txt
 
-          if [ "$(count_entries "$OUT")" = "0" ]; then
-            echo "=== [2] version dir ==="
-            try_sign "$SIGDIR" "version-dir" || true
-          fi
+            ipsw kernel symbolicate --signatures "$SIG" --json "$KERNEL" \
+              > /tmp/so.txt 2> /tmp/se.txt
+            local RC=$?
+            local SO=$(wc -c < /tmp/so.txt 2>/dev/null || echo 0)
+            local SE=$(wc -c < /tmp/se.txt 2>/dev/null || echo 0)
+            echo "    rc=$RC stdout=$SO stderr=$SE"
 
-          if [ "$(count_entries "$OUT")" = "0" ]; then
-            echo "=== [3] kexts ==="
-            try_sign "$SIGDIR/kexts" "kexts" || true
+            if [ -s /tmp/se.txt ]; then
+              echo "    stderr (head 5):"
+              head -5 /tmp/se.txt | sed 's/^/      /' || true
+            fi
+
+            if grab /tmp/so.txt; then return 0; fi
+
+            local REPORTED=$(grep -oE "Writing symbols as JSON to [^ ]+" /tmp/se.txt 2>/dev/null | head -1 | awk '{print $NF}')
+            if [ -n "$REPORTED" ]; then
+              echo "    reported path: $REPORTED"
+              if grab "$REPORTED"; then return 0; fi
+            fi
+
+            for f in \
+              "$KERNEL_DIR/$KERNEL_NAME.json" \
+              "$KERNEL_DIR/${KERNEL_NAME}.symbols.json" \
+              "$KERNEL_DIR/symbols.json" \
+              "$GITHUB_WORKSPACE/symbols.json.tmp" \
+              "$(pwd)/symbols.json" \
+              "/tmp/symbols.json"; do
+              if [ -f "$f" ] && [ "$f" != "$OUT" ]; then
+                if grab "$f"; then return 0; fi
+              fi
+            done
+
+            for f in $(find "$GITHUB_WORKSPACE" -maxdepth 3 -type f -name "*.json" -newermt "30 seconds ago" 2>/dev/null | grep -v ghidra | grep -v symbolicator); do
+              if [ "$f" != "$OUT" ] && grab "$f"; then return 0; fi
+            done
+
+            return 1
+          }
+
+          if run_one "$SIGDIR" "27.0-full"; then
+            echo "OK full 27.0"
+          elif run_one "$SIGDIR/xnu.json" "27.0-xnu"; then
+            echo "OK xnu.json"
+          elif run_one "$SIGDIR/kexts" "27.0-kexts"; then
+            echo "OK kexts"
+          else
+            echo "::error::symbolication failed all attempts"
+            echo "--- last stderr tail ---"
+            tail -30 /tmp/se.txt 2>/dev/null || true
+            exit 1
           fi
 
           if ! jq empty "$OUT" 2>/dev/null; then
-            echo "[]" > "$OUT"
+            echo "::error::symbols.json invalid"
+            exit 1
           fi
 
           CNT=$(count_entries "$OUT")
-          SZ=$(wc -c < "$OUT" 2>/dev/null || echo 0)
-          echo "symbols.json: $SZ bytes, $CNT entries"
-
+          SZ=$(wc -c < "$OUT")
+          echo ""
+          echo "=== final: $SZ bytes, $CNT entries ==="
           if [ "$CNT" -eq 0 ]; then
-            echo "::error::symbolication produced 0 entries"
-            echo "--- stderr ---"
-            cat /tmp/sym_err.txt 2>/dev/null || true
+            echo "::error::0 entries"
             exit 1
           fi
 
@@ -261,7 +293,6 @@ jobs:
           echo "symbols entries: $CNT"
           test "$CNT" -gt 0
 
-      # ==================== GHIDRA RUN ====================
       - uses: actions/cache@v4
         id: cache-project
         with:
@@ -317,16 +348,15 @@ jobs:
           echo "=== offsets.json ==="
           test -s offsets.json
           jq empty offsets.json
-          CNT=$(jq 'length' offsets.json 2>/dev/null || echo 0)
-          echo "offsets entries: $CNT"
+          CNT=$(jq 'length' offsets.json)
+          echo "entries: $CNT"
           test "$CNT" -gt 5
 
           echo "=== kernel.log ==="
           test -s kernel.log
           if grep -qE "FATAL|Exception" kernel.log; then
-            echo "--- errors in kernel.log ---"
-            grep -E "FATAL|Exception" kernel.log | head -10
-            echo "::error::FATAL/Exception in kernel.log"
+            grep -E "FATAL|Exception" kernel.log | head -5
+            echo "::error::errors in kernel.log"
             exit 1
           fi
           echo "OK"
@@ -343,14 +373,12 @@ jobs:
           overwrite: true
           compression-level: 9
 
-      - name: Cleanup workspace
+      - name: Cleanup tmp only
         if: always()
         run: |
           set +e
-          rm -rf "$GITHUB_WORKSPACE/ipsw" "$GITHUB_WORKSPACE/kernelcache" \
-                 "$GITHUB_WORKSPACE/symbolicator" "$GITHUB_WORKSPACE/ghidra" \
-                 "$GITHUB_WORKSPACE/ghidra_project"
-          rm -f /tmp/g.zip /tmp/ipsw.tar.gz /tmp/sym_out.txt /tmp/sym_err.txt /tmp/dl.log /tmp/files.txt
+          rm -rf "$GITHUB_WORKSPACE/ipsw"
+          rm -f /tmp/g.zip /tmp/ipsw.tar.gz /tmp/so.txt /tmp/se.txt /tmp/sym_out.txt /tmp/sym_err.txt /tmp/dl.log
           rm -rf /tmp/sigs /tmp/sig.tar.gz
           rm -rf "$HOME/.config/ghidra" /var/tmp/runner-ghidra
           exit 0
