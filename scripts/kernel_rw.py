@@ -133,25 +133,28 @@ def load_symbols(path):
         return {}
 
     syms = {}
-    diag = {"walked_dict": 0, "walked_list": 0, "pairs": 0, "skipped": 0}
+    diag = {"dict": 0, "list": 0, "pairs": 0, "skip": 0}
 
     def add(name, addr):
         if not isinstance(name, str):
+            diag["skip"] += 1
             return
         n = name.strip()
         if not n:
+            diag["skip"] += 1
             return
         a = _try_int(addr)
         if a is None:
+            diag["skip"] += 1
             return
         syms[n] = a
         diag["pairs"] += 1
 
     def walk(node, depth=0):
-        if depth > 6:
+        if depth > 8:
             return
         if isinstance(node, dict):
-            diag["walked_dict"] += 1
+            diag["dict"] += 1
             n = None
             a = None
             for nk in ("name", "symbol", "sym", "n"):
@@ -163,14 +166,12 @@ def load_symbols(path):
                     a = node[ak]
                     break
             if n is not None and a is not None:
-                ai = _try_int(a)
-                if ai is not None:
-                    add(n, ai)
-                    return
+                add(n, a)
+                return
             for k, v in node.items():
                 ka = _is_kernel_addr(k)
                 if ka is not None:
-                    if isinstance(v, str) and not v.strip().startswith("0x"):
+                    if isinstance(v, str):
                         add(v, ka)
                         continue
                     if isinstance(v, dict):
@@ -182,23 +183,40 @@ def load_symbols(path):
                         if nn is not None:
                             add(nn, ka)
                             continue
-                    diag["skipped"] += 1
+                    diag["skip"] += 1
                     continue
-                if isinstance(k, str) and _is_kernel_addr(v) is not None:
-                    add(k, v)
+                kv = _is_kernel_addr(v)
+                if kv is not None and isinstance(k, str):
+                    add(k, kv)
                     continue
                 walk(v, depth + 1)
         elif isinstance(node, list):
-            diag["walked_list"] += 1
+            diag["list"] += 1
             for item in node:
                 walk(item, depth + 1)
 
     walk(data)
 
     print("[+] symbols loaded: %d" % len(syms))
-    print("[+] diag: dict=%d list=%d pairs=%d skipped=%d" % (
-        diag["walked_dict"], diag["walked_list"], diag["pairs"], diag["skipped"]))
-    if syms:
+    print("[+] diag: dict=%d list=%d pairs=%d skip=%d" % (
+        diag["dict"], diag["list"], diag["pairs"], diag["skip"]))
+
+    if len(syms) == 0:
+        print("[!] first-level keys sample:")
+        if isinstance(data, dict):
+            cnt = 0
+            for k in data.keys():
+                v = data[k]
+                print("    key=%r type=%s val_type=%s val=%r" % (
+                    k, type(k).__name__, type(v).__name__, str(v)[:60]))
+                cnt += 1
+                if cnt >= 5:
+                    break
+        elif isinstance(data, list):
+            print("    list len=%d" % len(data))
+            if data:
+                print("    item[0]=%r" % (data[0],))
+    else:
         cnt = 0
         for name in sorted(syms.keys()):
             print("    %s = %s" % (name, fmt(syms[name])))
@@ -434,7 +452,7 @@ def resolve_target(name, hardcoded, syms):
 def main():
     lines = []
     offsets_out = {}
-    print("=== kernel_rw.py v21 ===")
+    print("=== kernel_rw.py v22 ===")
 
     lines.append("=== PROGRAM ===")
     lines.append("name = %s" % currentProgram.getName())
