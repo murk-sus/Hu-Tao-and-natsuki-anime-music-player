@@ -15,7 +15,6 @@ SYMBOLS_JSON = os.environ.get("SYMBOLS_JSON", os.path.join(WS, "symbols.json"))
 KPTR_MIN = 0xFFFFFFF000000000
 KPTR_MAX = 0xFFFFFFFFFF000000
 
-# Fallback addresses (только если symbols.json пуст)
 NECP_FALLBACK = {
     "necp_open":                   0xFFFFFFF00A4E411C,
     "necp_client_add_flow":        0xFFFFFFF00A4E843C,
@@ -173,7 +172,6 @@ def main():
     lines.append("max  = %s" % fmt(currentProgram.getMemory().getMaxAddress().getOffset()))
     lines.append("")
 
-    # 1) Загружаем symbols.json
     syms = load_symbols(SYMBOLS_JSON)
     lines.append("=== SYMBOLS ===")
     lines.append("loaded = %d" % len(syms))
@@ -182,7 +180,6 @@ def main():
         lines.append("FIX: ensure blacktop/symbolicator is cloned and --signatures path is correct.")
     lines.append("")
 
-    # 2) Резолвим NECP-функции
     resolved = {}
     lines.append("=== RESOLVED NECP TARGETS ===")
     for name in NECP_TARGET_NAMES:
@@ -202,7 +199,6 @@ def main():
             offsets_out[name] = fmt(found)
     lines.append("")
 
-    # 3) Dump найденных функций
     lines.append("=== FUNCTION DUMPS ===")
     for name, addr in resolved.items():
         f = get_func(addr)
@@ -228,14 +224,12 @@ def main():
             lines.append(l)
         lines.append("")
 
-    # 4) KTRR/SPTM
     lines.append("=== KTRR/SPTM ===")
     for needle in ["SPTM", "sptm", "ctrr", "KTRR"]:
         va = find_string_va(needle)
         if va: lines.append("  %-8s -> %s" % (needle, fmt(va)))
     lines.append("")
 
-    # 5) kalloc_type_var для flow
     lines.append("=== KALLOC_TYPE_VAR (necp_client_flow) @ 0xFFFFFFF007C62E68 ===")
     blk = inblk(0xFFFFFFF007C62E68)
     if blk:
@@ -249,7 +243,6 @@ def main():
             lines.append("  read error: %s" % e)
     lines.append("")
 
-    # Write
     try:
         with open(OUT, "w") as fh:
             for l in lines: fh.write(l + "\n")
