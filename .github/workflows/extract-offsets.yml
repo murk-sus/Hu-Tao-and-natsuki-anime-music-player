@@ -14,229 +14,132 @@ jobs:
     timeout-minutes: 360
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Java
-        uses: actions/setup-java@v4
+      - uses: actions/setup-java@v4
         with:
           java-version: "25"
           distribution: temurin
 
-      # ---------- Ghidra ----------
-      - name: Cache Ghidra
+      - uses: actions/cache@v4
         id: cache-ghidra
-        uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}/ghidra
           key: ghidra-12.1.2-jython
 
-      - name: Install Ghidra
-        if: steps.cache-ghidra.outputs.cache-hit != 'true'
-        shell: bash
+      - if: steps.cache-ghidra.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
-          echo "=== [Ghidra] Downloading ==="
-          curl -fsSL -o /tmp/g.zip "https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_12.1.2_build/ghidra_12.1.2_PUBLIC_20260605.zip"
+          curl -fsSL -o /tmp/g.zip https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_12.1.2_build/ghidra_12.1.2_PUBLIC_20260605.zip
           unzip -q /tmp/g.zip -d "$GITHUB_WORKSPACE"
           mv "$GITHUB_WORKSPACE/ghidra_12.1.2_PUBLIC" "$GITHUB_WORKSPACE/ghidra"
           JYTHON_ZIP=$(find "$GITHUB_WORKSPACE/ghidra/Extensions/Ghidra" -maxdepth 1 -name "*Jython*.zip" | head -n1)
           test -n "$JYTHON_ZIP"
           mkdir -p "$GITHUB_WORKSPACE/ghidra/Ghidra/Extensions"
           unzip -q "$JYTHON_ZIP" -d "$GITHUB_WORKSPACE/ghidra/Ghidra/Extensions"
-          echo "=== [Ghidra] Installed ==="
 
-      - name: Set Ghidra env
-        shell: bash
-        run: echo "GHIDRA_ROOT=$GITHUB_WORKSPACE/ghidra" >> "$GITHUB_ENV"
+      - run: echo "GHIDRA_ROOT=$GITHUB_WORKSPACE/ghidra" >> "$GITHUB_ENV"
 
-      # ---------- ipsw ----------
-      - name: Cache ipsw
+      - uses: actions/cache@v4
         id: cache-ipsw
-        uses: actions/cache@v4
         with:
           path: /usr/local/bin/ipsw
           key: ipsw-3.1.716
 
-      - name: Install ipsw
-        if: steps.cache-ipsw.outputs.cache-hit != 'true'
-        shell: bash
+      - if: steps.cache-ipsw.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
-          echo "=== [ipsw] Downloading ==="
-          curl -fsSL -o /tmp/ipsw.tar.gz "https://github.com/blacktop/ipsw/releases/download/v3.1.716/ipsw_3.1.716_linux_x86_64.tar.gz"
+          curl -fsSL -o /tmp/ipsw.tar.gz https://github.com/blacktop/ipsw/releases/download/v3.1.716/ipsw_3.1.716_linux_x86_64.tar.gz
           tar -C /usr/local/bin -xzf /tmp/ipsw.tar.gz ipsw
-          ipsw version
 
-      # ---------- symbolicator ----------
-      - name: Cache symbolicator
+      - uses: actions/cache@v4
         id: cache-symbolicator
-        uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}/symbolicator
           key: symbolicator-v1
 
-      - name: Clone blacktop symbolicator
-        if: steps.cache-symbolicator.outputs.cache-hit != 'true'
-        shell: bash
+      - if: steps.cache-symbolicator.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
-          echo "=== [symbolicator] Cloning ==="
-          git clone --depth 1 "https://github.com/blacktop/symbolicator.git" "$GITHUB_WORKSPACE/symbolicator"
-          ls -1 "$GITHUB_WORKSPACE/symbolicator/kernel" || true
+          git clone --depth 1 https://github.com/blacktop/symbolicator.git "$GITHUB_WORKSPACE/symbolicator"
 
-      - name: Resolve signatures dir
-        id: sigs
-        shell: bash
+      - id: sigs
         run: |
           set -uo pipefail
           ROOT="$GITHUB_WORKSPACE/symbolicator/kernel"
-          echo "=== [Sigs] Available versions ==="
-          ls -1 "$ROOT" || true
-
           for VER in "27.0" "27.2" "27.1" "27.3"; do
             if [ -d "$ROOT/$VER" ]; then
-              echo "=== [Sigs] Selected: $VER ==="
               echo "SIGDIR=$ROOT/$VER" >> "$GITHUB_ENV"
               echo "SIG_VER=$VER" >> "$GITHUB_ENV"
               exit 0
             fi
           done
           LATEST=$(ls -1 "$ROOT" 2>/dev/null | sort -V | tail -n1)
-          echo "=== [Sigs] Fallback: $LATEST ==="
           echo "SIGDIR=$ROOT/$LATEST" >> "$GITHUB_ENV"
           echo "SIG_VER=$LATEST" >> "$GITHUB_ENV"
 
-      # ---------- kernelcache ----------
-      - name: Cache kernelcache
+      - uses: actions/cache@v4
         id: cache-kernelcache
-        uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}/kernelcache
           key: kernelcache-iPhone14_5-24A437
 
-      - name: Download IPSW and extract kernelcache
-        if: steps.cache-kernelcache.outputs.cache-hit != 'true'
-        shell: bash
+      - if: steps.cache-kernelcache.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
           mkdir -p ipsw kernelcache
-          echo "=== [IPSW] Downloading ==="
           ipsw download ipsw --device iPhone14,5 --build 24A437 --output ipsw 2>&1 | tee /tmp/dl.log || true
           IPSW=$(find ipsw -name "*.ipsw" -type f | head -n1)
           test -n "$IPSW"
-          ls -lh "$IPSW"
-          echo "=== [Kernel] Extracting ==="
           ipsw extract --kernel "$IPSW" --output kernelcache
-          find kernelcache -type f ! -name "kernelcache*" -print -delete
+          find kernelcache -type f ! -name "kernelcache*" -delete
           find kernelcache -type d -empty -delete
-          find kernelcache -type f -exec ls -lh {} \;
 
-      - name: Resolve kernelcache path
-        id: kernel
-        shell: bash
+      - id: kernel
         run: |
           set -uo pipefail
-          KERNEL=$(find "$GITHUB_WORKSPACE/kernelcache" -type f -name "kernelcache*" 2>/dev/null | head -n1)
+          KERNEL=$(find "$GITHUB_WORKSPACE/kernelcache" -type f -name "kernelcache*" | head -n1)
           test -n "$KERNEL"
-          file "$KERNEL"
-          ls -lh "$KERNEL"
           echo "KERNEL=$KERNEL" >> "$GITHUB_ENV"
           echo "KERNEL_NAME=$(basename "$KERNEL")" >> "$GITHUB_ENV"
 
-      - name: Decompress kernelcache (only if compressed)
-        shell: bash
-        run: |
-          set -uo pipefail
-          FTYPE=$(file "$KERNEL")
-          echo "=== [Kernel] $FTYPE ==="
-          if echo "$FTYPE" | grep -q "Mach-O"; then
-            echo "=== [Kernel] Already Mach-O — skip ==="
-            exit 0
-          fi
-          echo "=== [Kernel] Decompressing ==="
-          OUTDIR="$GITHUB_WORKSPACE/kernelcache_decompressed"
-          mkdir -p "$OUTDIR"
-          OUTNAME="$OUTDIR/$(basename "$KERNEL")"
-          ipsw kernel dec "$KERNEL" -o "$OUTNAME" 2>&1 | tee /tmp/dec.log || true
-          if [ -s "$OUTNAME" ]; then
-            file "$OUTNAME"
-            ls -lh "$OUTNAME"
-            echo "KERNEL=$OUTNAME" >> "$GITHUB_ENV"
-            echo "KERNEL_NAME=$(basename "$OUTNAME")" >> "$GITHUB_ENV"
-          else
-            echo "WARNING: decompression failed"
-          fi
-
-      # ---------- символикация ----------
-      - name: Cache symbols
+      - uses: actions/cache@v4
         id: cache-symbols
-        uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}/symbols.json
           key: symbols-${{ hashFiles('kernelcache/**') }}
 
-      - name: Symbolicate kernel
-        if: steps.cache-symbols.outputs.cache-hit != 'true'
-        shell: bash
+      - if: steps.cache-symbols.outputs.cache-hit != 'true'
         run: |
           set -uo pipefail
-          echo "=== [Sym] Kernel: $KERNEL | SigDir: $SIGDIR ($SIG_VER) ==="
-
-          ipsw kernel symbolicate \
-            --signatures "$SIGDIR" \
-            --json -v \
-            "$KERNEL" \
-            2>&1 | tee /tmp/sym_full.log || true
-
-          echo "=== [Sym] Built-in table markers ==="
-          grep -iE "bsd_syscall_table|mach_trap_table|mig_kern_subsystem|Found .* table" \
-            /tmp/sym_full.log || echo "(no markers)"
-
-          echo "=== [Sym] Addresses found in log ==="
-          grep -cE "0x[0-9A-Fa-f]{10,}" /tmp/sym_full.log || echo "0"
-
+          ipsw kernel symbolicate --signatures "$SIGDIR" --json -v "$KERNEL" 2>&1 | tee /tmp/sym.log || true
           SRC=$(find . -type f -name "*.symbols.json" 2>/dev/null | head -n1)
           if [ -z "$SRC" ]; then
             SRC=$(find . -type f -name "*symbols*.json" 2>/dev/null | head -n1)
           fi
-
           if [ -n "$SRC" ] && [ -s "$SRC" ]; then
             cp "$SRC" "$GITHUB_WORKSPACE/symbols.json"
-            echo "=== [Sym] Copied $SRC -> symbols.json ==="
           else
-            ipsw kernel symbolicate \
-              --signatures "$SIGDIR" \
-              --json -v \
-              --output "$GITHUB_WORKSPACE/symbols.json" \
-              "$KERNEL" \
-              2>&1 | tee /tmp/sym_fallback.log || true
+            ipsw kernel symbolicate --signatures "$SIGDIR" --json -v --output "$GITHUB_WORKSPACE/symbols.json" "$KERNEL" 2>&1 | tee /tmp/sym_fb.log || true
             if [ ! -s "$GITHUB_WORKSPACE/symbols.json" ]; then
               echo "[]" > "$GITHUB_WORKSPACE/symbols.json"
             fi
           fi
 
-          echo "=== [Sym] symbols.json: $(wc -c < "$GITHUB_WORKSPACE/symbols.json") bytes ==="
-
-      # ---------- Ghidra project ----------
-      - name: Cache ghidra project
+      - uses: actions/cache@v4
         id: cache-project
-        uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}/ghidra_project
           key: ghidra-project-${{ hashFiles('kernelcache/**') }}
 
-      - name: Warm run
-        id: warm
+      - id: warm
         if: steps.cache-project.outputs.cache-hit == 'true'
         continue-on-error: true
-        shell: bash
         env:
           _JAVA_OPTIONS: "-Xmx8g -Djava.awt.headless=true"
           SYMBOLS_JSON: ${{ github.workspace }}/symbols.json
           GITHUB_WORKSPACE: ${{ github.workspace }}
         run: |
-          echo "=== [Ghidra] Warm run ==="
           "$GHIDRA_ROOT/support/analyzeHeadless" \
             "$GITHUB_WORKSPACE/ghidra_project" KernelProject \
             -process "$KERNEL_NAME" -noanalysis \
@@ -244,16 +147,13 @@ jobs:
             -scriptPath "$GITHUB_WORKSPACE/scripts" \
             2>&1 | tee kernel.log || true
 
-      - name: Cold run
-        if: steps.cache-project.outputs.cache-hit != 'true' || steps.warm.outcome != 'success'
+      - if: steps.cache-project.outputs.cache-hit != 'true' || steps.warm.outcome != 'success'
         continue-on-error: true
-        shell: bash
         env:
           _JAVA_OPTIONS: "-Xmx8g -Djava.awt.headless=true"
           SYMBOLS_JSON: ${{ github.workspace }}/symbols.json
           GITHUB_WORKSPACE: ${{ github.workspace }}
         run: |
-          echo "=== [Ghidra] Cold run ==="
           rm -rf ghidra_project
           mkdir -p ghidra_project
           "$GHIDRA_ROOT/support/analyzeHeadless" \
@@ -268,47 +168,29 @@ jobs:
             -max-cpu 4 \
             2>&1 | tee kernel.log || true
 
-      # ---------- КРИТИЧЕСКИЙ ШАГ: очистка мусора ----------
-      - name: Purge garbage before upload
-        if: always()
-        shell: bash
+      - if: always()
         run: |
           set -uo pipefail
-          echo "=== [Purge] Before cleanup ==="
-          du -sh "$GITHUB_WORKSPACE"/* 2>/dev/null | sort -rh | head -20 || true
+          rm -rf "$GITHUB_WORKSPACE/ghidra"                   || true
+          rm -rf "$GITHUB_WORKSPACE/ghidra_project"           || true
+          rm -rf "$GITHUB_WORKSPACE/kernelcache"              || true
+          rm -rf "$GITHUB_WORKSPACE/kernelcache_decompressed" || true
+          rm -rf "$GITHUB_WORKSPACE/symbolicator"             || true
+          rm -rf "$GITHUB_WORKSPACE/ipsw"                     || true
+          rm -f  "$GITHUB_WORKSPACE"/*.symbols.json           || true
+          rm -f  "$GITHUB_WORKSPACE"/sym_*.json               || true
+          rm -f  "$GITHUB_WORKSPACE"/*.tar.gz                 || true
+          rm -f  "$GITHUB_WORKSPACE"/kernelcache.release.*    || true
 
-          # Удаляем всё лишнее из workspace, чтобы не попалo в артефакт
-          rm -rf "$GITHUB_WORKSPACE/ghidra"                     || true
-          rm -rf "$GITHUB_WORKSPACE/ghidra_project"             || true
-          rm -rf "$GITHUB_WORKSPACE/kernelcache"                || true
-          rm -rf "$GITHUB_WORKSPACE/kernelcache_decompressed"   || true
-          rm -rf "$GITHUB_WORKSPACE/symbolicator"               || true
-          rm -rf "$GITHUB_WORKSPACE/ipsw"                       || true
-          rm -f  "$GITHUB_WORKSPACE"/*.symbols.json             || true
-          rm -f  "$GITHUB_WORKSPACE"/sym_*.json                 || true
-          rm -f  "$GITHUB_WORKSPACE"/debug_*.json               || true
-          rm -f  "$GITHUB_WORKSPACE"/*.tar.gz                   || true
-          rm -f  "$GITHUB_WORKSPACE"/kernelcache.release.*      || true
-
-          echo "=== [Purge] After cleanup ==="
-          ls -la "$GITHUB_WORKSPACE" || true
-
-      # ---------- сбор чистых артефактов ----------
-      - name: Collect clean artifacts
-        if: always()
-        shell: bash
+      - if: always()
         run: |
           set -uo pipefail
           rm -rf "$GITHUB_WORKSPACE/artifacts"
           mkdir -p "$GITHUB_WORKSPACE/artifacts"
-
           for f in result.txt offsets.json kernel.log symbols.json; do
-            SRC="$GITHUB_WORKSPACE/$f"
-            if [ -f "$SRC" ]; then
-              cp "$SRC" "$GITHUB_WORKSPACE/artifacts/$f"
-              echo "  + $f: $(wc -c < "$SRC") bytes"
+            if [ -f "$GITHUB_WORKSPACE/$f" ]; then
+              cp "$GITHUB_WORKSPACE/$f" "$GITHUB_WORKSPACE/artifacts/$f"
             else
-              echo "  - $f: missing (creating placeholder)"
               case "$f" in
                 offsets.json) echo '{}' > "$GITHUB_WORKSPACE/artifacts/$f" ;;
                 symbols.json) echo '[]' > "$GITHUB_WORKSPACE/artifacts/$f" ;;
@@ -316,13 +198,9 @@ jobs:
               esac
             fi
           done
-
-          echo "=== [Artifacts] Contents ==="
           ls -la "$GITHUB_WORKSPACE/artifacts"
-          du -sh "$GITHUB_WORKSPACE/artifacts"
 
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: kernel-offsets-${{ github.sha }}
