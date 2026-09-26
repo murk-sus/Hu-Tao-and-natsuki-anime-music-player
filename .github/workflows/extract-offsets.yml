@@ -2,30 +2,39 @@ name: Extract Offsets
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
+    paths:
+      - "scripts/kernel_rw.py"
+      - ".github/workflows/extract_offsets.yml"
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
+
+concurrency:
+  group: offsets-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   offsets:
     runs-on: ubuntu-24.04
-    timeout-minutes: 360
+    timeout-minutes: 60
 
     steps:
       - uses: actions/checkout@v4
-
-      - name: Clean stale outputs
-        run: |
-          rm -f result.txt offsets.json kernel.log symbols.json
-          rm -f /tmp/so.txt /tmp/se.txt /tmp/sym_out.txt /tmp/sym_err.txt /tmp/dl.log
-          rm -rf /tmp/sigs /tmp/sig.tar.gz
+        with:
+          fetch-depth: 1
 
       - uses: actions/setup-java@v4
         with:
           java-version: "25"
           distribution: temurin
+
+      - name:/null Install helper tools
+         run: |
+         2 set -e
+          command -v j>&q >/dev1 || sudo apt-get install -y jq
+          command -v file >/dev/null 2>&1 || sudo apt-get install -y file
 
       - uses: actions/cache@v4
         id: cache-ghidra
@@ -66,7 +75,7 @@ jobs:
         run: |
           set -euo pipefail
           curl -fsSL -o /tmp/ipsw.tar.gz https://github.com/blacktop/ipsw/releases/download/v3.1.716/ipsw_3.1.716_linux_x86_64.tar.gz
-          tar -C /usr/local/bin -xzf /tmp/ipsw.tar.gz ipsw
+          sudo tar -C /usr/local/bin -xzf /tmp/ipsw.tar.gz ipsw
           rm -f /tmp/ipsw.tar.gz
 
       - uses: actions/cache@v4
@@ -133,7 +142,14 @@ jobs:
           test -f "$GITHUB_WORKSPACE/scripts/kernel_rw.py"
           python3 -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "$GITHUB_WORKSPACE/scripts/kernel_rw.py"
 
-      - name: Symbolicate
+      - uses: actions/cache@v4
+        id: cache-symbols
+        with:
+          path: ${{ github.workspace }}/symbols.json
+          key: symbols-24A437-v4
+
+      - if: steps.cache-symbols.outputs.cache-hit != 'true'
+        name: Symbolicate
         run: |
           set -uo pipefail
           OUT="$GITHUB_WORKSPACE/symbols.json"
@@ -146,7 +162,8 @@ jobs:
             if [ -z "$f" ] || [ "$f" = "$OUT" ]; then return 1; fi
             if [ ! -f "$f" ] || [ ! -s "$f" ]; then return 1; fi
             if ! jq empty "$f" 2>/dev/null; then return 1; fi
-            local N=$(count_entries "$f")
+            local N
+            N=$(count_entries "$f")
             if [ "$N" -ge 10 ]; then
               cp "$f" "$OUT"
               echo "    GRAB $f -> $N entries"
@@ -160,27 +177,23 @@ jobs:
             [ -e "$SIG" ] || return 1
             echo ""
             echo "=== [$TAG] $SIG ==="
-            rm -f /tmp/symbols.json
-            rm -f "$GITHUB_WORKSPACE/symbols.json.tmp"
-            rm -f "$KERNEL_DIR/symbols.json"
-            rm -f "$KERNEL_DIR/$KERNEL_NAME.json"
-            ipsw kernel symbolicate --signatures "$SIG" --json "$KERNEL" \
-              > /tmp/so.txt 2> /tmp/se.txt
+            rm -f /tmp/symbols.json "$GITHUB_WORKSPACE/symbols.json.tmp"
+            rm -f "$KERNEL_DIR/$KERNEL_NAME.json" "$KERNEL_DIR/symbols.json"
+            ipsw kernel symbolicate --signatures "$SIG" --json "$KERNEL" > /tmp/so.txt 2> /tmp/se.txt
             local RC=$?
-            local SO=$(wc -c < /tmp/so.txt 2>/dev/null || echo 0)
+            local SO
+            SO=$(wc -c < /tmp/so.txt 2>/dev/null || echo 0)
             echo "    rc=$RC stdout=$SO"
             if grab /tmp/so.txt; then return 0; fi
-            local RP=$(grep -oE "Writing symbols as JSON to .+" /tmp/se.txt 2>/dev/null | head -1 | sed 's/^.* to //' | tr -d '\r\n')
+            local RP
+            RP=$(grep -oE "Writing symbols as JSON to .+" /tmp/se.txt 2>/dev/null | head -1 | sed 's/^.* to //' | tr -d '\r\n')
             if [ -n "$RP" ]; then
               echo "    reported: $RP"
               if grab "$RP"; then return 0; fi
               if grab "$GITHUB_WORKSPACE/$RP"; then return 0; fi
             fi
-            for f in \
-              "$KERNEL_DIR/$KERNEL_NAME.json" \
-              "$KERNEL_DIR/symbols.json" \
-              "$GITHUB_WORKSPACE/symbols.json.tmp" \
-              "/tmp/symbols.json"; do
+            for f in "$KERNEL_DIR/$KERNEL_NAME.json" "$KERNEL_DIR/symbols.json" \
+                     "$GITHUB_WORKSPACE/symbols.json.tmp" "/tmp/symbols.json"; do
               if grab "$f"; then return 0; fi
             done
             for f in $(find "$GITHUB_WORKSPACE" -maxdepth 5 -name "*.json" -type f -newermt "3 minutes ago" 2>/dev/null | grep -v ghidra | grep -v symbolicator | grep -v scripts); do
@@ -189,7 +202,7 @@ jobs:
             echo "    no candidate"
             return 1
           }
-          if run_one "$SIGDIR" "full-27.0"; then echo "OK full"
+          if run_one "$SIGDIR" "full"; then echo "OK full"
           elif run_one "$SIGDIR/xnu.json" "xnu"; then echo "OK xnu"
           elif run_one "$SIGDIR/kexts" "kexts"; then echo "OK kexts"
           else
@@ -213,7 +226,7 @@ jobs:
 
       - name: Run Ghidra
         env:
-          _JAVA_OPTIONS: "-Xmx12g -Djava.awt.headless=true"
+          _JAVA_OPTIONS: "-Xmx10g -Djava.awt.headless=true -XX:+UseParallelGC"
           SYMBOLS_JSON: ${{ github.workspace }}/symbols.json
           GITHUB_WORKSPACE: ${{ github.workspace }}
         run: |
@@ -221,7 +234,9 @@ jobs:
           echo "cache-project: ${{ steps.cache-project.outputs.cache-hit }}"
           test -f "$SYMBOLS_JSON"
           test "$(wc -c < "$SYMBOLS_JSON")" -gt 10
+          rm -f result.txt
           JOBS=$(nproc)
+          echo "nproc=$JOBS"
           if [ "${{ steps.cache-project.outputs.cache-hit }}" = "true" ]; then
             echo "=== warm ==="
             "$GHIDRA_ROOT/support/analyzeHeadless" \
@@ -229,7 +244,9 @@ jobs:
               -process "$KERNEL_NAME" -noanalysis \
               -postScript kernel_rw.py \
               -scriptPath "$GITHUB_WORKSPACE/scripts" \
-              2>&1 | tee kernel.log
+              -analysisTimeoutPerFile 600 \
+              -max-cpu "$JOBS" \
+              2>&1 | tee kernel.log | tail -40
           else
             echo "=== cold ==="
             rm -rf ghidra_project
@@ -242,37 +259,57 @@ jobs:
               -loader-baseAddr 0xFFFFFFF007004000 \
               -postScript kernel_rw.py \
               -scriptPath "$GITHUB_WORKSPACE/scripts" \
-              -analysisTimeoutPerFile 3600 \
+              -analysisTimeoutPerFile 600 \
               -max-cpu "$JOBS" \
-              2>&1 | tee kernel.log
+              2>&1 | tee kernel.log | tail -40
           fi
 
       - name: Validate outputs
         run: |
           set -euo pipefail
           test -s result.txt
-          echo "result.txt: $(wc -l < result.txt) lines"
-          test -s offsets.json
-          jq empty offsets.json
+          echo "result.txt: $(wc -l < result.txt) lines, $(wc -c < result.txt) bytes"
+
+      - name: Report
+        if: always()
+        run: |
+          echo "=== tail of kernel.log ==="
+          tail -60 kernel.log 2>/dev/null || true
+          echo "=== tail of result.txt ==="
+          tail -80 result.txt 2>/dev/null || echo "(missing)"
 
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: kernel-offsets-${{ github.sha }}
           path: |
             result.txt
-            offsets.json
             kernel.log
             symbols.json
           retention-days: 30
           overwrite: true
           compression-level: 9
 
-      - name: Cleanup tmp only
+      - name: Commit result
+        if: always()
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email github-actions[bot]@users.noreply.github.com
+          git add -f result.txt 2>/dev/null || true
+          if git diff --cached --quiet; then
+            echo "no changes"
+            exit 0
+          fi
+          git commit -m "extract: kernel_rw for 24A437 [skip ci]"
+          git push
+
+      - name: Cleanup
         if: always()
         run: |
           set +e
           rm -rf "$GITHUB_WORKSPACE/ipsw"
-          rm -f /tmp/g.zip /tmp/ipsw.tar.gz /tmp/so.txt /tmp/se.txt /tmp/sym_out.txt /tmp/sym_err.txt /tmp/dl.log
+          rm -f /tmp/g.zip /tmp/ipsw.tar.gz /tmp/so.txt /tmp/se.txt /tmp/dl.log
           rm -rf /tmp/sigs /tmp/sig.tar.gz
           rm -rf "$HOME/.config/ghidra" /var/tmp/runner-ghidra
           exit 0
