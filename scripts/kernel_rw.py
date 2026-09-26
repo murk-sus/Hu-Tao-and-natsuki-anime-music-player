@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # @runtime Jython
-# kernel_rw.py — v6 (symbols-first, fast)
+# kernel_rw.py — v7 (built-in symbols + NECP resolver)
 
 import os, json, traceback
 from jarray import zeros
@@ -15,6 +15,7 @@ SYMBOLS_JSON = os.environ.get("SYMBOLS_JSON", os.path.join(WS, "symbols.json"))
 KPTR_MIN = 0xFFFFFFF000000000
 KPTR_MAX = 0xFFFFFFFFFF000000
 
+# Fallback addresses
 NECP_FALLBACK = {
     "necp_open":                   0xFFFFFFF00A4E411C,
     "necp_client_add_flow":        0xFFFFFFF00A4E843C,
@@ -100,6 +101,24 @@ def load_symbols(path):
     print("[+] symbols loaded: %d" % len(syms))
     return syms
 
+def find_necp_action_via_syscall(syscalls_path):
+    """Ищет necp_client_action через syscall 502 в syscalls.json."""
+    if not os.path.exists(syscalls_path):
+        return None
+    try:
+        with open(syscalls_path) as f:
+            data = json.load(f)
+        # Формат может быть списком или словарём
+        entries = data if isinstance(data, list) else data.get("syscalls", [])
+        for e in entries:
+            if isinstance(e, dict):
+                num = e.get("number") or e.get("num")
+                if num == 502:
+                    return e.get("addr") or e.get("address") or e.get("handler")
+    except Exception as e:
+        print("[!] syscalls parse failed: %s" % e)
+    return None
+
 def find_string_va(needle):
     mem = currentProgram.getMemory()
     try:
@@ -164,7 +183,7 @@ def decompile(f, timeout=180):
 def main():
     lines = []
     offsets_out = {}
-    print("=== kernel_rw.py v6 ===")
+    print("=== kernel_rw.py v7 ===")
 
     lines.append("=== PROGRAM ===")
     lines.append("name = %s" % currentProgram.getName())
@@ -172,6 +191,7 @@ def main():
     lines.append("max  = %s" % fmt(currentProgram.getMemory().getMaxAddress().getOffset()))
     lines.append("")
 
+    # 1) Загружаем symbols.json (сигнатуры + встроенные)
     syms = load_symbols(SYMBOLS_JSON)
     lines.append("=== SYMBOLS ===")
     lines.append("loaded = %d" % len(syms))
@@ -180,6 +200,16 @@ def main():
         lines.append("FIX: ensure blacktop/symbolicator is cloned and --signatures path is correct.")
     lines.append("")
 
+    # 2) Пытаемся найти necp_client_action через syscalls.json
+    syscalls_path = os.path.join(WS, "syscalls.json")
+    action_addr = find_necp_action_via_syscall(syscalls_path)
+    if action_addr:
+        syms["necp_client_action"] = action_addr
+        lines.append("=== NECP_CLIENT_ACTION via syscall table ===")
+        lines.append("  necp_client_action = %s" % fmt(action_addr))
+        lines.append("")
+
+    # 3) Резолвим NECP-функции
     resolved = {}
     lines.append("=== RESOLVED NECP TARGETS ===")
     for name in NECP_TARGET_NAMES:
@@ -199,6 +229,7 @@ def main():
             offsets_out[name] = fmt(found)
     lines.append("")
 
+    # 4) Dump функций
     lines.append("=== FUNCTION DUMPS ===")
     for name, addr in resolved.items():
         f = get_func(addr)
@@ -224,12 +255,14 @@ def main():
             lines.append(l)
         lines.append("")
 
+    # 5) KTRR/SPTM
     lines.append("=== KTRR/SPTM ===")
     for needle in ["SPTM", "sptm", "ctrr", "KTRR"]:
         va = find_string_va(needle)
         if va: lines.append("  %-8s -> %s" % (needle, fmt(va)))
     lines.append("")
 
+    # 6) kalloc_type_var
     lines.append("=== KALLOC_TYPE_VAR (necp_client_flow) @ 0xFFFFFFF007C62E68 ===")
     blk = inblk(0xFFFFFFF007C62E68)
     if blk:
@@ -243,6 +276,7 @@ def main():
             lines.append("  read error: %s" % e)
     lines.append("")
 
+    # Write
     try:
         with open(OUT, "w") as fh:
             for l in lines: fh.write(l + "\n")
