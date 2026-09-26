@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # @runtime Jython
-# kernel_rw.py v30 - ensures function boundaries, only result.txt
+# kernel_rw.py v31 - safe imports, only result.txt
 
 import os
 import sys
@@ -9,8 +9,6 @@ import traceback
 from jarray import zeros
 from ghidra.app.decompiler import DecompInterface
 from ghidra.util.task import ConsoleTaskMonitor
-from ghidra.app.cmd.disassemble import Aarch64DisassembleCommand
-from ghidra.app.cmd.function import CreateFunctionCmd
 
 WS = os.environ.get("GITHUB_WORKSPACE", "/tmp")
 OUT = os.path.join(WS, "result.txt")
@@ -59,6 +57,20 @@ GLOBAL_CALLERS = [
 ]
 
 DEC = None
+HAS_DISASM = False
+HAS_CREATE = False
+
+try:
+    from ghidra.app.cmd.disassemble import DisassembleCommand as _DC
+    HAS_DISASM = True
+except Exception:
+    HAS_DISASM = False
+
+try:
+    from ghidra.app.cmd.function import CreateFunctionCmd as _CFC
+    HAS_CREATE = True
+except Exception:
+    HAS_CREATE = False
 
 
 def log(msg):
@@ -99,11 +111,13 @@ def get_func(addr):
 
 
 def disassemble(addr):
+    if not HAS_DISASM:
+        return
     try:
         ga = sa(addr)
         if ga is None:
             return
-        cmd = Aarch64DisassembleCommand(ga, None, True)
+        cmd = _DC(ga, None, True)
         cmd.applyTo(currentProgram)
     except Exception as e:
         log("  disasm fail " + str(e))
@@ -121,12 +135,20 @@ def ensure_function(addr):
         if f is not None:
             return f
         disassemble(ga)
-        ccmd = CreateFunctionCmd(ga)
-        ccmd.applyTo(currentProgram)
-        f = getFunctionAt(ga)
-        if f is not None:
-            return f
-        return getFunctionContaining(ga)
+        if HAS_CREATE:
+            try:
+                ccmd = _CFC(ga)
+                ccmd.applyTo(currentProgram)
+            except Exception as e:
+                log("  createFunctionCmd fail " + str(e))
+        try:
+            fm = currentProgram.getFunctionManager()
+            f = fm.createFunction(ga, "nk_" + ("%X" % addr))
+            if f is not None:
+                return f
+        except Exception as e:
+            log("  fm.createFunction fail " + str(e))
+        return getFunctionAt(ga) or getFunctionContaining(ga)
     except Exception as e:
         log("  ensure_function fail " + fmt(addr) + " " + str(e))
         return None
@@ -331,23 +353,24 @@ def main():
     def w(s):
         L.append(s)
 
-    log("=== kernel_rw.py v30 ===")
+    log("=== kernel_rw.py v31 ===")
     log("program: " + currentProgram.getName())
+    log("disasm available: " + str(HAS_DISASM))
+    log("create cmd available: " + str(HAS_CREATE))
 
     w("=== PROGRAM ===")
     w("name = " + currentProgram.getName())
+    w("has_disasm=" + str(HAS_DISASM) + " has_create=" + str(HAS_CREATE))
     w("")
 
     log("[1/3] NECP sanity + ensure functions")
     w(SEP)
     w("### NECP SANITY")
     w(SEP)
-    resolved = {}
     for name, addr in TARGETS:
         try:
             f = get_func(addr)
             if f is None:
-                log("  ensure " + name)
                 f = ensure_function(addr)
             if f:
                 ent = _u(f.getEntryPoint().getOffset())
@@ -356,10 +379,8 @@ def main():
                 except Exception:
                     sz = 0
                 w("  %-32s %s size=0x%X OK" % (name, fmt(ent), sz))
-                resolved[name] = ent
             else:
                 w("  %-32s %s no func" % (name, fmt(addr)))
-                resolved[name] = addr
         except Exception as ex:
             w("  %-32s EXCEPTION %s" % (name, str(ex)))
     w("")
@@ -473,3 +494,10 @@ try:
 except Exception as e:
     log("[-] FATAL " + str(e))
     traceback.print_exc()
+    try:
+        fh = open(OUT, "w")
+        fh.write("FATAL: " + str(e) + "\n")
+        fh.write(traceback.format_exc())
+        fh.close()
+    except Exception:
+        pass
