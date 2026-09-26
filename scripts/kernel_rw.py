@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 # @runtime Jython
-# kernel_rw.py — v10 (full blacktop symbols + built-in fallback + all NECP)
 
 import os, json, traceback
 from jarray import zeros
@@ -12,7 +11,6 @@ OUT = os.path.join(WS, "result.txt")
 OUT_OFF = os.path.join(WS, "offsets.json")
 SYMBOLS_JSON = os.environ.get("SYMBOLS_JSON", os.path.join(WS, "symbols.json"))
 
-# Fallback-адреса подтверждены через necp_client_action dispatcher
 NECP_FALLBACK = {
     "necp_open":                   0xFFFFFFF00A4E411C,
     "necp_client_add_flow":        0xFFFFFFF00A4E843C,
@@ -27,54 +25,84 @@ NECP_FALLBACK = {
 
 NECP_TARGET_NAMES = list(NECP_FALLBACK.keys())
 
-def _u(v): return int(v) & 0xFFFFFFFFFFFFFFFF
+
+def _u(v):
+    return int(v) & 0xFFFFFFFFFFFFFFFF
+
+
 def fmt(v):
-    if v is None: return "0x0"
-    try: return "0x%016X" % (int(v) & 0xFFFFFFFFFFFFFFFF)
-    except: return "0x0"
+    if v is None:
+        return "0x0"
+    try:
+        return "0x%016X" % (int(v) & 0xFFFFFFFFFFFFFFFF)
+    except:
+        return "0x0"
+
+
 def sa(a):
-    if a is None: return None
-    try: return currentProgram.getAddressFactory().getAddress("%X" % (int(a) & 0xFFFFFFFFFFFFFFFF))
-    except: return None
+    if a is None:
+        return None
+    try:
+        return currentProgram.getAddressFactory().getAddress("%X" % (int(a) & 0xFFFFFFFFFFFFFFFF))
+    except:
+        return None
+
 
 _bc = None
+
+
 def blocks():
     global _bc
-    if _bc is not None: return _bc
+    if _bc is not None:
+        return _bc
     out = []
     try:
         for b in currentProgram.getMemory().getBlocks():
             try:
-                if not b.isInitialized(): continue
-                out.append((_u(b.getStart().getOffset()), _u(b.getEnd().getOffset()), str(b.getName()), bool(b.isExecute())))
-            except: pass
-    except: pass
+                if not b.isInitialized():
+                    continue
+                out.append((_u(b.getStart().getOffset()),
+                            _u(b.getEnd().getOffset()),
+                            str(b.getName()),
+                            bool(b.isExecute())))
+            except:
+                pass
+    except:
+        pass
     _bc = out
     return out
 
+
 def inblk(a):
-    if a is None: return None
+    if a is None:
+        return None
     av = _u(a)
     for s, e, n, x in blocks():
-        if s <= av < e: return (s, e, n, x)
+        if s <= av < e:
+            return (s, e, n, x)
     return None
+
 
 def get_func(addr):
     try:
         ga = sa(addr)
-        if ga is None: return None
+        if ga is None:
+            return None
         f = getFunctionAt(ga)
         return f if f is not None else getFunctionContaining(ga)
-    except: return None
+    except:
+        return None
+
 
 def load_symbols(path):
+    print("[+] symbols: %s" % path)
     if not os.path.exists(path):
-        print("[!] symbols.json not found")
         return {}
     try:
-        with open(path) as f: data = json.load(f)
+        with open(path) as f:
+            data = json.load(f)
     except Exception as e:
-        print("[!] symbols.json parse failed: %s" % e)
+        print("[!] parse failed: %s" % e)
         return {}
     syms = {}
     if isinstance(data, list):
@@ -83,21 +111,28 @@ def load_symbols(path):
                 try:
                     a = e["addr"]
                     syms[e["name"]] = int(a, 16) if isinstance(a, str) else int(a)
-                except: pass
+                except:
+                    pass
     elif isinstance(data, dict):
         for k, v in data.items():
             if isinstance(v, (int, str)):
-                try: syms[k] = int(v, 16) if isinstance(v, str) and v.startswith("0x") else int(v)
-                except: pass
+                try:
+                    syms[k] = int(v, 16) if isinstance(v, str) and v.startswith("0x") else int(v)
+                except:
+                    pass
     print("[+] symbols loaded: %d" % len(syms))
     return syms
+
 
 def disasm_mem_ops(f, maxn=1500):
     out = []
     body = f.getBody()
-    if body is None: return out
-    try: it = body.getAddresses(True)
-    except: return out
+    if body is None:
+        return out
+    try:
+        it = body.getAddresses(True)
+    except:
+        return out
     cnt = 0
     while it.hasNext() and cnt < maxn:
         a = it.next()
@@ -105,24 +140,36 @@ def disasm_mem_ops(f, maxn=1500):
             pc = _u(a.getOffset())
             raw = int(currentProgram.getMemory().getInt(a)) & 0xFFFFFFFF
             out.append((pc, raw))
-        except: pass
+        except:
+            pass
         cnt += 1
     return out
 
+
 def extract_mem(raw):
-    if (raw & 0xFFC00000) == 0xF9400000: return ("ldr_x", (raw>>5)&0x1F, ((raw>>10)&0xFFF)*8)
-    if (raw & 0xFFC00000) == 0xB9400000: return ("ldr_w", (raw>>5)&0x1F, ((raw>>10)&0xFFF)*4)
-    if (raw & 0xFFC00000) == 0xF9000000: return ("str_x", (raw>>5)&0x1F, ((raw>>10)&0xFFF)*8)
-    if (raw & 0xFFC00000) == 0xB9000000: return ("str_w", (raw>>5)&0x1F, ((raw>>10)&0xFFF)*4)
-    if (raw & 0xFFE00000) == 0x39400000: return ("ldrb", (raw>>5)&0x1F, (raw>>10)&0xFFF)
-    if (raw & 0xFFE00000) == 0x39000000: return ("strb", (raw>>5)&0x1F, (raw>>10)&0xFFF)
-    if (raw & 0xFFE00000) == 0x79400000: return ("ldrh", (raw>>5)&0x1F, ((raw>>10)&0xFFF)*2)
-    if (raw & 0xFFE00000) == 0x79000000: return ("strh", (raw>>5)&0x1F, ((raw>>10)&0xFFF)*2)
+    if (raw & 0xFFC00000) == 0xF9400000:
+        return ("ldr_x", (raw >> 5) & 0x1F, ((raw >> 10) & 0xFFF) * 8)
+    if (raw & 0xFFC00000) == 0xB9400000:
+        return ("ldr_w", (raw >> 5) & 0x1F, ((raw >> 10) & 0xFFF) * 4)
+    if (raw & 0xFFC00000) == 0xF9000000:
+        return ("str_x", (raw >> 5) & 0x1F, ((raw >> 10) & 0xFFF) * 8)
+    if (raw & 0xFFC00000) == 0xB9000000:
+        return ("str_w", (raw >> 5) & 0x1F, ((raw >> 10) & 0xFFF) * 4)
+    if (raw & 0xFFE00000) == 0x39400000:
+        return ("ldrb", (raw >> 5) & 0x1F, (raw >> 10) & 0xFFF)
+    if (raw & 0xFFE00000) == 0x39000000:
+        return ("strb", (raw >> 5) & 0x1F, (raw >> 10) & 0xFFF)
+    if (raw & 0xFFE00000) == 0x79400000:
+        return ("ldrh", (raw >> 5) & 0x1F, ((raw >> 10) & 0xFFF) * 2)
+    if (raw & 0xFFE00000) == 0x79000000:
+        return ("strh", (raw >> 5) & 0x1F, ((raw >> 10) & 0xFFF) * 2)
     if (raw & 0xFFC00000) == 0xF8400000:
-        i = (raw>>12)&0x1FF
-        if i & 0x100: i -= 0x200
-        return ("ldur_x", (raw>>5)&0x1F, i)
+        i = (raw >> 12) & 0x1FF
+        if i & 0x100:
+            i -= 0x200
+        return ("ldur_x", (raw >> 5) & 0x1F, i)
     return None
+
 
 def decompile(f, timeout=240):
     out = []
@@ -133,17 +180,19 @@ def decompile(f, timeout=240):
         if r is None or not r.decompileCompleted():
             return ["(decompile failed)"]
         c = r.getDecompiledFunction()
-        if c is None: return ["(empty)"]
+        if c is None:
+            return ["(empty)"]
         for line in c.getC().split("\n"):
             out.append("  " + line.rstrip())
     except Exception as e:
         out.append("(exception: %s)" % e)
     return out
 
+
 def main():
     lines = []
     offsets_out = {}
-    print("=== kernel_rw.py v10 ===")
+    print("=== kernel_rw.py v13 ===")
 
     lines.append("=== PROGRAM ===")
     lines.append("name = %s" % currentProgram.getName())
@@ -155,8 +204,7 @@ def main():
     lines.append("=== SYMBOLS ===")
     lines.append("loaded = %d" % len(syms))
     if not syms:
-        lines.append("WHY: ipsw kernel sym failed or produced empty JSON.")
-        lines.append("FIX: using hardcoded NECP addresses (verified via necp_client_action dispatcher).")
+        lines.append("using hardcoded NECP addresses")
     lines.append("")
 
     resolved = {}
@@ -165,7 +213,8 @@ def main():
         found = None
         for k in syms:
             if k.lstrip("_") == name or k == name:
-                found = syms[k]; break
+                found = syms[k]
+                break
         if found is None and name in NECP_FALLBACK:
             found = NECP_FALLBACK[name]
             lines.append("  %-30s %s (FALLBACK)" % (name, fmt(found)))
@@ -186,13 +235,16 @@ def main():
             continue
         entry = _u(f.getEntryPoint().getOffset())
         sz = 0
-        try: sz = int(f.getBody().getNumAddresses())
-        except: pass
+        try:
+            sz = int(f.getBody().getNumAddresses())
+        except:
+            pass
         lines.append("--- %s @ %s  size=0x%X ---" % (name, fmt(entry), sz))
         seen = set()
         for pc, raw in disasm_mem_ops(f, 1500):
             r = extract_mem(raw)
-            if r is None: continue
+            if r is None:
+                continue
             kind, base, imm = r
             if 0x20 <= imm <= 0x800 and imm not in seen:
                 seen.add(imm)
@@ -211,12 +263,16 @@ def main():
             jn = zeros(len(needle), 'b')
             for i in range(len(needle)):
                 v = ord(needle[i])
-                if v > 127: v -= 256
+                if v > 127:
+                    v -= 256
                 jn[i] = v
             h = mem.findBytes(mem.getMinAddress(), jn, None, True, TaskMonitor.DUMMY)
-            if h is not None: va = _u(h.getOffset())
-        except: pass
-        if va: lines.append("  %-8s -> %s" % (needle, fmt(va)))
+            if h is not None:
+                va = _u(h.getOffset())
+        except:
+            pass
+        if va:
+            lines.append("  %-8s -> %s" % (needle, fmt(va)))
     lines.append("")
 
     lines.append("=== KALLOC_TYPE_VAR (necp_client_flow) @ 0xFFFFFFF007C62E68 ===")
@@ -234,19 +290,21 @@ def main():
 
     try:
         with open(OUT, "w") as fh:
-            for l in lines: fh.write(l + "\n")
+            for l in lines:
+                fh.write(l + "\n")
         print("[+] wrote " + OUT)
     except Exception as e:
-        print("[-] result write: %s" % e)
+        print("[-] result: %s" % e)
 
     try:
         with open(OUT_OFF, "w") as fh:
             fh.write(json.dumps(offsets_out, indent=2, sort_keys=True))
         print("[+] wrote " + OUT_OFF)
     except Exception as e:
-        print("[-] offsets write: %s" % e)
+        print("[-] offsets: %s" % e)
 
     print("=== DONE ===")
+
 
 try:
     main()
@@ -258,4 +316,5 @@ except Exception as e:
             fh.write("FATAL: %s\n%s" % (e, traceback.format_exc()))
         with open(OUT_OFF, "a") as fh:
             fh.write("{}")
-    except: pass
+    except:
+        pass
