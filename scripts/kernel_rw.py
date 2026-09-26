@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # @runtime Jython
-# kernel_rw.py v31 - safe imports, only result.txt
+# kernel_rw.py v32 - adds deep TLV handler targets, only result.txt
 
 import os
 import sys
@@ -14,7 +14,7 @@ WS = os.environ.get("GITHUB_WORKSPACE", "/tmp")
 OUT = os.path.join(WS, "result.txt")
 
 SEP = "=" * 72
-MAX_DECOMPILE_SEC = 45
+MAX_DECOMPILE_SEC = 60
 MAX_BLOCK_SIZE = 0x1000000
 GLOBAL_SCAN_BUDGET_SEC = 120
 
@@ -47,13 +47,23 @@ TARGETS = [
     ("necp_handler_big",          0xFFFFFFF00A3D91B4),
     ("necp_per_flow_copy",        0xFFFFFFF00A4F2E70),
     ("necp_copy_result_inner",    0xFFFFFFF00A4F26F0),
+    ("FUN_fffffffaa00a440ee24cd",      0xFFFFFFF3000A4EE24C),
+    ("FUN_fffffff00a501454",      0xFFFFFFF00A501454),
+    ("FUN_fffffff00",      0xFFFFFFF00AA40D30),
+    ("FUN_fffffff00a4edf3c",      0xFFFFFFF00A4EDF3C),
+    ("FUN_fffffff00a4edd74",      0xFFFFFFF00A4EDD74),
+    ("FUN_fffffff00a4f1aa4",      0xFFFFFFF00A4F1AA4),
+    ("FUN_fffffff00a4db9f0",      0xFFFFFFF00A4DB9F0),
+    ("FUN_fffffff00a700f94",      0xFFFFFFF00A700F94),
+    ("FUN_fffffff00a4ed864",      0xFFFFFFF00A4ED864),
 ]
 
 GLOBAL_CALLERS = [
-    ("necp_client_action",   0xFFFFFFF00A4E5C28),
-    ("necp_client_add_flow", 0xFFFFFFF00A4E843C),
-    ("necp_flow_alloc",      0xFFFFFFF00A346E70),
-    ("necp_get_tlv",         0xFFFFFFF00A4C2034),
+    ("necp_client_action",        0xFFFFFFF00A4E5C28),
+    ("necp_client_add_flow",      0xFFFFFFF00A4E843C),
+    ("FUN_fffffff00a4ee24c",      0xFFFFFFF00A4EE24C),
+    ("FUN_fffffff00a501454",      0xFFFFFFF00A501454),
+    ("FUN_fffffff00aa40d30",      0xFFFFFFF00AA40D30),
 ]
 
 DEC = None
@@ -212,7 +222,7 @@ def decompile(f, seconds=MAX_DECOMPILE_SEC):
         return ["(exception " + str(e) + ")"]
 
 
-def callees(f, maxn=80):
+def callees(f, maxn=100):
     try:
         cf = f.getCalledFunctions(ConsoleTaskMonitor())
     except Exception:
@@ -353,7 +363,7 @@ def main():
     def w(s):
         L.append(s)
 
-    log("=== kernel_rw.py v31 ===")
+    log("=== kernel_rw.py v32 ===")
     log("program: " + currentProgram.getName())
     log("disasm available: " + str(HAS_DISASM))
     log("create cmd available: " + str(HAS_CREATE))
@@ -407,7 +417,7 @@ def main():
 
             try:
                 w("CALLEES:")
-                for e, n, s2 in callees(f, 80):
+                for e, n, s2 in callees(f, 100):
                     mark = ""
                     for sa2, sn in SINKS:
                         if e == sa2:
@@ -438,7 +448,7 @@ def main():
                 susp = mem_ops(f)
                 if susp:
                     w("SUSPICIOUS MEM OPS:")
-                    for pc, kind, base, imm in susp[:80]:
+                    for pc, kind, base, imm in susp[:120]:
                         w("    %s  %-8s  [x%-2d, #0x%X]" % (pc, kind, base, imm))
                     w("")
             except Exception as ex:
