@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
 # @runtime Jython
-# kernel_rw.py v48 - no literal 0x at tuple start
+# kernel_rw.py v49 - IOKit taint scan
 
 import os
 import sys
+import json
 import time
 import traceback
 from jarray import zeros
@@ -25,14 +26,16 @@ except Exception:
 
 WS = os.environ.get("GITHUB_WORKSPACE", "/tmp")
 OUT = os.path.join(WS, "result.txt")
+SYMBOLS_JSON = os.environ.get("SYMBOLS_JSON", os.path.join(WS, "symbols.json"))
 SEP = "=" * 72
 
-TAINT_SEC = 900
-DUMP_SEC = 300
-MAX_ANALYZED = 20000
-MAX_WORKLIST = 50000
-MAX_DEPTH = 12
+TAINT_SEC = 1200
+DUMP_SEC = 400
+MAX_ANALYZED = 30000
+MAX_WORKLIST = 60000
+MAX_DEPTH = 14
 MAX_DECOMPILE_SEC = 45
+MAX_SOURCES = 60
 
 A_KALLOC   = int("FFFFFFF00A200988", 16)
 A_KALLOC_Z = int("FFFFFFF00A20141C", 16)
@@ -41,101 +44,59 @@ A_COPYOUT  = int("FFFFFFF00A369A3C", 16)
 A_MEMMOVE  = int("FFFFFFF00AA40D30", 16)
 A_MEMSET   = int("FFFFFFF00AA40EE0", 16)
 
-A_ACTION       = int("FFFFFFF00A4E5C28", 16)
-A_ADD_FLOW     = int("FFFFFFF00A4E843C", 16)
-A_ADD_CLIENT   = int("FFFFFFF00A4E60DC", 16)
-A_RM_FLOW      = int("FFFFFFF00A4E93C4", 16)
-A_RM_CLIENT    = int("FFFFFFF00A4E76F4", 16)
-A_COPY_RESULT  = int("FFFFFFF00A4E7BE8", 16)
-A_COPY_LIST    = int("FFFFFFF00A4E80FC", 16)
-A_COPY_IFACE   = int("FFFFFFF00A4EAC7C", 16)
-A_ARENA        = int("FFFFFFF00A4EB704", 16)
-A_UPD_CACHE    = int("FFFFFFF00A4EBD58", 16)
-A_COPY_UPDATE  = int("FFFFFFF00A4EC264", 16)
-A_REQ_NEXUS    = int("FFFFFFF00A4E9904", 16)
-A_AGENT_ACT    = int("FFFFFFF00A4EA0B4", 16)
-A_COPY_AGENT   = int("FFFFFFF00A4EA778", 16)
-A_COPY_ROUTE   = int("FFFFFFF00A4EBA0C", 16)
-A_COPY_PARAM   = int("FFFFFFF00A4EA8A0", 16)
-A_CLAIM        = int("FFFFFFF00A4E7158", 16)
-A_SIGN         = int("FFFFFFF00A4EC5D8", 16)
-A_GET_IFACE    = int("FFFFFFF00A4EB2B4", 16)
-A_COPY_AG_ALT  = int("FFFFFFF00A4EAB50", 16)
-A_VALIDATE     = int("FFFFFFF00A4EC9EC", 16)
-A_GET_SIGNED   = int("FFFFFFF00A4ECC4C", 16)
-A_SET_SIGNED   = int("FFFFFFF00A4ECE88", 16)
-A_FLOW_STATS   = int("FFFFFFF00A4ED170", 16)
-
-SINK_KALLOC    = (0, "kalloc_type", A_KALLOC, 1)
-SINK_KALLOC_Z  = (1, "kalloc_zone", A_KALLOC_Z, 1)
-SINK_COPYIN    = (2, "copyin", A_COPYIN, 3)
-SINK_COPYOUT   = (3, "copyout", A_COPYOUT, 3)
-SINK_MEMMOVE   = (4, "memmove", A_MEMMOVE, 3)
-SINK_MEMSET    = (5, "memset", A_MEMSET, 3)
-
 SINK_LIST = [
-    SINK_KALLOC,
-    SINK_KALLOC_Z,
-    SINK_COPYIN,
-    SINK_COPYOUT,
-    SINK_MEMMOVE,
-    SINK_MEMSET,
+    ("kalloc_type", A_KALLOC, 1),
+    ("kalloc_zone", A_KALLOC_Z, 1),
+    ("copyin", A_COPYIN, 3),
+    ("copyout", A_COPYOUT, 3),
+    ("memmove", A_MEMMOVE, 3),
+    ("memset", A_MEMSET, 3),
 ]
-
 SINK_MAP = {}
 for sk in SINK_LIST:
-    SINK_MAP[sk[2]] = (sk[1], sk[3])
+    SINK_MAP[sk[1]] = (sk[0], sk[2])
 
-SRC_ACTION     = (A_ACTION, "necp_client_action")
-SRC_ADD_FLOW   = (A_ADD_FLOW, "necp_client_add_flow")
-SRC_ADD_CLIENT = (A_ADD_CLIENT, "necp_client_add_client")
-SRC_RM_FLOW    = (A_RM_FLOW, "necp_client_remove_flow")
-SRC_RM_CLIENT  = (A_RM_CLIENT, "necp_client_remove_client")
-SRC_COPY_RES   = (A_COPY_RESULT, "necp_client_copy_result")
-SRC_COPY_LST   = (A_COPY_LIST, "necp_client_copy_list")
-SRC_COPY_IFACE = (A_COPY_IFACE, "necp_client_copy_interface")
-SRC_ARENA      = (A_ARENA, "necp_client_sysctl_arena")
-SRC_UPD_CACHE  = (A_UPD_CACHE, "necp_client_update_cache")
-SRC_COPY_UPD   = (A_COPY_UPDATE, "necp_client_copy_update")
-SRC_REQ_NEXUS  = (A_REQ_NEXUS, "necp_client_request_nexus")
-SRC_AGENT_ACT  = (A_AGENT_ACT, "necp_client_agent_action")
-SRC_COPY_AGENT = (A_COPY_AGENT, "necp_client_copy_agent")
-SRC_COPY_RT    = (A_COPY_ROUTE, "necp_client_copy_route_stats")
-SRC_COPY_PRM   = (A_COPY_PARAM, "necp_client_copy_parameters")
-SRC_CLAIM      = (A_CLAIM, "necp_client_claim")
-SRC_SIGN       = (A_SIGN, "necp_client_sign")
-SRC_GET_IFACE  = (A_GET_IFACE, "necp_client_get_iface_addr")
-SRC_COPY_AGALT = (A_COPY_AG_ALT, "necp_client_copy_agent_alt")
-SRC_VALIDATE   = (A_VALIDATE, "necp_client_validate")
-SRC_GET_SIGNED = (A_GET_SIGNED, "necp_client_get_signed_id")
-SRC_SET_SIGNED = (A_SET_SIGNED, "necp_client_set_signed_id")
-SRC_FLOW_STATS = (A_FLOW_STATS, "necp_client_get_flow_stats")
-
-SOURCES = [
-    SRC_ACTION,
-    SRC_ADD_FLOW,
-    SRC_ADD_CLIENT,
-    SRC_RM_FLOW,
-    SRC_RM_CLIENT,
-    SRC_COPY_RES,
-    SRC_COPY_LST,
-    SRC_COPY_IFACE,
-    SRC_ARENA,
-    SRC_UPD_CACHE,
-    SRC_COPY_UPD,
-    SRC_REQ_NEXUS,
-    SRC_AGENT_ACT,
-    SRC_COPY_AGENT,
-    SRC_COPY_RT,
-    SRC_COPY_PRM,
-    SRC_CLAIM,
-    SRC_SIGN,
-    SRC_GET_IFACE,
-    SRC_COPY_AGALT,
-    SRC_VALIDATE,
-    SRC_GET_SIGNED,
-    SRC_SET_SIGNED,
-    SRC_FLOW_STATS,
+IOKIT_NAMES = [
+    "io_connect_method",
+    "io_connect_method_scalarI_scalarO",
+    "io_connect_method_scalarI_structureO",
+    "io_connect_method_scalarI_structureI",
+    "io_connect_method_structureI_structureO",
+    "is_io_connect_method",
+    "io_connect_set_notification_port",
+    "is_io_connect_set_notification_port",
+    "io_connect_add_client",
+    "is_io_connect_add_client",
+    "io_connect_map_memory_into_task",
+    "io_connect_unmap_memory_from_task",
+    "io_connect_set_properties",
+    "io_connect_get_service",
+    "io_connect_get_notification_semaphore",
+    "iokit_user_client_trap",
+    "io_service_open_extended",
+    "is_io_service_open_extended",
+    "io_service_get_matching_services",
+    "io_service_get_matching_service",
+    "io_service_add_notification",
+    "io_service_get_matching_services_bin",
+    "io_service_get_matching_service_bin",
+    "io_service_match_property_table",
+    "io_service_add_interest_notification",
+    "io_registry_entry_create_iterator",
+    "io_registry_entry_get_child_iterator",
+    "io_registry_entry_get_parent_iterator",
+    "io_registry_entry_get_property",
+    "io_registry_entry_get_property_bytes",
+    "io_registry_entry_get_properties",
+    "io_registry_entry_from_path",
+    "io_registry_entry_get_name",
+    "io_iterator_next",
+    "io_iterator_reset",
+    "io_object_get_class_name",
+    "io_object_conforms_to",
+    "io_object_get_retain_count",
+    "io_object_get_superclass",
+    "is_io_object_get_superclass",
 ]
 
 DEC = None
@@ -265,6 +226,80 @@ def decompile_text(f, sec=60):
         return ["(exception %s)" % e]
 
 
+def load_symbols(path):
+    result = {}
+    if not os.path.exists(path):
+        log("[!] symbols.json missing: %s" % path)
+        return result
+    try:
+        fh = open(path)
+        data = json.load(fh)
+        fh.close()
+    except Exception as e:
+        log("[!] symbols parse fail: %s" % e)
+        return result
+
+    def add(name, addr):
+        if not isinstance(name, str) and not isinstance(name, unicode):
+            return
+        n = name.strip()
+        if not n:
+            return
+        try:
+            a = int(addr)
+        except Exception:
+            return
+        result[n] = a
+
+    if isinstance(data, dict):
+        for k, v in data.items():
+            try:
+                a = int(k)
+                if isinstance(v, str) or isinstance(v, unicode):
+                    add(v, a)
+                    continue
+            except Exception:
+                pass
+            try:
+                a = int(v)
+                if isinstance(k, str) or isinstance(k, unicode):
+                    add(k, a)
+                    continue
+            except Exception:
+                pass
+    log("[+] symbols loaded: %d" % len(result))
+    return result
+
+
+def find_iokit_sources(syms):
+    found = []
+    seen_addrs = set()
+    for name in IOKIT_NAMES:
+        addr = syms.get(name)
+        if addr is None:
+            continue
+        if addr in seen_addrs:
+            continue
+        seen_addrs.add(addr)
+        found.append((addr, name))
+    if found:
+        return found
+    # fallback: prefix match
+    for name, addr in syms.items():
+        low = name.lower()
+        if low.startswith("io_connect") or low.startswith("io_service") or \
+           low.startswith("io_registry") or low.startswith("io_iterator") or \
+           low.startswith("io_object") or low.startswith("iokit_") or \
+           low.startswith("is_io_"):
+            if addr in seen_addrs:
+                continue
+            seen_addrs.add(addr)
+            found.append((addr, name))
+            if len(found) >= MAX_SOURCES:
+                break
+    return found
+
+
 def vn_key(vn):
     if vn is None:
         return None
@@ -354,7 +389,7 @@ def propagate(hf, tainted_idx):
         return tainted
     changed = True
     iters = 0
-    while changed and iters < 300:
+    while changed and iters < 400:
         changed = False
         iters += 1
         for op in all_ops:
@@ -579,7 +614,7 @@ def pick_dump_targets(findings):
         if d != 0:
             continue
         sk = fd.get("sink")
-        if sk != "kalloc_type" and sk != "copyin":
+        if sk != "kalloc_type" and sk != "copyin" and sk != "copyout":
             continue
         a = fd.get("in_func_addr")
         if a in seen:
@@ -591,63 +626,70 @@ def pick_dump_targets(findings):
         if fd.get("sink") == "kalloc_type":
             kalloc.append(fd)
     kalloc.sort(key=lambda x: x.get("depth", 99))
-    for fd in kalloc[:5]:
+    for fd in kalloc[:8]:
         a = fd.get("in_func_addr")
         if a in seen:
             continue
         seen.add(a)
         note = "kalloc_type d=%d" % fd.get("depth", 0)
         picks.append((a, fd.get("in_func"), note))
-    cin = []
-    for fd in findings:
-        if fd.get("sink") != "copyin":
-            continue
-        if fd.get("depth", 99) > 2:
-            continue
-        cin.append(fd)
-    for fd in cin[:6]:
-        a = fd.get("in_func_addr")
-        if a in seen:
-            continue
-        seen.add(a)
-        note = "copyin d=%d" % fd.get("depth", 0)
-        picks.append((a, fd.get("in_func"), note))
-    return picks[:16]
+    return picks[:20]
 
 
 def main():
     global START_TS
     START_TS = time.time()
 
-    log("=== kernel_rw.py v48 ===")
+    log("=== kernel_rw.py v49 IOKit ===")
 
-    w("natsuk1 taint scan v48")
-    w("sources=%d sinks=%d depth=%d budget=%ds" % (
-        len(SOURCES), len(SINK_LIST), MAX_DEPTH, TAINT_SEC))
+    syms = load_symbols(SYMBOLS_JSON)
+    sources = find_iokit_sources(syms)
+    log("[+] IOKit sources found: %d" % len(sources))
+
+    w("natsuk1 IOKit taint scan v49")
+    w("symbols_loaded=%d iokit_sources=%d" % (len(syms), len(sources)))
+    w("sinks=%d depth=%d budget=%ds" % (len(SINK_LIST), MAX_DEPTH, TAINT_SEC))
+    w("")
+
+    if not sources:
+        w("NO IOKIT SOURCES FOUND")
+        w("need symbols.json with io_* names")
+        try:
+            fh = open(OUT, "w")
+            for l in L:
+                fh.write(l + "\n")
+            fh.close()
+        except Exception:
+            pass
+        return
+
+    w("SOURCES:")
+    for pair in sources:
+        w("  %s  %s" % (fmt(pair[0]), pair[1]))
     w("")
 
     all_findings = []
 
-    for idx in range(len(SOURCES)):
-        addr = SOURCES[idx][0]
-        name = SOURCES[idx][1]
-        log("[%d/%d] %s" % (idx + 1, len(SOURCES), name))
+    for idx in range(len(sources)):
+        addr = sources[idx][0]
+        name = sources[idx][1]
+        log("[%d/%d] %s" % (idx + 1, len(sources), name))
         try:
             f = get_func(addr)
             if f is None:
                 f = ensure_function(addr)
             if f is None:
-                w("SRC %-32s no function" % name)
+                w("SRC %-40s no function" % name[:40])
                 continue
             findings = analyze_source(addr, name)
         except Exception as ex:
             findings = []
-            w("SRC %-32s exception %s" % (name, ex))
+            w("SRC %-40s exception %s" % (name[:40], ex))
             continue
         if not findings:
-            w("SRC %-32s (no tainted sinks)" % name)
+            w("SRC %-40s (no tainted sinks)" % name[:40])
         else:
-            w("SRC %-32s findings=%d" % (name, len(findings)))
+            w("SRC %-40s findings=%d" % (name[:40], len(findings)))
             for fd in findings:
                 w("  %-12s @ %s  %s  d=%d" % (
                     fd.get("sink"), fd.get("pc"),
@@ -682,7 +724,7 @@ def main():
             cur.append(fd.get("depth"))
         w("  %s:" % sk)
         items = sorted(uniq.items(), key=lambda x: min(x[1]))
-        for pair in items[:20]:
+        for pair in items[:30]:
             w("    %s  d=%s" % (pair[0], sorted(set(pair[1]))))
 
     START_TS = time.time()
