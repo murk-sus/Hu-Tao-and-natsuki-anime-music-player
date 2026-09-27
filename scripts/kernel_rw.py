@@ -1,15 +1,15 @@
 # -*- coding: utf-8 -*-
 # @runtime Jython
-# kernel_rw.py v64 - IOKit dispatch scanner (strict filter)
+# kernel_rw.py v65 - NECP client lifetime UAF hunt
 
 import os
 import sys
+import json
 import time
 import traceback
 from jarray import zeros
 from ghidra.app.decompiler import DecompInterface
 from ghidra.util.task import ConsoleTaskMonitor
-from ghidra.program.model.pcode import PcodeOp
 
 try:
     from ghidra.app.cmd.disassemble import DisassembleCommand as _DC
@@ -25,39 +25,78 @@ except Exception:
 
 WS = os.environ.get("GITHUB_WORKSPACE", "/tmp")
 OUT = os.path.join(WS, "result.txt")
+SYMBOLS_JSON = os.environ.get("SYMBOLS_JSON", os.path.join(WS, "symbols.json"))
 SEP = "=" * 72
 
-KERNEL_BASE = int("FFFFFFF007004000", 16)
-KTEXT_LO = int("FFFFFFF007000000", 16)
-KTEXT_HI = int("FFFFFFF010000000", 16)
+# NECP cluster range
+NECP_LO = int("FFFFFFF00A4D0000", 16)
+NECP_HI = int("FFFFFFF00A520000", 16)
 
-DISPATCH_SIZE = 24
-MAX_BLOCK_SIZE = 0x10000000
-MAX_SOURCES = 400
-TAINT_SEC = 1200
-MAX_ANALYZED = 4000
-MAX_WORKLIST = 8000
-MAX_DEPTH = 6
-MAX_DECOMPILE_SEC = 30
-
-A_KALLOC   = int("FFFFFFF00A200988", 16)
-A_KALLOC_Z = int("FFFFFFF00A20141C", 16)
-A_COPYIN   = int("FFFFFFF00A368EC0", 16)
-A_COPYOUT  = int("FFFFFFF00A369A3C", 16)
-A_MEMMOVE  = int("FFFFFFF00AA40D30", 16)
-A_MEMSET   = int("FFFFFFF00AA40EE0", 16)
-
-SINK_LIST = [
-    ("kalloc_type", A_KALLOC, 1),
-    ("kalloc_zone", A_KALLOC_Z, 1),
-    ("copyin", A_COPYIN, 3),
-    ("copyout", A_COPYOUT, 3),
-    ("memmove", A_MEMMOVE, 3),
-    ("memset", A_MEMSET, 3),
+# Explicit targets for full dump (client lifetime)
+DUMP_TARGETS = [
+    (int("FFFFFFF00A4E60DC", 16), "add_client"),
+    (int("FFFFFFF00A4E76F4", 16), "remove_client"),
+    (int("FFFFFFF00A4ED864", 16), "session_lookup"),
+    (int("FFFFFFF00A4ED8BC", 16), "copy_state"),
+    (int("FFFFFFF00A4DB9F0", 16), "session_alloc"),
+    (int("FFFFFFF00A4E575C", 16), "remove_flow_1"),
+    (int("FFFFFFF00A4DAAC8", 16), "remove_list_1"),
+    (int("FFFFFFF00A4DB38C", 16), "remove_list_2"),
+    (int("FFFFFFF00A4DB8D4", 16), "lookup_or_alloc"),
+    (int("FFFFFFF00A4E3278", 16), "ref_release_or_free"),
+    (int("FFFFFFF00A4F7044", 16), "add_client_tail_1"),
+    (int("FFFFFFF00A4F709C", 16), "add_client_tail_2"),
+    (int("FFFFFFF00A4D9940", 16), "add_client_tail_3"),
+    (int("FFFFFFF00A4DA2B8", 16), "add_client_tail_4"),
+    (int("FFFFFFF00A4F516C", 16), "update_arena_state"),
+    (int("FFFFFFF00A4E93C4", 16), "remove_flow"),
+    (int("FFFFFFF00A4E843C", 16), "add_flow"),
+    (int("FFFFFFF00A4E5C28", 16), "client_action"),
+    (int("FFFFFFF00A4E411C", 16), "necp_open"),
 ]
-SINK_MAP = {}
-for sk in SINK_LIST:
-    SINK_MAP[sk[1]] = (sk[0], sk[2])
+
+# Functions we want to look up by name (symbol resolution)
+LOOKUP_NAMES = [
+    "lck_mtx_lock",
+    "lck_mtx_unlock",
+    "lck_mtx_lock_spin",
+    "lck_mtx_unlock_spin",
+    "lck_rw_lock_shared",
+    "lck_rw_unlock_shared",
+    "lck_rw_lock_exclusive",
+    "lck_rw_unlock_exclusive",
+    "lck_rw_lock",
+    "lck_rw_unlock",
+    "lck_rw_done",
+    "os_ref_retain",
+    "os_ref_release",
+    "os_ref_release_locked",
+    "os_ref_release_barrier",
+    "os_ref_retain_try",
+    "os_atomic_inc_orig",
+    "os_atomic_dec_orig",
+    "os_atomic_add_orig",
+    "os_atomic_sub_orig",
+    "iolock_alloc",
+    "iolock_lock",
+    "iolock_unlock",
+    "iolock_free",
+    "mtx_lock",
+    "mtx_unlock",
+    "kfree_type",
+    "kfree_data",
+    "kfree_ext",
+    "zone_free",
+    "zfree",
+    "thread_call_enter",
+    "thread_call_enter_delayed",
+    "wakeup",
+    "wakeup_one",
+    "_wakeup",
+    "_wakeup_one",
+    "panic",
+    "SoftwareBreakpoint",
+]
 
 DEC = None
 MONITOR = ConsoleTaskMonitor()
@@ -93,76 +132,41 @@ def sa(a):
         return None
 
 
-def clean_ptr(raw):
-    if raw is None or raw == 0:
-        return None
-    if raw >= KTEXT_LO and raw < KTEXT_HI:
-        return raw
-    low40 = raw & 0xFFFFFFFFFF
-    cand = low40 | 0xFFFFFFF000000000
-    if cand >= KTEXT_LO and cand < KTEXT_HI:
-        return cand
-    low32 = raw & 0xFFFFFFFF
-    cand2 = KERNEL_BASE + low32
-    if cand2 >= KTEXT_LO and cand2 < KTEXT_HI:
-        return cand2
-    return None
-
-
-def is_func_entry(addr):
+def is_str(x):
     try:
-        ga = sa(addr)
-        if ga is None:
-            return False
-        f = getFunctionAt(ga)
-        return f is not None
+        if isinstance(x, unicode):
+            return True
     except Exception:
-        return False
+        pass
+    try:
+        if isinstance(x, str):
+            return True
+    except Exception:
+        pass
+    return False
 
 
-def read_u32_at(buf, off):
-    return (int(buf[off]) & 0xFF) | ((int(buf[off + 1]) & 0xFF) << 8) | \
-           ((int(buf[off + 2]) & 0xFF) << 16) | ((int(buf[off + 3]) & 0xFF) << 24)
-
-
-def read_u64_at(buf, off):
-    r = 0
-    for i in range(8):
-        r = r | ((int(buf[off + i]) & 0xFF) << (i * 8))
-    return r
-
-
-def valid_counts(si, sti, so, sto):
-    counts = [si, sti, so, sto]
-    # All under 1 MB
-    for c in counts:
-        if c >= 0x100000:
-            return False
-    # At least 3 under 0x10000 (typical IOKit method sizes)
-    small = 0
-    for c in counts:
-        if c < 0x10000:
-            small = small + 1
-    if small < 3:
-        return False
-    return True
-
-
-def parse_entry(buf, pos):
-    """Return (fn, si, sti, so, sto) or None."""
-    fn_raw = read_u64_at(buf, pos)
-    fn = clean_ptr(fn_raw)
-    if fn is None:
-        return None
-    if not is_func_entry(fn):
-        return None
-    si = read_u32_at(buf, pos + 8)
-    sti = read_u32_at(buf, pos + 12)
-    so = read_u32_at(buf, pos + 16)
-    sto = read_u32_at(buf, pos + 20)
-    if not valid_counts(si, sti, so, sto):
-        return None
-    return (fn, si, sti, so, sto)
+def load_symbols(path):
+    out = {}
+    if not os.path.exists(path):
+        return out
+    try:
+        fh = open(path)
+        data = json.load(fh)
+        fh.close()
+    except Exception:
+        return out
+    if isinstance(data, dict):
+        for k, v in data.items():
+            try:
+                a = int(k)
+            except Exception:
+                continue
+            if is_str(v):
+                nm = v.strip()
+                if nm:
+                    out[nm] = a
+    return out
 
 
 def get_func(addr):
@@ -230,441 +234,250 @@ def get_dec():
     return DEC
 
 
-def decompile_hf(f, sec=MAX_DECOMPILE_SEC):
+def decompile_text(f, sec=90):
     try:
         r = get_dec().decompileFunction(f, sec, MONITOR)
         if r is None:
-            return None
+            return ["(decompile failed)"]
         if not r.decompileCompleted():
-            return None
-        return r.getHighFunction()
-    except Exception:
-        return None
+            return ["(decompile failed)"]
+        c = r.getDecompiledFunction()
+        if c is None:
+            return ["(empty)"]
+        raw = c.getC()
+        return [line.rstrip() for line in raw.split("\n")]
+    except Exception as e:
+        return ["(exception %s)" % e]
 
 
-def vn_key(vn):
-    if vn is None:
-        return None
+def sign26(x):
+    if x & 0x02000000:
+        return x - 0x04000000
+    return x
+
+
+_blocks = None
+
+
+def blocks():
+    global _blocks
+    if _blocks is not None:
+        return _blocks
+    out = []
     try:
-        a = vn.getAddress()
-        if a is None:
-            return None
-        return a.toString() + ":" + str(vn.getSize())
-    except Exception:
-        return None
-
-
-def get_param_keys(hf):
-    result = {}
-    try:
-        lsm = hf.getLocalSymbolMap()
-        if lsm is None:
-            return result
-        syms = lsm.getSymbols()
-        if syms is None:
-            return result
-        cnt = 0
-        while syms.hasNext():
-            cnt = cnt + 1
-            if cnt > 500:
-                break
-            sym = syms.next()
-            ok = False
-            try:
-                ok = sym.isParameter()
-            except Exception:
-                ok = False
-            if not ok:
+        for b in currentProgram.getMemory().getBlocks():
+            if not b.isInitialized():
                 continue
-            cat = 0
-            try:
-                cat = sym.getCategoryIndex()
-            except Exception:
-                cat = 0
-            hv = None
-            try:
-                hv = sym.getHighVariable()
-            except Exception:
-                hv = None
-            if hv is None:
+            if not b.isExecute():
                 continue
-            insts = None
-            try:
-                insts = hv.getInstances()
-            except Exception:
-                insts = None
-            if insts is None:
-                continue
-            try:
-                for vn in insts:
-                    k = vn_key(vn)
-                    if k is None:
-                        continue
-                    cur = result.get(cat)
-                    if cur is None:
-                        cur = set()
-                        result[cat] = cur
-                    cur.add(k)
-            except Exception:
-                pass
+            s = _u(b.getStart().getOffset())
+            e = _u(b.getEnd().getOffset())
+            out.append((s, e))
     except Exception:
         pass
-    return result
+    _blocks = out
+    return out
 
 
-def propagate(hf, tainted_idx):
-    pm = get_param_keys(hf)
-    tainted = set()
-    for i in tainted_idx:
-        cur = pm.get(i)
-        if cur is None:
-            continue
-        for k in cur:
-            tainted.add(k)
-    if not tainted:
-        return tainted
-    try:
-        all_ops = list(hf.getPcodeOps())
-    except Exception:
-        return tainted
-    changed = True
-    iters = 0
-    while changed and iters < 100:
-        changed = False
-        iters = iters + 1
-        for op in all_ops:
-            try:
-                out = op.getOutput()
-                if out is None:
-                    continue
-                ok = vn_key(out)
-                if ok is None:
-                    continue
-                if ok in tainted:
-                    continue
-                hit = False
-                for i in range(op.getNumInputs()):
-                    ik = vn_key(op.getInput(i))
-                    if ik is None:
-                        continue
-                    if ik in tainted:
-                        hit = True
-                        break
-                if hit:
-                    tainted.add(ok)
-                    changed = True
-            except Exception:
-                pass
-    return tainted
-
-
-def call_target(op):
-    try:
-        inp0 = op.getInput(0)
-        if inp0.isAddress():
-            return _u(inp0.getAddress().getOffset())
-        if inp0.isConstant():
-            return _u(inp0.getOffset())
-    except Exception:
-        pass
-    return None
-
-
-def analyze_source(start_addr, start_name):
-    worklist = [(start_addr, frozenset([0, 1, 2]), 0)]
-    findings = []
-    local = set()
-    while worklist:
-        if len(local) >= MAX_ANALYZED:
+def bl_callers(target, max_hits=30, budget=45):
+    hits = []
+    mem = currentProgram.getMemory()
+    ts = time.time()
+    for pair in blocks():
+        if time.time() - ts > budget:
             break
-        if time.time() - START_TS > TAINT_SEC:
-            break
-        entry = worklist.pop(0)
-        addr = entry[0]
-        tidx = entry[1]
-        depth = entry[2]
-        key = (addr, tidx)
-        if key in local:
+        s = pair[0]
+        e = pair[1]
+        size = e - s + 1
+        if size <= 0:
             continue
-        local.add(key)
-        f = get_func(addr)
-        if f is None:
-            f = ensure_function(addr)
-        if f is None:
+        if size > 0x1000000:
             continue
-        hf = decompile_hf(f)
-        if hf is None:
-            continue
-        tainted = propagate(hf, tidx)
-        if not tainted:
-            continue
-        fname = "?"
         try:
-            fname = str(f.getName())
-        except Exception:
-            fname = "?"
-        try:
-            all_ops = list(hf.getPcodeOps())
+            jbuf = zeros(size, 'b')
+            ga = sa(s)
+            if ga is None:
+                continue
+            mem.getBytes(ga, jbuf)
         except Exception:
             continue
-        for op in all_ops:
-            is_call = False
-            try:
-                is_call = op.getOpcode() == PcodeOp.CALL
-            except Exception:
-                is_call = False
-            if not is_call:
+        pc = s
+        i = 0
+        while i + 4 <= size:
+            b0 = int(jbuf[i]) & 0xFF
+            b1 = int(jbuf[i + 1]) & 0xFF
+            b2 = int(jbuf[i + 2]) & 0xFF
+            b3 = int(jbuf[i + 3]) & 0xFF
+            raw = b0 | (b1 << 8) | (b2 << 16) | (b3 << 24)
+            op = raw & 0xFC000000
+            if op == 0x94000000 or op == 0x14000000:
+                imm = sign26(raw & 0x03FFFFFF) << 2
+                dst = (pc + imm) & 0xFFFFFFFFFFFFFFFF
+                if dst == target:
+                    kind = "BL"
+                    if op == 0x14000000:
+                        kind = "B"
+                    hits.append((pc, kind))
+                    if len(hits) >= max_hits:
+                        del jbuf
+                        return hits
+            i += 4
+            pc += 4
+        del jbuf
+    return hits
+
+
+def collect_calls(func):
+    """Return dict: callee_addr -> count, plus list of kfree call sites."""
+    calls = {}
+    kfree_sites = []
+    mem_after = []
+    try:
+        listing = currentProgram.getListing()
+        body = func.getBody()
+        it = body.getAddresses(True)
+    except Exception:
+        return calls, kfree_sites
+    kfree_addr = None
+    global KFREE_ADDR
+    try:
+        kfree_addr = KFREE_ADDR
+    except Exception:
+        kfree_addr = int("FFFFFFF00A201000", 16)
+    cnt = 0
+    while it.hasNext() and cnt < 40000:
+        a = it.next()
+        cnt += 1
+        try:
+            insn = listing.getInstructionAt(a)
+            if insn is None:
                 continue
-            target = call_target(op)
-            if target is None:
+            pcode = insn.getPcode()
+            if pcode is None:
                 continue
-            v = SINK_MAP.get(target)
-            if v is not None:
-                sname = v[0]
-                sidx = v[1]
-                try:
-                    if sidx < op.getNumInputs():
-                        sk = vn_key(op.getInput(sidx))
-                        if sk is not None:
-                            if sk in tainted:
-                                pc = 0
-                                try:
-                                    pc = _u(op.getSeqnum().getTarget().getOffset())
-                                except Exception:
-                                    pc = 0
-                                findings.append({
-                                    "sink": sname,
-                                    "pc": fmt(pc),
-                                    "in_func": fname,
-                                    "in_func_addr": fmt(addr),
-                                    "depth": depth,
-                                    "via": start_name,
-                                })
-                except Exception:
-                    pass
-                continue
-            nt = set()
-            try:
-                num = op.getNumInputs() - 1
-                for i in range(num):
-                    ak = vn_key(op.getInput(1 + i))
-                    if ak is None:
-                        continue
-                    if ak in tainted:
-                        nt.add(i)
-            except Exception:
-                pass
-            if not nt:
-                continue
-            if depth >= MAX_DEPTH:
-                continue
-            if get_func(target) is None:
-                continue
-            worklist.append((target, frozenset(nt), depth + 1))
-            if len(worklist) > MAX_WORKLIST:
-                break
-    return findings
+            for p in pcode:
+                if p.getOpcode() != 1:
+                    continue
+                inp0 = p.getInput(0)
+                tgt = None
+                if inp0.isAddress():
+                    tgt = _u(inp0.getAddress().getOffset())
+                elif inp0.isConstant():
+                    tgt = _u(inp0.getOffset())
+                if tgt is None:
+                    continue
+                if tgt in calls:
+                    calls[tgt] = calls[tgt] + 1
+                else:
+                    calls[tgt] = 1
+                if tgt == kfree_addr:
+                    kfree_sites.append(_u(a.getOffset()))
+        except Exception:
+            pass
+    return calls, kfree_sites
 
 
 def main():
     global START_TS
     START_TS = time.time()
 
-    log("=== kernel_rw.py v64 ===")
+    log("=== kernel_rw.py v65 ===")
 
-    w("natsuk1 v64 IOKit dispatch scanner (strict)")
-    w("kernel_base=%s ktext=[%s, %s)" % (fmt(KERNEL_BASE), fmt(KTEXT_LO), fmt(KTEXT_HI)))
-    w("dispatch_size=%d max_block=%d" % (DISPATCH_SIZE, MAX_BLOCK_SIZE))
+    syms = load_symbols(SYMBOLS_JSON)
+    log("[+] symbols: %d" % len(syms))
+
+    w("natsuk1 v65 NECP client lifetime UAF hunt")
+    w("symbols_loaded=%d" % len(syms))
+    w("necp_range=[%s, %s)" % (fmt(NECP_LO), fmt(NECP_HI)))
     w("")
 
-    # Single-block assumption
-    all_blocks = []
-    try:
-        for b in currentProgram.getMemory().getBlocks():
-            try:
-                s = _u(b.getStart().getOffset())
-                e = _u(b.getEnd().getOffset())
-                nm = str(b.getName())
-                in_ = bool(b.isInitialized())
-                sz = e - s + 1
-                all_blocks.append((s, e, nm, in_, sz))
-            except Exception:
-                pass
-    except Exception as ex:
-        log("[!] enum fail: %s" % ex)
-
+    # Resolve interesting symbols
+    resolved = {}
     w(SEP)
-    w("### ALL BLOCKS")
+    w("### LOCK / REFCOUNT / FREE PRIMITIVES")
     w(SEP)
-    for b in all_blocks:
-        w("  %s %s size=%d init=%s name=%s" % (fmt(b[0]), fmt(b[1]), b[4], str(b[3]), b[2]))
+    for nm in LOOKUP_NAMES:
+        a = syms.get(nm)
+        if a is None:
+            # try with underscore prefix
+            a = syms.get("_" + nm)
+        if a is None:
+            continue
+        resolved[nm] = a
+        w("  %-40s %s" % (nm, fmt(a)))
     w("")
 
-    scan_targets = []
-    for b in all_blocks:
-        if not b[3]:
+    # Any addresses we couldn't resolve - list them for the reader
+    missing = []
+    for nm in LOOKUP_NAMES:
+        if nm not in resolved:
+            missing.append(nm)
+    if missing:
+        w("  UNRESOLVED: %s" % ", ".join(missing))
+        w("")
+
+    # Dump each target
+    for entry in DUMP_TARGETS:
+        addr = entry[0]
+        name = entry[1]
+        log("[*] %s @ %s" % (name, fmt(addr)))
+        if time.time() - START_TS > 900:
+            w("BUDGET EXCEEDED at %s" % name)
+            break
+        f = get_func(addr)
+        if f is None:
+            f = ensure_function(addr)
+        if f is None:
+            w("--- %s @ %s NO FUNCTION" % (name, fmt(addr)))
             continue
-        if b[4] <= 0 or b[4] > MAX_BLOCK_SIZE:
-            continue
-        scan_targets.append(b)
 
-    log("[+] scan targets: %d" % len(scan_targets))
-
-    all_entries = []
-
-    for t in scan_targets:
-        start = t[0]
-        end = t[1]
-        size = t[4]
-        log("[*] scan @ %s size=%d" % (fmt(start), size))
-
+        w("")
+        w(SEP)
+        w("### %s @ %s" % (name, fmt(addr)))
+        w(SEP)
         try:
-            jbuf = zeros(size, 'b')
-            ga = sa(start)
-            if ga is None:
-                continue
-            currentProgram.getMemory().getBytes(ga, jbuf)
-        except Exception as ex:
-            log("  [skip] %s" % ex)
-            continue
-
-        # Pass 1: identify all positions where parse_entry succeeds
-        valid_positions = []
-        pos = 0
-        log("  pass1: scanning for valid entries...")
-        while pos + DISPATCH_SIZE <= size:
-            e = parse_entry(jbuf, pos)
-            if e is not None:
-                valid_positions.append((pos, e))
-            pos = pos + 8
-        log("  pass1: %d valid entry positions" % len(valid_positions))
-
-        # Pass 2: keep only entries that have an adjacent valid entry
-        # (real tables have multiple entries in a row at +24 offsets)
-        vp_set = set()
-        for pair in valid_positions:
-            vp_set.add(pair[0])
-
-        kept = []
-        for pair in valid_positions:
-            p = pair[0]
-            left = p - DISPATCH_SIZE
-            right = p + DISPATCH_SIZE
-            if (left in vp_set) or (right in vp_set):
-                kept.append(pair)
-        log("  pass2: %d entries with adjacent valid entry" % len(kept))
-
-        for pair in kept:
-            p = pair[0]
-            e = pair[1]
-            struct_addr = start + p
-            all_entries.append((struct_addr, e[0], e[1], e[2], e[3], e[4], t[2]))
-
-        try:
-            del jbuf
+            ent = _u(f.getEntryPoint().getOffset())
+            sz = int(f.getBody().getNumAddresses())
+            w("  func=%s entry=%s size=0x%X" % (str(f.getName()), fmt(ent), sz))
         except Exception:
             pass
 
-    by_fn = {}
-    for e in all_entries:
-        fn = e[1]
-        if fn not in by_fn:
-            by_fn[fn] = []
-        by_fn[fn].append(e)
+        # Calls summary
+        calls, kfree_sites = collect_calls(f)
+        if kfree_sites:
+            w("  kfree sites: %s" % ", ".join([fmt(a) for a in kfree_sites]))
 
-    w(SEP)
-    w("### DISPATCH ENTRIES (unique fnptr: %d, total: %d)" % (len(by_fn), len(all_entries)))
-    w(SEP)
-    w("%-20s %-10s %-10s %-10s %-10s %s" % (
-        "fnptr", "scalarIn", "structIn", "scalarOut", "structOut", "section"))
-    for fn, lst in by_fn.items():
-        first = lst[0]
-        w("%-20s %-10d %-10d %-10d %-10d %s x%d" % (
-            fmt(fn), first[2], first[3], first[4], first[5], first[6], len(lst)))
-    w("")
+        # Match calls to known locks/refcount
+        hits = {}
+        for nm, a in resolved.items():
+            if a in calls:
+                hits[nm] = calls[a]
+        if hits:
+            w("  lock/ref/free calls:")
+            for nm in sorted(hits.keys()):
+                w("    %-40s x%d" % (nm, hits[nm]))
 
-    def priority(item):
-        e = item[1][0]
-        sti = e[3]
-        if sti == 0:
-            return 0
-        return 1
+        # BL callers
+        w("  BL callers:")
+        hits = bl_callers(addr, 25, 40)
+        if not hits:
+            w("    (none)")
+        for pair in hits:
+            pc = pair[0]
+            kind = pair[1]
+            cf = getFunctionContaining(sa(pc))
+            nm = "?"
+            if cf is not None:
+                nm = str(cf.getName())
+            cfe = 0
+            if cf is not None:
+                cfe = _u(cf.getEntryPoint().getOffset())
+            w("    %s %s in %s @ %s" % (fmt(pc), kind, nm, fmt(cfe)))
 
-    sorted_items = sorted(by_fn.items(), key=priority)
-
-    all_findings = []
-    analyzed_fn = 0
-
-    for fn, lst in sorted_items:
-        if analyzed_fn >= MAX_SOURCES:
-            break
-        if time.time() - START_TS > TAINT_SEC:
-            log("[!] taint budget exhausted")
-            break
-
-        f = get_func(fn)
-        if f is None:
-            f = ensure_function(fn)
-        if f is None:
-            continue
-
-        analyzed_fn = analyzed_fn + 1
-        name = "iokit_%X" % fn
-
-        if analyzed_fn % 25 == 0:
-            log("[*] analyzed %d / %d, findings: %d" % (analyzed_fn, len(by_fn), len(all_findings)))
-
-        try:
-            findings = analyze_source(fn, name)
-        except Exception:
-            continue
-        if findings:
-            for fd in findings:
-                all_findings.append(fd)
-            w("FUNC %-40s @ %s entries=%d findings=%d" % (
-                str(f.getName())[:40], fmt(fn), len(lst), len(findings)))
-            for fd in findings:
-                w("  %-12s @ %s  %s  d=%d" % (
-                    fd.get("sink"), fd.get("pc"),
-                    fd.get("in_func"), fd.get("depth")))
-
-    w("")
-    w(SEP)
-    w("SUMMARY")
-    w(SEP)
-    w("scan targets: %d" % len(scan_targets))
-    w("total entries: %d" % len(all_entries))
-    w("unique fnptr: %d" % len(by_fn))
-    w("analyzed: %d" % analyzed_fn)
-    w("total findings: %d" % len(all_findings))
-    w("")
-
-    by_sink = {}
-    for fd in all_findings:
-        sk = fd.get("sink")
-        cur = by_sink.get(sk)
-        if cur is None:
-            cur = []
-            by_sink[sk] = cur
-        cur.append(fd)
-    for sk in sorted(by_sink.keys()):
-        w("  %s: %d" % (sk, len(by_sink.get(sk, []))))
-    w("")
-
-    w("unique in_func per sink:")
-    for sk in sorted(by_sink.keys()):
-        uniq = {}
-        for fd in by_sink.get(sk, []):
-            k = fd.get("in_func_addr") + " " + fd.get("in_func")
-            cur = uniq.get(k)
-            if cur is None:
-                cur = []
-                uniq[k] = cur
-            cur.append(fd.get("depth"))
-        w("  %s:" % sk)
-        items = sorted(uniq.items(), key=lambda x: min(x[1]))
-        for pair in items[:40]:
-            w("    %s  d=%s" % (pair[0], sorted(set(pair[1]))))
+        # Full decompile
+        w("  decompile:")
+        for l in decompile_text(f, 90):
+            w("    " + l)
 
     try:
         fh = open(OUT, "w")
