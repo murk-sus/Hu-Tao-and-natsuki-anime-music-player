@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # @runtime Jython
-# kernel_rw.py v61 - IOKit externalMethod dispatch scanner + taint
+# kernel_rw.py v62 - IOKit dispatch scan (loader-agnostic)
 
 import os
 import sys
@@ -31,14 +31,13 @@ KERNEL_BASE = int("FFFFFFF007004000", 16)
 KTEXT_LO = int("FFFFFFF007000000", 16)
 KTEXT_HI = int("FFFFFFF010000000", 16)
 
-# dispatch struct: 8 (fnptr) + 4 (scalar_in) + 4 (struct_in) + 4 (scalar_out) + 4 (struct_out)
 DISPATCH_SIZE = 24
-
-MAX_SOURCES = 600
+MAX_BLOCK_SIZE = 0x8000000
+MAX_SOURCES = 400
 TAINT_SEC = 1500
-MAX_ANALYZED = 12000
-MAX_WORKLIST = 24000
-MAX_DEPTH = 10
+MAX_ANALYZED = 8000
+MAX_WORKLIST = 16000
+MAX_DEPTH = 8
 MAX_DECOMPILE_SEC = 40
 
 A_KALLOC   = int("FFFFFFF00A200988", 16)
@@ -111,98 +110,89 @@ def clean_ptr(raw):
 
 
 def read_u32_at(buf, off):
-    return (buf[off] & 0xFF) | ((buf[off + 1] & 0xFF) << 8) | \
-           ((buf[off + 2] & 0xFF) << 16) | ((buf[off + 3] & 0xFF) << 24)
+    return (int(buf[off]) & 0xFF) | ((int(buf[off + 1]) & 0xFF) << 8) | \
+           ((int(buf[off + 2]) & 0xFF) << 16) | ((int(buf[off + 3]) & 0xFF) << 24)
 
 
 def read_u64_at(buf, off):
     r = 0
     for i in range(8):
-        r = r | ((buf[off + i] & 0xFF) << (i * 8))
+        r = r | ((int(buf[off + i]) & 0xFF) << (i * 8))
     return r
 
 
-def scan_sections():
-    """Collect non-executable initialized blocks with 'const' in name."""
+def enumerate_blocks():
     out = []
     try:
         for b in currentProgram.getMemory().getBlocks():
-            if not b.isInitialized():
-                continue
-            if b.isExecute():
-                continue
             try:
-                name = str(b.getName()).lower()
+                s = _u(b.getStart().getOffset())
+                e = _u(b.getEnd().getOffset())
+                nm = str(b.getName())
+                ex = bool(b.isExecute())
+                in_ = bool(b.isInitialized())
+                sz = e - s + 1
+                out.append((s, e, nm, ex, in_, sz))
             except Exception:
-                name = ""
-            if "bss" in name or "common" in name or "linkedit" in name:
-                continue
-            if "const" not in name and "data" not in name and "prelink" not in name:
-                continue
-            s = _u(b.getStart().getOffset())
-            e = _u(b.getEnd().getOffset())
-            size = e - s + 1
-            if size <= 0 or size > 0x1000000:
-                continue
-            out.append((s, e, str(b.getName()), size))
+                pass
     except Exception as ex:
-        log("[!] section scan fail: %s" % ex)
+        log("[!] enum fail: %s" % ex)
     return out
 
 
-def scan_for_dispatch(blocks_list):
-    """Return list of dispatch entries: (struct_addr, fnptr, scalar_in, struct_in, scalar_out, struct_out, section)."""
-    seen_fn = set()
+def scan_block_for_dispatch(start, end, name, all_blocks):
+    """Return (entries, diagnostics) for one block."""
     entries = []
-    total_blocks = len(blocks_list)
-    for bi in range(total_blocks):
-        blk = blocks_list[bi]
-        start = blk[0]
-        end = blk[1]
-        name = blk[2]
-        size = blk[3]
-        log("[*] scan %s @ %s (%d bytes)" % (name, fmt(start), size))
-        try:
-            jbuf = zeros(size, 'b')
-            ga = sa(start)
-            if ga is None:
-                continue
-            currentProgram.getMemory().getBytes(ga, jbuf)
-        except Exception as ex:
-            log("  [skip] %s" % ex)
+    diag = {"name": name, "start": start, "size": 0, "candidates": 0, "accepted": 0}
+    size = end - start + 1
+    if size <= 0 or size > MAX_BLOCK_SIZE:
+        diag["size"] = size
+        return entries, diag
+    diag["size"] = size
+    try:
+        jbuf = zeros(size, 'b')
+        ga = sa(start)
+        if ga is None:
+            return entries, diag
+        currentProgram.getMemory().getBytes(ga, jbuf)
+    except Exception as ex:
+        log("  [skip] %s: %s" % (name, ex))
+        return entries, diag
+
+    seen_fn = set()
+    pos = 0
+    while pos + DISPATCH_SIZE <= size:
+        fn_raw = read_u64_at(jbuf, pos)
+        fn = clean_ptr(fn_raw)
+        if fn is None:
+            pos = pos + 8
             continue
-        pos = 0
-        while pos + DISPATCH_SIZE <= size:
-            fn_raw = read_u64_at(jbuf, pos)
-            fn = clean_ptr(fn_raw)
-            if fn is None:
-                pos = pos + 8
-                continue
-            si = read_u32_at(jbuf, pos + 8)
-            sti = read_u32_at(jbuf, pos + 12)
-            so = read_u32_at(jbuf, pos + 16)
-            sto = read_u32_at(jbuf, pos + 20)
-            # heuristics: at least 3 of the 4 counts < 0x100000, and at least 2 < 0x1000
-            counts = [si, sti, so, sto]
-            small = 0
-            tiny = 0
-            for c in counts:
-                if c < 0x100000:
-                    small = small + 1
-                if c < 0x1000:
-                    tiny = tiny + 1
-            if small < 3 or tiny < 2:
-                pos = pos + 8
-                continue
-            struct_addr = start + pos
-            key = (fn, si, sti, so, sto)
-            if key in seen_fn:
-                pos = pos + 8
-                continue
-            seen_fn.add(key)
-            entries.append((struct_addr, fn, si, sti, so, sto, name))
-            pos = pos + DISPATCH_SIZE
-    return entries
+        diag["candidates"] = diag["candidates"] + 1
+        si = read_u32_at(jbuf, pos + 8)
+        sti = read_u32_at(jbuf, pos + 12)
+        so = read_u32_at(jbuf, pos + 16)
+        sto = read_u32_at(jbuf, pos + 20)
+        counts = [si, sti, so, sto]
+        small = 0
+        tiny = 0
+        for c in counts:
+            if c < 0x100000:
+                small = small + 1
+            if c < 0x1000:
+                tiny = tiny + 1
+        if small < 3 or tiny < 2:
+            pos = pos + 8
+            continue
+        key = (fn, si, sti, so, sto)
+        if key in seen_fn:
+            pos = pos + 8
+            continue
+        seen_fn.add(key)
+        struct_addr = start + pos
+        entries.append((struct_addr, fn, si, sti, so, sto, name))
+        diag["accepted"] = diag["accepted"] + 1
+        pos = pos + DISPATCH_SIZE
+    return entries, diag
 
 
 def get_func(addr):
@@ -369,7 +359,7 @@ def propagate(hf, tainted_idx):
         return tainted
     changed = True
     iters = 0
-    while changed and iters < 200:
+    while changed and iters < 150:
         changed = False
         iters = iters + 1
         for op in all_ops:
@@ -411,7 +401,7 @@ def call_target(op):
 
 
 def analyze_source(start_addr, start_name):
-    worklist = [(start_addr, frozenset(range(6)), 0)]
+    worklist = [(start_addr, frozenset([0, 1, 2]), 0)]
     findings = []
     local = set()
     while worklist:
@@ -510,49 +500,90 @@ def main():
     global START_TS
     START_TS = time.time()
 
-    log("=== kernel_rw.py v61 IOKit externalMethod ===")
+    log("=== kernel_rw.py v62 ===")
 
-    w("natsuk1 v61 IOKit externalMethod scanner")
+    w("natsuk1 v62 IOKit dispatch scanner (loader-agnostic)")
     w("kernel_base=%s ktext=[%s, %s)" % (fmt(KERNEL_BASE), fmt(KTEXT_LO), fmt(KTEXT_HI)))
-    w("dispatch_size=%d max_sources=%d taint_sec=%d" % (DISPATCH_SIZE, MAX_SOURCES, TAINT_SEC))
+    w("dispatch_size=%d max_block=%d" % (DISPATCH_SIZE, MAX_BLOCK_SIZE))
     w("")
 
-    blocks_list = scan_sections()
-    log("[+] candidate sections: %d" % len(blocks_list))
+    all_blocks = enumerate_blocks()
+    log("[+] total blocks: %d" % len(all_blocks))
 
     w(SEP)
-    w("### SCANNED SECTIONS")
+    w("### ALL BLOCKS")
     w(SEP)
-    for b in blocks_list:
-        w("  %s  start=%s  size=%d" % (b[2], fmt(b[0]), b[3]))
+    w("%-20s %-20s %-12s %-5s %-5s %s" % ("start", "end", "size", "exec", "init", "name"))
+    for b in all_blocks:
+        w("%-20s %-20s %-12d %-5s %-5s %s" % (
+            fmt(b[0]), fmt(b[1]), b[5], str(b[3]), str(b[4]), b[2]))
     w("")
 
-    entries = scan_for_dispatch(blocks_list)
-    log("[+] dispatch entries: %d" % len(entries))
+    # Select non-exec initialized blocks under cap
+    scan_targets = []
+    for b in all_blocks:
+        s = b[0]
+        e = b[1]
+        nm = b[2]
+        ex = b[3]
+        in_ = b[4]
+        sz = b[5]
+        if not in_:
+            continue
+        if ex:
+            continue
+        if sz <= 0 or sz > MAX_BLOCK_SIZE:
+            continue
+        scan_targets.append((s, e, nm, sz))
 
-    # Deduplicate by function pointer, keep first occurrence
+    log("[+] scan targets: %d" % len(scan_targets))
+
+    w(SEP)
+    w("### SCAN TARGETS")
+    w(SEP)
+    for t in scan_targets:
+        w("  %s @ %s  %d bytes" % (t[2], fmt(t[0]), t[3]))
+    w("")
+
+    all_entries = []
+    diag_list = []
+
+    for t in scan_targets:
+        log("[*] scan %s (%d bytes)" % (t[2], t[3]))
+        entries, diag = scan_block_for_dispatch(t[0], t[1], t[2], all_blocks)
+        diag_list.append(diag)
+        all_entries.extend(entries)
+        log("  candidates=%d accepted=%d" % (diag["candidates"], diag["accepted"]))
+
+    w(SEP)
+    w("### SCAN DIAGNOSTICS")
+    w(SEP)
+    for d in diag_list:
+        w("  %s @ %s size=%d candidates=%d accepted=%d" % (
+            d["name"], fmt(d["start"]), d["size"], d["candidates"], d["accepted"]))
+    w("")
+
+    # Dedup by fnptr
     by_fn = {}
-    for e in entries:
+    for e in all_entries:
         fn = e[1]
         if fn not in by_fn:
             by_fn[fn] = []
         by_fn[fn].append(e)
 
     w(SEP)
-    w("### DISPATCH ENTRIES (unique fnptr: %d, total entries: %d)" % (len(by_fn), len(entries)))
+    w("### DISPATCH ENTRIES (unique fnptr: %d, total: %d)" % (len(by_fn), len(all_entries)))
     w(SEP)
-    w("%-20s %-8s %-10s %-8s %-10s %s" % ("fnptr", "scalarIn", "structIn", "scalarOut", "structOut", "section"))
+    w("%-20s %-10s %-10s %-10s %-10s %s" % (
+        "fnptr", "scalarIn", "structIn", "scalarOut", "structOut", "section"))
     for fn, lst in by_fn.items():
         first = lst[0]
-        w("%-20s %-8d %-10d %-8d %-10d %s x%d" % (
+        w("%-20s %-10d %-10d %-10d %-10d %s x%d" % (
             fmt(fn), first[2], first[3], first[4], first[5], first[6], len(lst)))
     w("")
 
-    # Priority: struct_in == 0 first (dynamic size), then by struct_in ascending
     def priority(item):
-        fn = item[0]
-        lst = item[1]
-        e = lst[0]
+        e = item[1][0]
         sti = e[3]
         if sti == 0:
             return 0
@@ -560,7 +591,6 @@ def main():
 
     sorted_items = sorted(by_fn.items(), key=priority)
 
-    # Taint each unique function
     all_findings = []
     analyzed_fn = 0
 
@@ -571,7 +601,6 @@ def main():
             log("[!] taint budget exhausted")
             break
 
-        # Skip functions that don't have a Ghidra function definition
         f = get_func(fn)
         if f is None:
             f = ensure_function(fn)
@@ -581,12 +610,12 @@ def main():
         analyzed_fn = analyzed_fn + 1
         name = "iokit_%X" % fn
 
-        if analyzed_fn % 20 == 0:
-            log("[*] analyzed %d / %d, findings so far: %d" % (analyzed_fn, len(by_fn), len(all_findings)))
+        if analyzed_fn % 25 == 0:
+            log("[*] analyzed %d / %d, findings: %d" % (analyzed_fn, len(by_fn), len(all_findings)))
 
         try:
             findings = analyze_source(fn, name)
-        except Exception as ex:
+        except Exception:
             continue
         if findings:
             for fd in findings:
@@ -602,10 +631,11 @@ def main():
     w(SEP)
     w("SUMMARY")
     w(SEP)
-    w("scanned sections: %d" % len(blocks_list))
-    w("dispatch entries: %d" % len(entries))
-    w("unique function pointers: %d" % len(by_fn))
-    w("analyzed functions: %d" % analyzed_fn)
+    w("total blocks: %d" % len(all_blocks))
+    w("scan targets: %d" % len(scan_targets))
+    w("dispatch entries: %d" % len(all_entries))
+    w("unique fnptr: %d" % len(by_fn))
+    w("analyzed: %d" % analyzed_fn)
     w("total findings: %d" % len(all_findings))
     w("")
 
@@ -621,7 +651,7 @@ def main():
         w("  %s: %d" % (sk, len(by_sink.get(sk, []))))
     w("")
 
-    w("unique in_func per sink (top):")
+    w("unique in_func per sink:")
     for sk in sorted(by_sink.keys()):
         uniq = {}
         for fd in by_sink.get(sk, []):
