@@ -1,156 +1,147 @@
-natsuk1 mig_scan v2
+natsuk1 mig_scan v3 diag
 kernel base 0xFFFFFFF007004000
-mach_trap_table 0xFFFFFFF007BE8018 stride 24
-
-
-========================================================================
-### TABLE
-========================================================================
-  [  0] args=0x0 fn=0xFFFFFFF00A23CB1C ?
-  [  1] args=0x0 fn=0xFFFFFFF00A23CB1C ?
-  [  2] args=0x0 fn=0xFFFFFFF00A23CB1C ?
-  [  3] args=0x0 fn=0xFFFFFFF00A23CB1C ?
-  [  4] args=0x0 fn=0xFFFFFFF00A23CB1C ?
-  [  5] args=0x0 fn=0xFFFFFFF00A23CB1C ?
-  [  6] args=0x0 fn=0xFFFFFFF00A23CB1C ?
-  [  7] args=0x0 fn=0xFFFFFFF00A23CB1C ?
-  [  8] args=0x0 fn=0xFFFFFFF00A23CB1C ?
-  [  9] args=0x0 fn=0xFFFFFFF00A23CB1C ?
-  [ 10] args=0x504 fn=0xFFFFFFF00A1DF6A4 ? filter=0xFFFFFFF00A399B9C
-  [ 11] args=0x504 fn=0xFFFFFFF00A1DF948 ? filter=0xFFFFFFF00A399C94
-  [ 12] args=0x503 fn=0xFFFFFFF00A1DF75C ? filter=0xFFFFFFF00A399D4C
-  [ 13] args=0x402 fn=0xFFFFFFF00A1E086C ? filter=0xFFFFFFF00A39A05C
-  [ 14] args=0x705 fn=0xFFFFFFF00A1DF7C8 ? filter=0xFFFFFFF00A399DFC
-  [ 15] args=0x806 fn=0xFFFFFFF00A1DF854 ? filter=0xFFFFFFF00A399C3C
-  [ 16] args=0x303 fn=0xFFFFFFF00A1DFA14 ? filter=0xFFFFFFF00A399A2C
-  [ 17] args=0x0 fn=0xFFFFFFF00A23CB1C ?
-  [ 18] args=0x202 fn=0xFFFFFFF00A1DFAB4 ? filter=0xFFFFFFF00A399A14
-  [ 19] args=0x404 fn=0xFFFFFFF00A1DFB20 ? filter=0xFFFFFFF00A399A4C
-  [ 20] args=0x303 fn=0xFFFFFFF00A1DFB94 ? filter=0xFFFFFFF00A399A2C
-  [ 21] args=0x404 fn=0xFFFFFFF00A1DFC04 ? filter=0xFFFFFFF00A399A4C
-  [ 22] args=0x303 fn=0xFFFFFFF00A1DFF1C ? filter=0xFFFFFFF00A399A2C
-  [ 23] args=0x303 fn=0xFFFFFFF00A1DFF8C ? filter=0xFFFFFFF00A399A2C
-  [ 24] args=0x504 fn=0xFFFFFFF00A1DFFFC ? filter=0xFFFFFFF00A399B9C
-  [ 25] args=0x504 fn=0xFFFFFFF00A1E00BC ? filter=0xFFFFFFF00A399ED4
-  [ 26] args=0x10000 fn=0xFFFFFFF00A1FB6B0 ?
-  [ 27] args=0x10000 fn=0xFFFFFFF00A1FB57C ?
-  [ 28] args=0x10000 fn=0xFFFFFFF00A1FB448 ?
-  [ 29] args=0x10000 fn=0xFFFFFFF00A1F5FE8 ?
-  [ 30] args=0x0 fn=0xFFFFFFF00A23CB1C ?
-  [ 31] args=0x707 fn=0xFFFFFFF00A1E1360 ? filter=0xFFFFFFF00A399ADC
-  [ 32] args=0x808 fn=0xFFFFFFF00A1E1354 FUN_fffffff00a1e1338 filter=0xFFFFFFF00A399B1C
-  [ 33] args=0x101 fn=0xFFFFFFF00A23AB9C ? filter=0xFFFFFFF00A399A04
-  [ 34] args=0x101 fn=0xFFFFFFF00A23ACF8 ? filter=0xFFFFFFF00A399A04
-  [ 35] args=0x202 fn=0xFFFFFFF00A23A8FC ? filter=0xFFFFFFF00A399A14
-  [ 36] args=0x101 fn=0xFFFFFFF00A23B178 ? filter=0xFFFFFFF00A399A04
-  [ 37] args=0x202 fn=0xFFFFFFF00A23B4A8 ? filter=0xFFFFFFF00A399A14
-  [ 38] args=0x303 fn=0xFFFFFFF00A23B350 ? filter=0xFFFFFFF00A399A2C
-  [ 39] args=0x404 fn=0xFFFFFFF00A23B5BC ? filter=0xFFFFFFF00A399A4C
-  [ 40] args=0x505 fn=0xFFFFFFF00A1DFDB0 ? filter=0xFFFFFFF00A399A74
-  [ 41] args=0x504 fn=0xFFFFFFF00A1E0130 ? filter=0xFFFFFFF00A399B9C
-  [ 42] args=0x403 fn=0xFFFFFFF00A1E01A4 ? filter=0xFFFFFFF00A399B7C
-  [ 43] args=0x303 fn=0xFFFFFFF00A1DE924 ? filter=0xFFFFFFF00A399A2C
-  [ 44] args=0x303 fn=0xFFFFFFF00A70AFDC ? filter=0xFFFFFFF00A399A2C
-  [ 45] args=0x303 fn=0xFFFFFFF00A70ABE8 ? filter=0xFFFFFFF00A399A2C
-  [ 46] args=0x202 fn=0xFFFFFFF00A70AA94 ? filter=0xFFFFFFF00A399A14
-  [ 47] args=0x1008 fn=0xFFFFFFF00A1E1370 ? filter=0xFFFFFFF00A39A044
-  [ 48] args=0x504 fn=0xFFFFFFF00A7BD004 ? filter=0xFFFFFFF00A39A0A4
-  [ 49] args=0x302 fn=0xFFFFFFF00A7BD010 ? filter=0xFFFFFFF00A39A06C
-  [ 50] args=0x10000 fn=0xFFFFFFF00A1FB744 ?
-  [ 51] args=0x404 fn=0xFFFFFFF00A7BCF8C ? filter=0xFFFFFFF00A399A4C
-  [ 52] args=0x101 fn=0xFFFFFFF00A7BCF80 ? filter=0xFFFFFFF00A399A04
-  [ 53] args=0x101 fn=0xFFFFFFF00A7BCF74 ? filter=0xFFFFFFF00A399A04
-  [ 54] args=0x0 fn=0xFFFFFFF00A23CB1C ?
-  [ 55] args=0x0 fn=0xFFFFFFF00A23CB1C ?
-  [ 56] args=0x0 fn=0xFFFFFFF00A23CB1C ?
-  [ 57] args=0x0 fn=0xFFFFFFF00A23CB1C ?
-  [ 58] args=0x0 fn=0xFFFFFFF00A23BADC ?
-  [ 59] args=0x0 fn=0xFFFFFFF00A23BC0C ?
-  [ 60] args=0x0 fn=0xFFFFFFF00A23BAE8 ?
-  [ 61] args=0x303 fn=0xFFFFFFF00A23BFC0 ? filter=0xFFFFFFF00A399A2C
-  [ 62] args=0x505 fn=0xFFFFFFF00A1E9A10 ? filter=0xFFFFFFF00A399A74
-  [ 63] args=0x503 fn=0xFFFFFFF00A1E0DF0 ? filter=0xFFFFFFF00A399D4C
-  [ 64] args=0x0 fn=0xFFFFFFF00A23CB1C ?
-  [ 65] args=0x0 fn=0xFFFFFFF00A23CB1C ?
-  [ 66] args=0x0 fn=0xFFFFFFF00A23CB1C ?
-  [ 67] args=0x0 fn=0xFFFFFFF00A23CB1C ?
-  [ 68] args=0x0 fn=0xFFFFFFF00A23CB1C ?
-  [ 69] args=0x0 fn=0xFFFFFFF00A23CB1C ?
-  [ 70] args=0x404 fn=0xFFFFFFF00A1E0488 ? filter=0xFFFFFFF00A399A4C
-  [ 71] args=0x0 fn=0xFFFFFFF00A23CB1C ?
-  [ 72] args=0x404 fn=0xFFFFFFF00A1E0684 ? filter=0xFFFFFFF00A399A4C
-  [ 73] args=0x0 fn=0xFFFFFFF00A23CB1C ?
-  [ 74] args=0x0 fn=0xFFFFFFF00A23CB1C ?
-  [ 75] args=0x0 fn=0xFFFFFFF00A23CB1C ?
-  [ 76] args=0x303 fn=0xFFFFFFF00A1E0214 ? filter=0xFFFFFFF00A399A4C
-  [ 77] args=0x707 fn=0xFFFFFFF00A1E02A8 ? filter=0xFFFFFFF00A399ADC
-  [ 78] args=0x0 fn=0xFFFFFFF00A23CB1C ?
-  [ 79] args=0x0 fn=0xFFFFFFF00A23CB1C ?
-  [ 80] args=0x0 fn=0xFFFFFFF00A23CB1C ?
-  [ 81] args=0x0 fn=0xFFFFFFF00A23CB1C ?
-  [ 82] args=0x0 fn=0xFFFFFFF00A23CB1C ?
-  [ 83] args=0x0 fn=0xFFFFFFF00A23CB1C ?
-  [ 84] args=0x0 fn=0xFFFFFFF00A23CB1C ?
-  [ 85] args=0x0 fn=0xFFFFFFF00A23CB1C ?
-  [ 86] args=0x0 fn=0xFFFFFFF00A23CB1C ?
-  [ 87] args=0x0 fn=0xFFFFFFF00A23CB1C ?
-  [ 88] args=0xE08 fn=0xFFFFFFF00A1F31AC ? filter=0xFFFFFFF00A399BF4
-  [ 89] args=0x101 fn=0xFFFFFFF00A1E7148 ? filter=0xFFFFFFF00A399A04
-  [ 90] args=0x201 fn=0xFFFFFFF00A1E892C ? filter=0xFFFFFFF00A39A064
-  [ 91] args=0x10000 fn=0xFFFFFFF00A21187C ?
-  [ 92] args=0x101 fn=0xFFFFFFF00A211D60 ? filter=0xFFFFFFF00A399A04
-  [ 93] args=0x302 fn=0xFFFFFFF00A211E24 ? filter=0xFFFFFFF00A399B64
-  [ 94] args=0x202 fn=0xFFFFFFF00A212064 ? filter=0xFFFFFFF00A399A14
-  [ 95] args=0x604 fn=0xFFFFFFF00A21204C ? filter=0xFFFFFFF00A399D6C
-  [ 96] args=0x303 fn=0xFFFFFFF00A70BA08 ? filter=0xFFFFFFF00A399A2C
-  [ 97] args=0x0 fn=0xFFFFFFF00A23CB1C ?
-  [ 98] args=0x0 fn=0xFFFFFFF00A23CB1C ?
-  [ 99] args=0x0 fn=0xFFFFFFF00A23CB1C ?
-  [100] args=0x808 fn=0xFFFFFFF00A98C2E8 ? filter=0xFFFFFFF00A399B1C
-  [101] args=0x0 fn=0xFFFFFFF00A23CB1C ?
-  [102] args=0x0 fn=0xFFFFFFF00A23CB1C ?
-  [103] args=0x0 fn=0xFFFFFFF00A23CB1C ?
-  [104] args=0x0 fn=0xFFFFFFF00A23CB1C ?
-  [105] args=0x0 fn=0xFFFFFFF00A23CB1C ?
-  [106] args=0x0 fn=0xFFFFFFF00A23CB1C ?
-  [107] args=0x0 fn=0xFFFFFFF00A23CB1C ?
-  [108] args=0x0 fn=0xFFFFFFF00A23CB1C ?
-  [109] args=0x0 fn=0xFFFFFFF00A23CB1C ?
-  [110] args=0x0 fn=0xFFFFFFF00A23CB1C ?
-  [111] args=0x0 fn=0xFFFFFFF00A23CB1C ?
-  [112] args=0x0 fn=0xFFFFFFF00A23CB1C ?
-  [113] args=0x0 fn=0xFFFFFFF00A23CB1C ?
-  [114] args=0x0 fn=0xFFFFFFF00A23CB1C ?
-  [115] args=0x0 fn=0xFFFFFFF00A23CB1C ?
-  [116] args=0x0 fn=0xFFFFFFF00A23CB1C ?
-  [117] args=0x0 fn=0xFFFFFFF00A23CB1C ?
-  [118] args=0x0 fn=0xFFFFFFF00A23CB1C ?
-  [119] args=0x0 fn=0xFFFFFFF00A23CB1C ?
-  [120] args=0x0 fn=0xFFFFFFF00A23CB1C ?
-  [121] args=0x0 fn=0xFFFFFFF00A23CB1C ?
-  [122] args=0x0 fn=0xFFFFFFF00A23CB1C ?
-  [123] args=0x0 fn=0xFFFFFFF00A23CB1C ?
-  [124] args=0x0 fn=0xFFFFFFF00A23CB1C ?
-  [125] args=0x0 fn=0xFFFFFFF00A23CB1C ?
-  [126] args=0x0 fn=0xFFFFFFF00A23CB1C ?
-  [127] args=0x0 fn=0xFFFFFFF00A23CB1C ?
-  [150] args=0x10000000053A4A fn=0xFFFFFFF007057A4D ? filter=0xFFFFFFF007057A50
-  [151] args=0x10000000053979 fn=0xFFFFFFF007057987 ? filter=0xFFFFFFF00705798E
-  [152] args=0x1000000005398E fn=0xFFFFFFF007057980 ?
-  [154] args=0x0 fn=0xFFFFFFF0070040F0 ?
-  [209] args=0x10000000BE4EA0 fn=0xFFFFFFF007BE92E0 ?
+HAS_DISASM=True HAS_CREATE=True
 
 ========================================================================
-### UNIQUE HANDLERS: 68
+### KNOWN ADDRESS TEST
 ========================================================================
 
 ========================================================================
-### SUMMARY
+### DIAG iokit_user_client_trap @ 0xFFFFFFF00A98C2E8
 ========================================================================
-total traps: 133
-unique handlers: 68
-interesting: 0
-dumped: 0
+  addr_obj = fffffff00a98c2e8
+  getInstructionAt = pacibsp
+  getFunctionAt = None
+  getFunctionContaining = None
+  disasm applied
+  getInstructionAt post-disasm = pacibsp
+  getFunctionContaining post-disasm = None
+  create func applied
+  final func = FUN_fffffff00a98c2e8
+    name = FUN_fffffff00a98c2e8
+    entry = 0xFFFFFFF00A98C2E8
+    size = 0x310
+  decompile: 111 lines
+    | 
+    | undefined8 FUN_fffffff00a98c2e8(ulong *param_1)
+    | 
+    | {
+    |   int iVar1;
+    |   long lVar2;
+    |   long *plVar3;
+    |   undefined *puVar4;
+    |   long lVar5;
+    |   code *pcVar6;
+    |   long *plVar7;
+    |   long lVar8;
+    |   undefined8 uVar9;
+    |   ulong uVar10;
+    |   int in_wzr;
 
+========================================================================
+### DIAG necp_match_policy @ 0xFFFFFFF00A4F75D8
+========================================================================
+  addr_obj = fffffff00a4f75d8
+  getInstructionAt = pacibsp
+  getFunctionAt = None
+  getFunctionContaining = None
+  disasm applied
+  getInstructionAt post-disasm = pacibsp
+  getFunctionContaining post-disasm = None
+  create func applied
+  final func = FUN_fffffff00a4f75d8
+    name = FUN_fffffff00a4f75d8
+    entry = 0xFFFFFFF00A4F75D8
+    size = 0x124
+  decompile: 42 lines
+    | 
+    | undefined8 FUN_fffffff00a4f75d8(undefined8 param_1,long *param_2)
+    | 
+    | {
+    |   code *pcVar1;
+    |   long lVar2;
+    |   undefined8 uVar3;
+    |   ulong uVar4;
+    |   ulong uVar5;
+    |   undefined1 auStack_2f0 [688];
+    | 
+    |   if ((((param_2 == (long *)0x0) || (*param_2 == 0)) ||
+    |       (uVar5 = param_2[1], uVar5 - 0x401 < 0xfffffffffffffc00)) || (param_2[2] == 0)) {
+    |     uVar3 = 0x16;
+    |   }
 
-elapsed: 1.5 sec
+========================================================================
+### TABLE HANDLERS
+========================================================================
+unique fn addr candidates: 68
+  OK  0xFFFFFFF0070040F0 -> FUN_fffffff0070040f0 @ 0xFFFFFFF0070040F0
+  OK  0xFFFFFFF007057980 -> FUN_fffffff007057980 @ 0xFFFFFFF007057980
+  OK  0xFFFFFFF007057987 -> FUN_fffffff007057987 @ 0xFFFFFFF007057987
+  OK  0xFFFFFFF007057A4D -> FUN_fffffff007057a4d @ 0xFFFFFFF007057A4D
+  OK  0xFFFFFFF007BE92E0 -> FUN_fffffff007be92e0 @ 0xFFFFFFF007BE92E0
+  OK  0xFFFFFFF00A1DE924 -> FUN_fffffff00a1de924 @ 0xFFFFFFF00A1DE924
+  OK  0xFFFFFFF00A1DF6A4 -> FUN_fffffff00a1df6a4 @ 0xFFFFFFF00A1DF6A4
+  OK  0xFFFFFFF00A1DF75C -> FUN_fffffff00a1df75c @ 0xFFFFFFF00A1DF75C
+  OK  0xFFFFFFF00A1DF7C8 -> FUN_fffffff00a1df7c8 @ 0xFFFFFFF00A1DF7C8
+  OK  0xFFFFFFF00A1DF854 -> FUN_fffffff00a1df854 @ 0xFFFFFFF00A1DF854
+  OK  0xFFFFFFF00A1DF948 -> FUN_fffffff00a1df948 @ 0xFFFFFFF00A1DF948
+  OK  0xFFFFFFF00A1DFA14 -> FUN_fffffff00a1dfa14 @ 0xFFFFFFF00A1DFA14
+  OK  0xFFFFFFF00A1DFAB4 -> FUN_fffffff00a1dfab4 @ 0xFFFFFFF00A1DFAB4
+  OK  0xFFFFFFF00A1DFB20 -> FUN_fffffff00a1dfb20 @ 0xFFFFFFF00A1DFB20
+  OK  0xFFFFFFF00A1DFB94 -> FUN_fffffff00a1dfb94 @ 0xFFFFFFF00A1DFB94
+  OK  0xFFFFFFF00A1DFC04 -> FUN_fffffff00a1dfc04 @ 0xFFFFFFF00A1DFC04
+  OK  0xFFFFFFF00A1DFDB0 -> FUN_fffffff00a1dfdb0 @ 0xFFFFFFF00A1DFDB0
+  OK  0xFFFFFFF00A1DFF1C -> FUN_fffffff00a1dff1c @ 0xFFFFFFF00A1DFF1C
+  OK  0xFFFFFFF00A1DFF8C -> FUN_fffffff00a1dff8c @ 0xFFFFFFF00A1DFF8C
+  OK  0xFFFFFFF00A1DFFFC -> FUN_fffffff00a1dfffc @ 0xFFFFFFF00A1DFFFC
+  OK  0xFFFFFFF00A1E00BC -> FUN_fffffff00a1e00bc @ 0xFFFFFFF00A1E00BC
+  OK  0xFFFFFFF00A1E0130 -> FUN_fffffff00a1e0130 @ 0xFFFFFFF00A1E0130
+  OK  0xFFFFFFF00A1E01A4 -> FUN_fffffff00a1e01a4 @ 0xFFFFFFF00A1E01A4
+  OK  0xFFFFFFF00A1E0214 -> FUN_fffffff00a1e0214 @ 0xFFFFFFF00A1E0214
+  OK  0xFFFFFFF00A1E02A8 -> FUN_fffffff00a1e02a8 @ 0xFFFFFFF00A1E02A8
+  OK  0xFFFFFFF00A1E0488 -> FUN_fffffff00a1e0488 @ 0xFFFFFFF00A1E0488
+  OK  0xFFFFFFF00A1E0684 -> FUN_fffffff00a1e0684 @ 0xFFFFFFF00A1E0684
+  OK  0xFFFFFFF00A1E086C -> FUN_fffffff00a1e086c @ 0xFFFFFFF00A1E086C
+  OK  0xFFFFFFF00A1E0DF0 -> FUN_fffffff00a1e0df0 @ 0xFFFFFFF00A1E0DF0
+  OK  0xFFFFFFF00A1E1354 -> FUN_fffffff00a1e1338 @ 0xFFFFFFF00A1E1338
+  OK  0xFFFFFFF00A1E1360 -> FUN_fffffff00a1e1360 @ 0xFFFFFFF00A1E1360
+  OK  0xFFFFFFF00A1E1370 -> FUN_fffffff00a1e1370 @ 0xFFFFFFF00A1E1370
+  OK  0xFFFFFFF00A1E7148 -> FUN_fffffff00a1e7148 @ 0xFFFFFFF00A1E7148
+  OK  0xFFFFFFF00A1E892C -> FUN_fffffff00a1e892c @ 0xFFFFFFF00A1E892C
+  OK  0xFFFFFFF00A1E9A10 -> FUN_fffffff00a1e9a10 @ 0xFFFFFFF00A1E9A10
+  OK  0xFFFFFFF00A1F31AC -> FUN_fffffff00a1f31ac @ 0xFFFFFFF00A1F31AC
+  OK  0xFFFFFFF00A1F5FE8 -> FUN_fffffff00a1f5fe8 @ 0xFFFFFFF00A1F5FE8
+  OK  0xFFFFFFF00A1FB448 -> FUN_fffffff00a1fb448 @ 0xFFFFFFF00A1FB448
+  OK  0xFFFFFFF00A1FB57C -> FUN_fffffff00a1fb57c @ 0xFFFFFFF00A1FB57C
+  OK  0xFFFFFFF00A1FB6B0 -> FUN_fffffff00a1fb6b0 @ 0xFFFFFFF00A1FB6B0
+  OK  0xFFFFFFF00A1FB744 -> FUN_fffffff00a1fb744 @ 0xFFFFFFF00A1FB744
+  OK  0xFFFFFFF00A21187C -> FUN_fffffff00a21187c @ 0xFFFFFFF00A21187C
+  OK  0xFFFFFFF00A211D60 -> FUN_fffffff00a211d60 @ 0xFFFFFFF00A211D60
+  OK  0xFFFFFFF00A211E24 -> FUN_fffffff00a211e24 @ 0xFFFFFFF00A211E24
+  OK  0xFFFFFFF00A21204C -> FUN_fffffff00a21204c @ 0xFFFFFFF00A21204C
+  OK  0xFFFFFFF00A212064 -> FUN_fffffff00a212064 @ 0xFFFFFFF00A212064
+  OK  0xFFFFFFF00A23A8FC -> FUN_fffffff00a23a8fc @ 0xFFFFFFF00A23A8FC
+  OK  0xFFFFFFF00A23AB9C -> FUN_fffffff00a23ab9c @ 0xFFFFFFF00A23AB9C
+  OK  0xFFFFFFF00A23ACF8 -> FUN_fffffff00a23acf8 @ 0xFFFFFFF00A23ACF8
+  OK  0xFFFFFFF00A23B178 -> FUN_fffffff00a23b178 @ 0xFFFFFFF00A23B178
+  OK  0xFFFFFFF00A23B350 -> FUN_fffffff00a23b350 @ 0xFFFFFFF00A23B350
+  OK  0xFFFFFFF00A23B4A8 -> FUN_fffffff00a23b4a8 @ 0xFFFFFFF00A23B4A8
+  OK  0xFFFFFFF00A23B5BC -> FUN_fffffff00a23b5bc @ 0xFFFFFFF00A23B5BC
+  OK  0xFFFFFFF00A23BADC -> FUN_fffffff00a23badc @ 0xFFFFFFF00A23BADC
+  OK  0xFFFFFFF00A23BAE8 -> FUN_fffffff00a23bae8 @ 0xFFFFFFF00A23BAE8
+  OK  0xFFFFFFF00A23BC0C -> FUN_fffffff00a23bc0c @ 0xFFFFFFF00A23BC0C
+  OK  0xFFFFFFF00A23BFC0 -> FUN_fffffff00a23bfc0 @ 0xFFFFFFF00A23BFC0
+  OK  0xFFFFFFF00A23CB1C -> FUN_fffffff00a23cb1c @ 0xFFFFFFF00A23CB1C
+  OK  0xFFFFFFF00A70AA94 -> FUN_fffffff00a70aa94 @ 0xFFFFFFF00A70AA94
+  OK  0xFFFFFFF00A70ABE8 -> FUN_fffffff00a70abe8 @ 0xFFFFFFF00A70ABE8
+  OK  0xFFFFFFF00A70AFDC -> FUN_fffffff00a70afdc @ 0xFFFFFFF00A70AFDC
+  OK  0xFFFFFFF00A70BA08 -> FUN_fffffff00a70ba08 @ 0xFFFFFFF00A70BA08
+  OK  0xFFFFFFF00A7BCF74 -> FUN_fffffff00a7bcf74 @ 0xFFFFFFF00A7BCF74
+  OK  0xFFFFFFF00A7BCF80 -> FUN_fffffff00a7bcf80 @ 0xFFFFFFF00A7BCF80
+  OK  0xFFFFFFF00A7BCF8C -> FUN_fffffff00a7bcf8c @ 0xFFFFFFF00A7BCF8C
+  OK  0xFFFFFFF00A7BD004 -> FUN_fffffff00a7bd004 @ 0xFFFFFFF00A7BD004
+  OK  0xFFFFFFF00A7BD010 -> FUN_fffffff00a7bd010 @ 0xFFFFFFF00A7BD010
+  OK  0xFFFFFFF00A98C2E8 -> FUN_fffffff00a98c2e8 @ 0xFFFFFFF00A98C2E8
+
+OK=68 BAD=0
+elapsed 0.6 sec
