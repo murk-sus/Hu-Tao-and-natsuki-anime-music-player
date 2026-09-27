@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # @runtime Jython
-# kernel_rw.py v62 - IOKit dispatch scan (loader-agnostic)
+# kernel_rw.py v63 - IOKit dispatch scanner (single ram block)
 
 import os
 import sys
@@ -32,7 +32,7 @@ KTEXT_LO = int("FFFFFFF007000000", 16)
 KTEXT_HI = int("FFFFFFF010000000", 16)
 
 DISPATCH_SIZE = 24
-MAX_BLOCK_SIZE = 0x8000000
+MAX_BLOCK_SIZE = 0x10000000
 MAX_SOURCES = 400
 TAINT_SEC = 1500
 MAX_ANALYZED = 8000
@@ -138,61 +138,6 @@ def enumerate_blocks():
     except Exception as ex:
         log("[!] enum fail: %s" % ex)
     return out
-
-
-def scan_block_for_dispatch(start, end, name, all_blocks):
-    """Return (entries, diagnostics) for one block."""
-    entries = []
-    diag = {"name": name, "start": start, "size": 0, "candidates": 0, "accepted": 0}
-    size = end - start + 1
-    if size <= 0 or size > MAX_BLOCK_SIZE:
-        diag["size"] = size
-        return entries, diag
-    diag["size"] = size
-    try:
-        jbuf = zeros(size, 'b')
-        ga = sa(start)
-        if ga is None:
-            return entries, diag
-        currentProgram.getMemory().getBytes(ga, jbuf)
-    except Exception as ex:
-        log("  [skip] %s: %s" % (name, ex))
-        return entries, diag
-
-    seen_fn = set()
-    pos = 0
-    while pos + DISPATCH_SIZE <= size:
-        fn_raw = read_u64_at(jbuf, pos)
-        fn = clean_ptr(fn_raw)
-        if fn is None:
-            pos = pos + 8
-            continue
-        diag["candidates"] = diag["candidates"] + 1
-        si = read_u32_at(jbuf, pos + 8)
-        sti = read_u32_at(jbuf, pos + 12)
-        so = read_u32_at(jbuf, pos + 16)
-        sto = read_u32_at(jbuf, pos + 20)
-        counts = [si, sti, so, sto]
-        small = 0
-        tiny = 0
-        for c in counts:
-            if c < 0x100000:
-                small = small + 1
-            if c < 0x1000:
-                tiny = tiny + 1
-        if small < 3 or tiny < 2:
-            pos = pos + 8
-            continue
-        key = (fn, si, sti, so, sto)
-        if key in seen_fn:
-            pos = pos + 8
-            continue
-        seen_fn.add(key)
-        struct_addr = start + pos
-        entries.append((struct_addr, fn, si, sti, so, sto, name))
-        diag["accepted"] = diag["accepted"] + 1
-        pos = pos + DISPATCH_SIZE
-    return entries, diag
 
 
 def get_func(addr):
@@ -500,9 +445,9 @@ def main():
     global START_TS
     START_TS = time.time()
 
-    log("=== kernel_rw.py v62 ===")
+    log("=== kernel_rw.py v63 ===")
 
-    w("natsuk1 v62 IOKit dispatch scanner (loader-agnostic)")
+    w("natsuk1 v63 IOKit dispatch scanner")
     w("kernel_base=%s ktext=[%s, %s)" % (fmt(KERNEL_BASE), fmt(KTEXT_LO), fmt(KTEXT_HI)))
     w("dispatch_size=%d max_block=%d" % (DISPATCH_SIZE, MAX_BLOCK_SIZE))
     w("")
@@ -519,18 +464,15 @@ def main():
             fmt(b[0]), fmt(b[1]), b[5], str(b[3]), str(b[4]), b[2]))
     w("")
 
-    # Select non-exec initialized blocks under cap
+    # Scan every block. Heuristics filter.
     scan_targets = []
     for b in all_blocks:
         s = b[0]
         e = b[1]
         nm = b[2]
-        ex = b[3]
         in_ = b[4]
         sz = b[5]
         if not in_:
-            continue
-        if ex:
             continue
         if sz <= 0 or sz > MAX_BLOCK_SIZE:
             continue
@@ -538,22 +480,71 @@ def main():
 
     log("[+] scan targets: %d" % len(scan_targets))
 
-    w(SEP)
-    w("### SCAN TARGETS")
-    w(SEP)
-    for t in scan_targets:
-        w("  %s @ %s  %d bytes" % (t[2], fmt(t[0]), t[3]))
-    w("")
-
     all_entries = []
     diag_list = []
 
     for t in scan_targets:
-        log("[*] scan %s (%d bytes)" % (t[2], t[3]))
-        entries, diag = scan_block_for_dispatch(t[0], t[1], t[2], all_blocks)
-        diag_list.append(diag)
-        all_entries.extend(entries)
-        log("  candidates=%d accepted=%d" % (diag["candidates"], diag["accepted"]))
+        start = t[0]
+        end = t[1]
+        nm = t[2]
+        size = t[3]
+        log("[*] scan %s (%d bytes)" % (nm, size))
+
+        try:
+            jbuf = zeros(size, 'b')
+            ga = sa(start)
+            if ga is None:
+                continue
+            currentProgram.getMemory().getBytes(ga, jbuf)
+        except Exception as ex:
+            log("  [skip] %s" % ex)
+            continue
+
+        candidates = 0
+        accepted = 0
+        pos = 0
+        seen_fn = set()
+        while pos + DISPATCH_SIZE <= size:
+            fn_raw = read_u64_at(jbuf, pos)
+            fn = clean_ptr(fn_raw)
+            if fn is None:
+                pos = pos + 8
+                continue
+            candidates = candidates + 1
+            si = read_u32_at(jbuf, pos + 8)
+            sti = read_u32_at(jbuf, pos + 12)
+            so = read_u32_at(jbuf, pos + 16)
+            sto = read_u32_at(jbuf, pos + 20)
+            counts = [si, sti, so, sto]
+            small = 0
+            tiny = 0
+            for c in counts:
+                if c < 0x100000:
+                    small = small + 1
+                if c < 0x1000:
+                    tiny = tiny + 1
+            if small < 3 or tiny < 2:
+                pos = pos + 8
+                continue
+            key = (fn, si, sti, so, sto)
+            if key in seen_fn:
+                pos = pos + 8
+                continue
+            seen_fn.add(key)
+            struct_addr = start + pos
+            all_entries.append((struct_addr, fn, si, sti, so, sto, nm))
+            accepted = accepted + 1
+            pos = pos + DISPATCH_SIZE
+
+        diag_list.append({"name": nm, "start": start, "size": size,
+                          "candidates": candidates, "accepted": accepted})
+        log("  candidates=%d accepted=%d" % (candidates, accepted))
+
+        # Free memory
+        try:
+            del jbuf
+        except Exception:
+            pass
 
     w(SEP)
     w("### SCAN DIAGNOSTICS")
@@ -563,7 +554,6 @@ def main():
             d["name"], fmt(d["start"]), d["size"], d["candidates"], d["accepted"]))
     w("")
 
-    # Dedup by fnptr
     by_fn = {}
     for e in all_entries:
         fn = e[1]
