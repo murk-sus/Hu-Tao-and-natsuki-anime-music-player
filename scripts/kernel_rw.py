@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # @runtime Jython
-# kernel_rw.py v71 - necp_session_action surface + callers
+# kernel_rw.py v72 - necp_session_action remaining cases
 
 import os
 import sys
@@ -27,16 +27,15 @@ OUT = os.path.join(WS, "result.txt")
 SEP = "=" * 72
 
 DUMP_TARGETS = [
-    (int("FFFFFFF00A4BFAB8", 16), "sess_copyin_a",     "INT_OVERFLOW copyin d=1 from necp_session_action"),
-    (int("FFFFFFF00A4C0024", 16), "sess_copyin_b",     "INT_OVERFLOW copyin d=1 from necp_session_action"),
-    (int("FFFFFFF00A4BDAEC", 16), "sess_copyout_a",    "COPYOUT_LEAK d=1"),
-    (int("FFFFFFF00A4BDF70", 16), "sess_copyout_b",    "COPYOUT_LEAK d=1"),
-    (int("FFFFFFF00A4BE40C", 16), "sess_copyout_c",    "COPYOUT_LEAK d=1"),
-    (int("FFFFFFF00A4BD438", 16), "necp_session_action","sysent[525] entry"),
-    (int("FFFFFFF00A4B4C3C", 16), "necp_session_open",  "sysent[524] entry"),
-    (int("FFFFFFF00A4E60DC", 16), "add_client_recheck", "add_client - verify INT_OVERFLOW"),
-    (int("FFFFFFF00A4E93C4", 16), "remove_flow_recheck","remove_flow - verify INT_OVERFLOW"),
-    (int("FFFFFFF00A4F75D8", 16), "match_policy",       "copyin d=0 from v70"),
+    (int("FFFFFFF00A4C0310", 16), "sa_case_10", "session_action case 0x10"),
+    (int("FFFFFFF00A4C0410", 16), "sa_case_11", "session_action case 0x11"),
+    (int("FFFFFFF00A4C058C", 16), "sa_case_12", "session_action case 0x12 (no pcVar8)"),
+    (int("FFFFFFF00A4BFD9C", 16), "sa_case_0d", "session_action case 0x0d"),
+    (int("FFFFFFF00A4BFE9C", 16), "sa_case_0e", "session_action case 0x0e"),
+    (int("FFFFFFF00A4BE248", 16), "sa_case_07", "session_action case 0x07"),
+    (int("FFFFFFF00A4BE188", 16), "sa_case_06", "session_action case 0x06"),
+    (int("FFFFFFF00A4BDDD4", 16), "sa_case_03", "session_action case 0x03"),
+    (int("FFFFFFF00A4BD8C4", 16), "sa_default", "session_action default"),
 ]
 
 MAX_DECOMPILE_SEC = 90
@@ -186,7 +185,7 @@ def blocks():
     return out
 
 
-def bl_callers(target, max_hits=30, budget=40):
+def bl_callers(target, max_hits=20, budget=30):
     hits = []
     mem = currentProgram.getMemory()
     ts = time.time()
@@ -258,7 +257,7 @@ def dump_one(addr, name, note):
     w("")
     w("-- BL callers --")
     try:
-        hits = bl_callers(addr, 30, 40)
+        hits = bl_callers(addr, 20, 30)
     except Exception:
         hits = []
     if not hits:
@@ -285,9 +284,9 @@ def main():
     global START_TS
     START_TS = time.time()
 
-    log("=== kernel_rw.py v71 ===")
+    log("=== kernel_rw.py v72 ===")
 
-    w("natsuk1 v71 necp_session_action surface")
+    w("natsuk1 v72 necp_session_action remaining cases")
     w("targets=%d" % len(DUMP_TARGETS))
     w("")
 
