@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # @runtime Jython
-# kernel_rw.py v49 - IOKit taint scan
+# kernel_rw.py v50 - IOKit deep scan
 
 import os
 import sys
@@ -30,12 +30,12 @@ SYMBOLS_JSON = os.environ.get("SYMBOLS_JSON", os.path.join(WS, "symbols.json"))
 SEP = "=" * 72
 
 TAINT_SEC = 1200
-DUMP_SEC = 400
+DUMP_SEC = 600
 MAX_ANALYZED = 30000
 MAX_WORKLIST = 60000
 MAX_DEPTH = 14
 MAX_DECOMPILE_SEC = 45
-MAX_SOURCES = 60
+MAX_SOURCES = 80
 
 A_KALLOC   = int("FFFFFFF00A200988", 16)
 A_KALLOC_Z = int("FFFFFFF00A20141C", 16)
@@ -56,7 +56,10 @@ SINK_MAP = {}
 for sk in SINK_LIST:
     SINK_MAP[sk[1]] = (sk[0], sk[2])
 
-IOKIT_NAMES = [
+# exact names first
+IOKIT_EXACT = [
+    "iokit_user_client_trap",
+    "is_io_service_open_extended",
     "io_connect_method",
     "io_connect_method_scalarI_scalarO",
     "io_connect_method_scalarI_structureO",
@@ -72,9 +75,7 @@ IOKIT_NAMES = [
     "io_connect_set_properties",
     "io_connect_get_service",
     "io_connect_get_notification_semaphore",
-    "iokit_user_client_trap",
     "io_service_open_extended",
-    "is_io_service_open_extended",
     "io_service_get_matching_services",
     "io_service_get_matching_service",
     "io_service_add_notification",
@@ -89,14 +90,24 @@ IOKIT_NAMES = [
     "io_registry_entry_get_property_bytes",
     "io_registry_entry_get_properties",
     "io_registry_entry_from_path",
-    "io_registry_entry_get_name",
     "io_iterator_next",
     "io_iterator_reset",
     "io_object_get_class_name",
     "io_object_conforms_to",
     "io_object_get_retain_count",
-    "io_object_get_superclass",
-    "is_io_object_get_superclass",
+]
+
+# substrings for prefix/substring match
+IOKIT_SUBSTR = [
+    "io_connect",
+    "ioconnect",
+    "io_service",
+    "ioservice",
+    "io_registry",
+    "ioregistry",
+    "io_iterator",
+    "io_iterator",
+    "is_io_",
 ]
 
 DEC = None
@@ -226,6 +237,20 @@ def decompile_text(f, sec=60):
         return ["(exception %s)" % e]
 
 
+def _is_str(x):
+    try:
+        if isinstance(x, unicode):
+            return True
+    except Exception:
+        pass
+    try:
+        if isinstance(x, str):
+            return True
+    except Exception:
+        pass
+    return False
+
+
 def load_symbols(path):
     result = {}
     if not os.path.exists(path):
@@ -239,31 +264,23 @@ def load_symbols(path):
         log("[!] symbols parse fail: %s" % e)
         return result
 
-    def add(name, addr):
-        if not isinstance(name, str) and not isinstance(name, unicode):
-            return
-        n = name.strip()
-        if not n:
-            return
-        try:
-            a = int(addr)
-        except Exception:
-            return
-        result[n] = a
-
     if isinstance(data, dict):
         for k, v in data.items():
             try:
                 a = int(k)
-                if isinstance(v, str) or isinstance(v, unicode):
-                    add(v, a)
+                if _is_str(v):
+                    name = v.strip()
+                    if name:
+                        result[name] = a
                     continue
             except Exception:
                 pass
             try:
                 a = int(v)
-                if isinstance(k, str) or isinstance(k, unicode):
-                    add(k, a)
+                if _is_str(k):
+                    name = k.strip()
+                    if name:
+                        result[name] = a
                     continue
             except Exception:
                 pass
@@ -273,31 +290,38 @@ def load_symbols(path):
 
 def find_iokit_sources(syms):
     found = []
-    seen_addrs = set()
-    for name in IOKIT_NAMES:
+    seen = set()
+    # 1. exact names
+    for name in IOKIT_EXACT:
         addr = syms.get(name)
         if addr is None:
             continue
-        if addr in seen_addrs:
+        if addr in seen:
             continue
-        seen_addrs.add(addr)
+        seen.add(addr)
         found.append((addr, name))
-    if found:
-        return found
-    # fallback: prefix match
-    for name, addr in syms.items():
+    log("[+] exact matches: %d" % len(found))
+    # 2. substring
+    matched_sub = 0
+    for name in syms.keys():
+        if len(found) >= MAX_SOURCES:
+            break
         low = name.lower()
-        if low.startswith("io_connect") or low.startswith("io_service") or \
-           low.startswith("io_registry") or low.startswith("io_iterator") or \
-           low.startswith("io_object") or low.startswith("iokit_") or \
-           low.startswith("is_io_"):
-            if addr in seen_addrs:
-                continue
-            seen_addrs.add(addr)
-            found.append((addr, name))
-            if len(found) >= MAX_SOURCES:
+        hit = False
+        for sub in IOKIT_SUBSTR:
+            if sub in low:
+                hit = True
                 break
-    return found
+        if not hit:
+            continue
+        addr = syms[name]
+        if addr in seen:
+            continue
+        seen.add(addr)
+        found.append((addr, name))
+        matched_sub += 1
+    log("[+] substring matches: %d" % matched_sub)
+    return found[:MAX_SOURCES]
 
 
 def vn_key(vn):
@@ -606,12 +630,21 @@ def bl_callers(target, max_hits=20, budget=40):
     return hits
 
 
-def pick_dump_targets(findings):
+def pick_dump_targets(findings, hard_targets):
+    """Extended picker: depth<=2 copyin, depth<=1 kalloc, hard targets from caller."""
     seen = set()
     picks = []
+    # priority 0: hard targets
+    for pair in hard_targets:
+        a = pair[0]
+        if a in seen:
+            continue
+        seen.add(a)
+        picks.append((a, pair[1], "hard"))
+    # priority 1: depth<=1 kalloc/copyin
     for fd in findings:
-        d = fd.get("depth")
-        if d != 0:
+        d = fd.get("depth", 99)
+        if d > 1:
             continue
         sk = fd.get("sink")
         if sk != "kalloc_type" and sk != "copyin" and sk != "copyout":
@@ -620,40 +653,57 @@ def pick_dump_targets(findings):
         if a in seen:
             continue
         seen.add(a)
-        picks.append((a, fd.get("in_func"), sk + " d=0"))
-    kalloc = []
+        picks.append((a, fd.get("in_func"), sk + " d=" + str(d)))
+    # priority 2: depth<=2 copyin/kalloc
     for fd in findings:
-        if fd.get("sink") == "kalloc_type":
-            kalloc.append(fd)
-    kalloc.sort(key=lambda x: x.get("depth", 99))
-    for fd in kalloc[:8]:
+        d = fd.get("depth", 99)
+        if d != 2:
+            continue
+        sk = fd.get("sink")
+        if sk != "kalloc_type" and sk != "copyin":
+            continue
         a = fd.get("in_func_addr")
         if a in seen:
             continue
         seen.add(a)
-        note = "kalloc_type d=%d" % fd.get("depth", 0)
-        picks.append((a, fd.get("in_func"), note))
-    return picks[:20]
+        picks.append((a, fd.get("in_func"), sk + " d=" + str(d)))
+    # priority 3: all unique kalloc/copyin sorted by depth
+    rest = []
+    for fd in findings:
+        sk = fd.get("sink")
+        if sk != "kalloc_type" and sk != "copyin":
+            continue
+        a = fd.get("in_func_addr")
+        if a in seen:
+            continue
+        rest.append(fd)
+    rest.sort(key=lambda x: x.get("depth", 99))
+    for fd in rest[:8]:
+        a = fd.get("in_func_addr")
+        if a in seen:
+            continue
+        seen.add(a)
+        picks.append((a, fd.get("in_func"), fd.get("sink") + " d=" + str(fd.get("depth"))))
+    return picks[:24]
 
 
 def main():
     global START_TS
     START_TS = time.time()
 
-    log("=== kernel_rw.py v49 IOKit ===")
+    log("=== kernel_rw.py v50 IOKit deep ===")
 
     syms = load_symbols(SYMBOLS_JSON)
     sources = find_iokit_sources(syms)
-    log("[+] IOKit sources found: %d" % len(sources))
+    log("[+] IOKit sources: %d" % len(sources))
 
-    w("natsuk1 IOKit taint scan v49")
+    w("natsuk1 IOKit taint scan v50")
     w("symbols_loaded=%d iokit_sources=%d" % (len(syms), len(sources)))
     w("sinks=%d depth=%d budget=%ds" % (len(SINK_LIST), MAX_DEPTH, TAINT_SEC))
     w("")
 
     if not sources:
         w("NO IOKIT SOURCES FOUND")
-        w("need symbols.json with io_* names")
         try:
             fh = open(OUT, "w")
             for l in L:
@@ -663,12 +713,13 @@ def main():
             pass
         return
 
-    w("SOURCES:")
+    w("SOURCES (%d):" % len(sources))
     for pair in sources:
         w("  %s  %s" % (fmt(pair[0]), pair[1]))
     w("")
 
     all_findings = []
+    per_source_interesting = []
 
     for idx in range(len(sources)):
         addr = sources[idx][0]
@@ -679,22 +730,38 @@ def main():
             if f is None:
                 f = ensure_function(addr)
             if f is None:
-                w("SRC %-40s no function" % name[:40])
+                w("SRC %-48s no function" % name[:48])
                 continue
             findings = analyze_source(addr, name)
         except Exception as ex:
             findings = []
-            w("SRC %-40s exception %s" % (name[:40], ex))
+            w("SRC %-48s exception %s" % (name[:48], ex))
             continue
         if not findings:
-            w("SRC %-40s (no tainted sinks)" % name[:40])
-        else:
-            w("SRC %-40s findings=%d" % (name[:40], len(findings)))
-            for fd in findings:
-                w("  %-12s @ %s  %s  d=%d" % (
-                    fd.get("sink"), fd.get("pc"),
-                    fd.get("in_func"), fd.get("depth")))
-                all_findings.append(fd)
+            w("SRC %-48s (no tainted sinks)" % name[:48])
+            continue
+        # dedupe findings for compact display
+        uniq = {}
+        for fd in findings:
+            k = fd.get("sink") + "|" + fd.get("pc") + "|" + fd.get("in_func_addr")
+            if k not in uniq:
+                uniq[k] = fd
+        uf = uniq.values()
+        w("SRC %-48s findings=%d uniq=%d" % (name[:48], len(findings), len(uf)))
+        for fd in uf:
+            w("  %-12s @ %s  %s  d=%d" % (
+                fd.get("sink"), fd.get("pc"),
+                fd.get("in_func"), fd.get("depth")))
+            all_findings.append(fd)
+        # hard target: if a copyin/kalloc at depth 1-2
+        for fd in uf:
+            d = fd.get("depth", 99)
+            if d > 2:
+                continue
+            sk = fd.get("sink")
+            if sk != "copyin" and sk != "kalloc_type":
+                continue
+            per_source_interesting.append((fd.get("in_func_addr"), fd.get("in_func")))
 
     w("")
     w(SEP)
@@ -712,7 +779,7 @@ def main():
     for sk in sorted(by_sink.keys()):
         w("%s: %d" % (sk, len(by_sink.get(sk, []))))
     w("")
-    w("unique in_func per sink:")
+    w("unique in_func per sink (top):")
     for sk in sorted(by_sink.keys()):
         uniq = {}
         for fd in by_sink.get(sk, []):
@@ -724,11 +791,11 @@ def main():
             cur.append(fd.get("depth"))
         w("  %s:" % sk)
         items = sorted(uniq.items(), key=lambda x: min(x[1]))
-        for pair in items[:30]:
+        for pair in items[:40]:
             w("    %s  d=%s" % (pair[0], sorted(set(pair[1]))))
 
     START_TS = time.time()
-    picks = pick_dump_targets(all_findings)
+    picks = pick_dump_targets(all_findings, per_source_interesting)
     log("[*] dump targets: %d" % len(picks))
 
     w("")
