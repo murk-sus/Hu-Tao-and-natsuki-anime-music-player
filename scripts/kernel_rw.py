@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # @runtime Jython
-# mig_scan.py v4 - full ensure+classify
+# mig_scan.py v5 - sink search by hex address
 
 import os
 import sys
@@ -36,19 +36,24 @@ BUDGET_SEC = 2400
 
 KERN_INVALID = int("FFFFFFF00A23CB1C", 16)
 
-SINKS_COPYIN  = ["copyin", "copyinstr"]
-SINKS_COPYOUT = ["copyout", "copyoutstr"]
-SINKS_ALLOC   = ["kalloc_type", "kalloc_zone", "kalloc", "zalloc", "IOMalloc"]
-SINKS_FREE    = ["kfree", "kfree_type", "zfree", "IOFree"]
-MIG_FILTER    = ["mig_filter", "ipc_filter"]
-MACH_PORT     = ["mach_port_", "ipc_port_"]
-MACH_VM       = ["mach_vm_", "vm_map_", "vm_object_"]
+SINKS = {
+    "copyin":      [0xFFFFFFF00A368EC0],
+    "copyout":     [0xFFFFFFF00A369A3C],
+    "memmove":     [0xFFFFFFF00AA40D30],
+    "memset":      [0xFFFFFFF00AA40EE0],
+    "kalloc_type": [0xFFFFFFF00A200988],
+    "kalloc_zone": [0xFFFFFFF00A20141C],
+    "kfree_type":  [0xFFFFFFF00A201000],
+    "ref_dec":     [0xFFFFFFF00A4E3278],
+}
+
+FILTER_NAMES = ["mig_filter", "ipc_filter", "filter_msg", "ip_filter"]
+PORT_NAMES   = ["mach_port_", "ipc_port_", "mach_vm_", "vm_map_", "vm_object_"]
 
 DEC = None
 MONITOR = ConsoleTaskMonitor()
 START_TS = time.time()
 L = []
-_DECOMP_CACHE = {}
 
 
 def log(m):
@@ -120,22 +125,15 @@ def ensure_function(addr):
 
 def decompile_text(f, sec=MAX_DECOMPILE_SEC):
     try:
-        ent = _u(f.getEntryPoint().getOffset())
-    except Exception:
-        ent = 0
-    if ent in _DECOMP_CACHE:
-        return _DECOMP_CACHE[ent]
-    try:
         r = get_dec().decompileFunction(f, sec, MONITOR)
         if r is None or not r.decompileCompleted():
-            out = ["(decompile failed)"]
-        else:
-            c = r.getDecompiledFunction()
-            out = ["(empty)"] if c is None else [l.rstrip() for l in c.getC().split("\n")]
+            return ["(decompile failed)"]
+        c = r.getDecompiledFunction()
+        if c is None:
+            return ["(empty)"]
+        return [l.rstrip() for l in c.getC().split("\n")]
     except Exception as e:
-        out = ["(exception %s)" % e]
-    _DECOMP_CACHE[ent] = out
-    return out
+        return ["(exception %s)" % e]
 
 
 def read_u64(addr):
@@ -148,39 +146,42 @@ def read_u64(addr):
         return None
 
 
+def addr_token(addr):
+    return ("%X" % (addr & 0xFFFFFFFFFFFFFFFF)).lower()
+
+
 def count_sinks(text):
-    joined = "\n".join(text)
-    def cnt(lst):
+    joined = "\n".join(text).lower()
+    out = {}
+    for name, addrs in SINKS.items():
         n = 0
-        for s in lst:
-            n += joined.count(s)
-        return n
-    return {
-        "in": cnt(SINKS_COPYIN),
-        "out": cnt(SINKS_COPYOUT),
-        "alloc": cnt(SINKS_ALLOC),
-        "free": cnt(SINKS_FREE),
-        "filter": cnt(MIG_FILTER),
-        "port": cnt(MACH_PORT),
-        "vm": cnt(MACH_VM),
-    }
+        for a in addrs:
+            n += joined.count(addr_token(a))
+        out[name] = n
+    for name in FILTER_NAMES:
+        out[name] = joined.count(name)
+    for name in PORT_NAMES:
+        out[name] = joined.count(name)
+    return out
 
 
 def dump_one(fn_addr, idxs, args_list, filt_list, f, text, c):
     w("")
     w(SEP)
     w("### trap_fn @ %s" % fmt(fn_addr))
-    w("  name  = %s" % f.getName())
+    w("  name = %s" % f.getName())
     w("  traps = %s" % idxs)
-    w("  args  = %s" % args_list)
+    w("  args = %s" % args_list)
     w("  filters = %s" % filt_list)
     try:
-        sz = int(f.getBody().getNumAddresses())
-        w("  size  = 0x%X" % sz)
+        w("  size = 0x%X" % int(f.getBody().getNumAddresses()))
     except Exception:
         pass
-    w("  counts: in=%d out=%d alloc=%d free=%d filter=%d port=%d vm=%d" % (
-        c["in"], c["out"], c["alloc"], c["free"], c["filter"], c["port"], c["vm"]))
+    parts = []
+    for k in sorted(c.keys()):
+        if c[k] > 0:
+            parts.append("%s=%d" % (k, c[k]))
+    w("  counts: %s" % (" ".join(parts) if parts else "(none)"))
     w("")
     w("-- decompile --")
     for l in text:
@@ -191,8 +192,8 @@ def main():
     global START_TS
     START_TS = time.time()
 
-    log("=== mig_scan v4 ===")
-    w("natsuk1 mig_scan v4")
+    log("=== mig_scan v5 ===")
+    w("natsuk1 mig_scan v5")
     w("kernel base %s" % fmt(KERNEL_BASE))
     w("mach_trap_table %s stride %d" % (fmt(MACH_TRAP_TABLE), STRIDE))
     w("")
@@ -231,24 +232,30 @@ def main():
     log("[*] unique fn: %d" % len(by_fn))
 
     results = []
+    no_func = 0
+    decomp_fail = 0
     for fn_addr, meta in sorted(by_fn.items()):
         if time.time() - START_TS > BUDGET_SEC:
             w("BUDGET EXCEEDED")
             break
         f = ensure_function(fn_addr)
         if f is None:
-            w("  BAD %s (no function)" % fmt(fn_addr))
+            no_func += 1
             continue
         text = decompile_text(f)
+        if text and text[0] and text[0].startswith("(decompile"):
+            decomp_fail += 1
         c = count_sinks(text)
-        has_any = c["in"] > 0 or c["out"] > 0 or c["alloc"] > 0 or (c["port"] > 0 and c["vm"] > 0)
+        has_in = c.get("copyin", 0) > 0
+        has_out = c.get("copyout", 0) > 0
+        has_alloc = c.get("kalloc_type", 0) + c.get("kalloc_zone", 0) > 0
+        has_filter = sum(c.get(n, 0) for n in FILTER_NAMES) > 0
+        has_portvm = sum(c.get(n, 0) for n in PORT_NAMES) > 0
+        has_any = has_in or has_out or has_alloc or has_portvm
         if not has_any:
             continue
-        # high priority: copyin without filter
-        no_filter = all(x == 0 for x in meta["filters"])
-        hp = "HIGH" if (c["in"] > 0 and no_filter) else ""
-        # medium: copyin + alloc
-        mp = "ALLOC" if (c["in"] > 0 and c["alloc"] > 0) else ""
+        hp = "HIGH" if (has_in and not has_filter) else ""
+        mp = "ALLOC" if (has_in and has_alloc) else ""
         results.append({
             "addr": fn_addr,
             "meta": meta,
@@ -259,9 +266,8 @@ def main():
             "mp": mp,
         })
 
-    log("[*] interesting: %d" % len(results))
+    log("[*] interesting: %d (no_func=%d decomp_fail=%d)" % (len(results), no_func, decomp_fail))
 
-    # HIGH priority first
     results.sort(key=lambda r: (0 if r["hp"] else 1 if r["mp"] else 2, r["addr"]))
 
     for r in results:
@@ -279,14 +285,18 @@ def main():
     w(SEP)
     w("total entries: %d" % len(entries))
     w("unique handlers: %d" % len(by_fn))
+    w("no function: %d" % no_func)
+    w("decompile failed: %d" % decomp_fail)
     w("interesting: %d" % len(results))
     w("")
     for r in results:
-        w("  [%s%s] %s traps=%s in=%d out=%d alloc=%d free=%d filter=%d port=%d vm=%d" % (
+        parts = []
+        for k in sorted(r["c"].keys()):
+            if r["c"][k] > 0:
+                parts.append("%s=%d" % (k, r["c"][k]))
+        w("  [%s%s] %s traps=%s  %s" % (
             r["hp"] or "-", r["mp"] or "", fmt(r["addr"]),
-            r["meta"]["traps"],
-            r["c"]["in"], r["c"]["out"], r["c"]["alloc"], r["c"]["free"],
-            r["c"]["filter"], r["c"]["port"], r["c"]["vm"]))
+            r["meta"]["traps"], " ".join(parts)))
     w("")
     w("elapsed %.1f sec" % (time.time() - START_TS))
 
