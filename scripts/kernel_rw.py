@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # @runtime Jython
-# kernel_rw.py v63 - IOKit dispatch scanner (single ram block)
+# kernel_rw.py v64 - IOKit dispatch scanner (strict filter)
 
 import os
 import sys
@@ -34,11 +34,11 @@ KTEXT_HI = int("FFFFFFF010000000", 16)
 DISPATCH_SIZE = 24
 MAX_BLOCK_SIZE = 0x10000000
 MAX_SOURCES = 400
-TAINT_SEC = 1500
-MAX_ANALYZED = 8000
-MAX_WORKLIST = 16000
-MAX_DEPTH = 8
-MAX_DECOMPILE_SEC = 40
+TAINT_SEC = 1200
+MAX_ANALYZED = 4000
+MAX_WORKLIST = 8000
+MAX_DEPTH = 6
+MAX_DECOMPILE_SEC = 30
 
 A_KALLOC   = int("FFFFFFF00A200988", 16)
 A_KALLOC_Z = int("FFFFFFF00A20141C", 16)
@@ -109,6 +109,17 @@ def clean_ptr(raw):
     return None
 
 
+def is_func_entry(addr):
+    try:
+        ga = sa(addr)
+        if ga is None:
+            return False
+        f = getFunctionAt(ga)
+        return f is not None
+    except Exception:
+        return False
+
+
 def read_u32_at(buf, off):
     return (int(buf[off]) & 0xFF) | ((int(buf[off + 1]) & 0xFF) << 8) | \
            ((int(buf[off + 2]) & 0xFF) << 16) | ((int(buf[off + 3]) & 0xFF) << 24)
@@ -121,23 +132,37 @@ def read_u64_at(buf, off):
     return r
 
 
-def enumerate_blocks():
-    out = []
-    try:
-        for b in currentProgram.getMemory().getBlocks():
-            try:
-                s = _u(b.getStart().getOffset())
-                e = _u(b.getEnd().getOffset())
-                nm = str(b.getName())
-                ex = bool(b.isExecute())
-                in_ = bool(b.isInitialized())
-                sz = e - s + 1
-                out.append((s, e, nm, ex, in_, sz))
-            except Exception:
-                pass
-    except Exception as ex:
-        log("[!] enum fail: %s" % ex)
-    return out
+def valid_counts(si, sti, so, sto):
+    counts = [si, sti, so, sto]
+    # All under 1 MB
+    for c in counts:
+        if c >= 0x100000:
+            return False
+    # At least 3 under 0x10000 (typical IOKit method sizes)
+    small = 0
+    for c in counts:
+        if c < 0x10000:
+            small = small + 1
+    if small < 3:
+        return False
+    return True
+
+
+def parse_entry(buf, pos):
+    """Return (fn, si, sti, so, sto) or None."""
+    fn_raw = read_u64_at(buf, pos)
+    fn = clean_ptr(fn_raw)
+    if fn is None:
+        return None
+    if not is_func_entry(fn):
+        return None
+    si = read_u32_at(buf, pos + 8)
+    sti = read_u32_at(buf, pos + 12)
+    so = read_u32_at(buf, pos + 16)
+    sto = read_u32_at(buf, pos + 20)
+    if not valid_counts(si, sti, so, sto):
+        return None
+    return (fn, si, sti, so, sto)
 
 
 def get_func(addr):
@@ -304,7 +329,7 @@ def propagate(hf, tainted_idx):
         return tainted
     changed = True
     iters = 0
-    while changed and iters < 150:
+    while changed and iters < 100:
         changed = False
         iters = iters + 1
         for op in all_ops:
@@ -445,50 +470,53 @@ def main():
     global START_TS
     START_TS = time.time()
 
-    log("=== kernel_rw.py v63 ===")
+    log("=== kernel_rw.py v64 ===")
 
-    w("natsuk1 v63 IOKit dispatch scanner")
+    w("natsuk1 v64 IOKit dispatch scanner (strict)")
     w("kernel_base=%s ktext=[%s, %s)" % (fmt(KERNEL_BASE), fmt(KTEXT_LO), fmt(KTEXT_HI)))
     w("dispatch_size=%d max_block=%d" % (DISPATCH_SIZE, MAX_BLOCK_SIZE))
     w("")
 
-    all_blocks = enumerate_blocks()
-    log("[+] total blocks: %d" % len(all_blocks))
+    # Single-block assumption
+    all_blocks = []
+    try:
+        for b in currentProgram.getMemory().getBlocks():
+            try:
+                s = _u(b.getStart().getOffset())
+                e = _u(b.getEnd().getOffset())
+                nm = str(b.getName())
+                in_ = bool(b.isInitialized())
+                sz = e - s + 1
+                all_blocks.append((s, e, nm, in_, sz))
+            except Exception:
+                pass
+    except Exception as ex:
+        log("[!] enum fail: %s" % ex)
 
     w(SEP)
     w("### ALL BLOCKS")
     w(SEP)
-    w("%-20s %-20s %-12s %-5s %-5s %s" % ("start", "end", "size", "exec", "init", "name"))
     for b in all_blocks:
-        w("%-20s %-20s %-12d %-5s %-5s %s" % (
-            fmt(b[0]), fmt(b[1]), b[5], str(b[3]), str(b[4]), b[2]))
+        w("  %s %s size=%d init=%s name=%s" % (fmt(b[0]), fmt(b[1]), b[4], str(b[3]), b[2]))
     w("")
 
-    # Scan every block. Heuristics filter.
     scan_targets = []
     for b in all_blocks:
-        s = b[0]
-        e = b[1]
-        nm = b[2]
-        in_ = b[4]
-        sz = b[5]
-        if not in_:
+        if not b[3]:
             continue
-        if sz <= 0 or sz > MAX_BLOCK_SIZE:
+        if b[4] <= 0 or b[4] > MAX_BLOCK_SIZE:
             continue
-        scan_targets.append((s, e, nm, sz))
+        scan_targets.append(b)
 
     log("[+] scan targets: %d" % len(scan_targets))
 
     all_entries = []
-    diag_list = []
 
     for t in scan_targets:
         start = t[0]
         end = t[1]
-        nm = t[2]
-        size = t[3]
-        log("[*] scan %s (%d bytes)" % (nm, size))
+        size = t[4]
+        log("[*] scan @ %s size=%d" % (fmt(start), size))
 
         try:
             jbuf = zeros(size, 'b')
@@ -500,59 +528,42 @@ def main():
             log("  [skip] %s" % ex)
             continue
 
-        candidates = 0
-        accepted = 0
+        # Pass 1: identify all positions where parse_entry succeeds
+        valid_positions = []
         pos = 0
-        seen_fn = set()
+        log("  pass1: scanning for valid entries...")
         while pos + DISPATCH_SIZE <= size:
-            fn_raw = read_u64_at(jbuf, pos)
-            fn = clean_ptr(fn_raw)
-            if fn is None:
-                pos = pos + 8
-                continue
-            candidates = candidates + 1
-            si = read_u32_at(jbuf, pos + 8)
-            sti = read_u32_at(jbuf, pos + 12)
-            so = read_u32_at(jbuf, pos + 16)
-            sto = read_u32_at(jbuf, pos + 20)
-            counts = [si, sti, so, sto]
-            small = 0
-            tiny = 0
-            for c in counts:
-                if c < 0x100000:
-                    small = small + 1
-                if c < 0x1000:
-                    tiny = tiny + 1
-            if small < 3 or tiny < 2:
-                pos = pos + 8
-                continue
-            key = (fn, si, sti, so, sto)
-            if key in seen_fn:
-                pos = pos + 8
-                continue
-            seen_fn.add(key)
-            struct_addr = start + pos
-            all_entries.append((struct_addr, fn, si, sti, so, sto, nm))
-            accepted = accepted + 1
-            pos = pos + DISPATCH_SIZE
+            e = parse_entry(jbuf, pos)
+            if e is not None:
+                valid_positions.append((pos, e))
+            pos = pos + 8
+        log("  pass1: %d valid entry positions" % len(valid_positions))
 
-        diag_list.append({"name": nm, "start": start, "size": size,
-                          "candidates": candidates, "accepted": accepted})
-        log("  candidates=%d accepted=%d" % (candidates, accepted))
+        # Pass 2: keep only entries that have an adjacent valid entry
+        # (real tables have multiple entries in a row at +24 offsets)
+        vp_set = set()
+        for pair in valid_positions:
+            vp_set.add(pair[0])
 
-        # Free memory
+        kept = []
+        for pair in valid_positions:
+            p = pair[0]
+            left = p - DISPATCH_SIZE
+            right = p + DISPATCH_SIZE
+            if (left in vp_set) or (right in vp_set):
+                kept.append(pair)
+        log("  pass2: %d entries with adjacent valid entry" % len(kept))
+
+        for pair in kept:
+            p = pair[0]
+            e = pair[1]
+            struct_addr = start + p
+            all_entries.append((struct_addr, e[0], e[1], e[2], e[3], e[4], t[2]))
+
         try:
             del jbuf
         except Exception:
             pass
-
-    w(SEP)
-    w("### SCAN DIAGNOSTICS")
-    w(SEP)
-    for d in diag_list:
-        w("  %s @ %s size=%d candidates=%d accepted=%d" % (
-            d["name"], fmt(d["start"]), d["size"], d["candidates"], d["accepted"]))
-    w("")
 
     by_fn = {}
     for e in all_entries:
@@ -621,9 +632,8 @@ def main():
     w(SEP)
     w("SUMMARY")
     w(SEP)
-    w("total blocks: %d" % len(all_blocks))
     w("scan targets: %d" % len(scan_targets))
-    w("dispatch entries: %d" % len(all_entries))
+    w("total entries: %d" % len(all_entries))
     w("unique fnptr: %d" % len(by_fn))
     w("analyzed: %d" % analyzed_fn)
     w("total findings: %d" % len(all_findings))
