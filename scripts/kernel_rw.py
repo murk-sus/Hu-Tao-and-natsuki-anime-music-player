@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # @runtime Jython
-# kernel_rw.py v72 - necp_session_action remaining cases
+# kernel_rw.py v73 - match_policy + raw_lookup callers
 
 import os
 import sys
@@ -26,20 +26,13 @@ WS = os.environ.get("GITHUB_WORKSPACE", "/tmp")
 OUT = os.path.join(WS, "result.txt")
 SEP = "=" * 72
 
-DUMP_TARGETS = [
-    (int("FFFFFFF00A4C0310", 16), "sa_case_10", "session_action case 0x10"),
-    (int("FFFFFFF00A4C0410", 16), "sa_case_11", "session_action case 0x11"),
-    (int("FFFFFFF00A4C058C", 16), "sa_case_12", "session_action case 0x12 (no pcVar8)"),
-    (int("FFFFFFF00A4BFD9C", 16), "sa_case_0d", "session_action case 0x0d"),
-    (int("FFFFFFF00A4BFE9C", 16), "sa_case_0e", "session_action case 0x0e"),
-    (int("FFFFFFF00A4BE248", 16), "sa_case_07", "session_action case 0x07"),
-    (int("FFFFFFF00A4BE188", 16), "sa_case_06", "session_action case 0x06"),
-    (int("FFFFFFF00A4BDDD4", 16), "sa_case_03", "session_action case 0x03"),
-    (int("FFFFFFF00A4BD8C4", 16), "sa_default", "session_action default"),
-]
+MATCH_POLICY = int("FFFFFFF00A4F75D8", 16)
+RAW_LOOKUP   = int("FFFFFFF00A4DB8D4", 16)
+SESS_LOOKUP  = int("FFFFFFF00A4ED864", 16)
 
 MAX_DECOMPILE_SEC = 90
 BUDGET_SEC = 600
+MAX_CALLERS = 40
 
 DEC = None
 MONITOR = ConsoleTaskMonitor()
@@ -185,7 +178,7 @@ def blocks():
     return out
 
 
-def bl_callers(target, max_hits=20, budget=30):
+def bl_callers(target, max_hits=MAX_CALLERS, budget=40):
     hits = []
     mem = currentProgram.getMemory()
     ts = time.time()
@@ -233,6 +226,42 @@ def bl_callers(target, max_hits=20, budget=30):
     return hits
 
 
+def collect_callees_with_target(f, target):
+    """Return list of (pc, kind) where f calls target directly."""
+    hits = []
+    try:
+        listing = currentProgram.getListing()
+        body = f.getBody()
+        it = body.getAddresses(True)
+    except Exception:
+        return hits
+    cnt = 0
+    while it.hasNext() and cnt < 40000:
+        a = it.next()
+        cnt += 1
+        try:
+            insn = listing.getInstructionAt(a)
+            if insn is None:
+                continue
+            pcode = insn.getPcode()
+            if pcode is None:
+                continue
+            for p in pcode:
+                if p.getOpcode() != 1:
+                    continue
+                inp0 = p.getInput(0)
+                tgt = None
+                if inp0.isAddress():
+                    tgt = _u(inp0.getAddress().getOffset())
+                elif inp0.isConstant():
+                    tgt = _u(inp0.getOffset())
+                if tgt == target:
+                    hits.append(_u(a.getOffset()))
+        except Exception:
+            pass
+    return hits
+
+
 def dump_one(addr, name, note):
     w("")
     w(SEP)
@@ -257,7 +286,7 @@ def dump_one(addr, name, note):
     w("")
     w("-- BL callers --")
     try:
-        hits = bl_callers(addr, 20, 30)
+        hits = bl_callers(addr, MAX_CALLERS, 40)
     except Exception:
         hits = []
     if not hits:
@@ -284,24 +313,75 @@ def main():
     global START_TS
     START_TS = time.time()
 
-    log("=== kernel_rw.py v72 ===")
+    log("=== kernel_rw.py v73 ===")
 
-    w("natsuk1 v72 necp_session_action remaining cases")
-    w("targets=%d" % len(DUMP_TARGETS))
+    w("natsuk1 v73 match_policy + raw_lookup callers")
     w("")
 
-    for entry in DUMP_TARGETS:
-        addr = entry[0]
-        name = entry[1]
-        note = entry[2]
-        log("[*] %s @ %s" % (name, fmt(addr)))
-        if time.time() - START_TS > BUDGET_SEC:
-            w("BUDGET EXCEEDED at %s" % name)
-            break
+    # 1. Full dump of necp_match_policy
+    dump_one(MATCH_POLICY, "necp_match_policy", "sysent[462] entry - d=0 copyin from v70")
+
+    # 2. Full dump of raw_lookup itself (for reference)
+    dump_one(RAW_LOOKUP, "raw_lookup", "lookup without ref")
+
+    # 3. All direct callers of raw_lookup
+    if time.time() - START_TS < BUDGET_SEC:
+        log("[*] scanning direct callers of raw_lookup")
         try:
-            dump_one(addr, name, note)
-        except Exception as e:
-            w("  exception: %s" % e)
+            hits = bl_callers(RAW_LOOKUP, MAX_CALLERS, 40)
+        except Exception:
+            hits = []
+
+        w("")
+        w(SEP)
+        w("### RAW_LOOKUP CALLERS (%d)" % len(hits))
+        w(SEP)
+
+        seen_fns = set()
+        for pair in hits:
+            pc = pair[0]
+            kind = pair[1]
+            cf = getFunctionContaining(sa(pc))
+            if cf is None:
+                continue
+            cfe = _u(cf.getEntryPoint().getOffset())
+            if cfe in seen_fns:
+                continue
+            seen_fns.add(cfe)
+            w("  caller: %s @ %s  (call pc=%s %s)" % (str(cf.getName()), fmt(cfe), fmt(pc), kind))
+
+        w("")
+        w("### RAW_LOOKUP CALLER BODIES")
+
+        for cfe in sorted(seen_fns):
+            if time.time() - START_TS > BUDGET_SEC:
+                w("BUDGET EXCEEDED")
+                break
+            cf = get_func(cfe)
+            if cf is None:
+                continue
+            nm = "?"
+            try:
+                nm = str(cf.getName())
+            except Exception:
+                pass
+            log("[*] caller body: %s @ %s" % (nm, fmt(cfe)))
+            w("")
+            w(SEP)
+            w("### caller_%s @ %s" % (nm[:40], fmt(cfe)))
+            w(SEP)
+            try:
+                sz = int(cf.getBody().getNumAddresses())
+                w("  size=0x%X" % sz)
+            except Exception:
+                pass
+            # find where raw_lookup is called and print context
+            call_pcs = collect_callees_with_target(cf, RAW_LOOKUP)
+            if call_pcs:
+                w("  raw_lookup called at: %s" % ", ".join([fmt(p) for p in call_pcs]))
+            w("  decompile:")
+            for l in decompile_text(cf, MAX_DECOMPILE_SEC):
+                w("  " + l)
 
     try:
         fh = open(OUT, "w")
