@@ -6,41 +6,41 @@ kernel end  0xFFFFFFF027004000
 ========================================================================
 ### DIAG: SYMBOL TABLE
 ========================================================================
-  total symbols: 96916
+  total symbols: 99232
   with 'IOUser': 0
   with 'vtable': 0
   with '__ZTV': 0
   sample (first 30):
-    Reset
-    caseD_0
-    caseD_1
-    caseD_2
-    caseD_3
-    caseD_4
-    caseD_5
-    caseD_8
-    caseD_9
-    caseD_a
-    caseD_b
-    caseD_c
-    caseD_d
-    caseD_10
-    caseD_11
-    caseD_12
-    caseD_13
-    caseD_14
-    caseD_15
-    caseD_18
-    caseD_19
-    caseD_1a
-    caseD_1b
-    caseD_1c
-    caseD_1d
-    caseD_20
-    caseD_21
-    caseD_22
-    caseD_23
-    caseD_24
+    EXT_FUN_8011000003a3cd30
+    EXT_FUN_80110000039ec528
+    EXT_FUN_8011000003a3cee0
+    EXT_FUN_80110000031e4e40
+    EXT_FUN_8011000003364ec0
+    EXT_FUN_8011000003365a3c
+    EXT_FUN_801100000386b934
+    EXT_FUN_801100000323bd68
+    EXT_FUN_801100000336f5dc
+    EXT_FUN_8011000003716528
+    EXT_FUN_80110000031fcf44
+    EXT_FUN_80110000036b6e5c
+    EXT_FUN_80110000031fd464
+    EXT_FUN_8011000003201dc8
+    EXT_FUN_8011000003201c70
+    EXT_FUN_8011000003201c04
+    EXT_FUN_8011000003201e1c
+    EXT_FUN_801100000320297c
+    EXT_FUN_8011000003202b38
+    EXT_FUN_8011000003369ec0
+    EXT_FUN_8011000003369e20
+    EXT_FUN_8011000003369fdc
+    EXT_FUN_801100000336a064
+    EXT_FUN_801100000331f648
+    EXT_FUN_801100000331fea8
+    EXT_FUN_801100000331f6f8
+    EXT_FUN_801100000331f9b0
+    EXT_FUN_801100000331f708
+    EXT_FUN_8011000003739fb8
+    EXT_FUN_8011000003717d90
   IOUser symbols (up to 20):
   vtable symbols (up to 20):
   __ZTV symbols (up to 20):
@@ -48,12 +48,334 @@ kernel end  0xFFFFFFF027004000
 ========================================================================
 ### DIAG: STRINGS
 ========================================================================
-  total strings: 0
-  filtered hits: 0
+  total strings: 59618
+  filtered hits: 139
+    0xFFFFFFF007125954  IOUserClientDefaultLocking
+    0xFFFFFFF00712596F  IOUserClientDefaultLockingSetProperties
+    0xFFFFFFF007125997  IOUserClientDefaultLockingSingleThreadExternalMethod
+    0xFFFFFFF0071259CC  IOUserClientEntitlements
+    0xFFFFFFF0071303D8  ASIOKitUserClient
+    0xFFFFFFF007130440  ASIOKit
+    0xFFFFFFF007145E47  IOUserClient::initWithTask(inOwningTask, inSecurityToken, inType, inProperties)
+    0xFFFFFFF00714F159  static IOReturn AppleAOPAudioPCMAssetManagerUserClient::UpdatePCMAudioAsset(OSOb
+    0xFFFFFFF0071513C0  IOUserClient::initWithTask(inOwningTask, inSecurityToken, inType, inProperties)
+    0xFFFFFFF007161BC8  IOUserClientClass
+    0xFFFFFFF0071629BD  externalMethod
+    0xFFFFFFF00716613E  Panicing from IOKit spmi command
+
+    0xFFFFFFF00716769C  IOUserClientDefaultLocking
+    0xFFFFFFF0071676B7  IOUserClientDefaultLockingSetProperties
+    0xFFFFFFF0071676DF  IOUserClientDefaultLockingSingleThreadExternalMethod
+    0xFFFFFFF007167714  IOUserClientEntitlements
+    0xFFFFFFF00716E9F1  watchdog userspace and IOKit monitoring defanged on single user mode
+
+    0xFFFFFFF00716EA37  watchdog configured (source: %s) to monitor userspace, SoC watchdog %sabled, pan
+    0xFFFFFFF00716EB3B  IOKitQuiesceWatchdogEnabled
+    0xFFFFFFF00716EB57  IOKitQuiesceWatchdogSupported
+    0xFFFFFFF00718F497  com_apple_driver_FairPlayIOKit
+    0xFFFFFFF0071945E5  externalMethod
+    0xFFFFFFF0071945F4  IOUserClientDefaultLocking
+    0xFFFFFFF00719460F  IOUserClientDefaultLockingSetProperties
+    0xFFFFFFF007194637  IOUserClientDefaultLockingSingleThreadExternalMethod
+    0xFFFFFFF00719466C  IOUserClientEntitlements
+    0xFFFFFFF0072F5C53  com_apple_driver_FairPlayIOKit
+    0xFFFFFFF00731ADF6  externalMethod
+    0xFFFFFFF00731B95E  IOUserClientDefaultLocking
+    0xFFFFFFF00731B979  IOUserClientDefaultLockingSetProperties
+    0xFFFFFFF00731B9A1  IOUserClientDefaultLockingSingleThreadExternalMethod
+    0xFFFFFFF00731B9D6  IOUserClientEntitlements
+    0xFFFFFFF00737BF75  IOUserClientClass
+    0xFFFFFFF00737DD8A  externalMethod
+    0xFFFFFFF00739AF7C  IOUserClientClass
+    0xFFFFFFF00739C9BE  static IOReturn AppleBasebandPCIUserClient::_mapSharedMemory(AppleBasebandPCIUse
+    0xFFFFFFF00739CA6A  static IOReturn AppleBasebandPCIUserClient::_unmapSharedMemory(AppleBasebandPCIU
+    0xFFFFFFF0073A74B2  IOUserClientClass
+    0xFFFFFFF0073B75A8  IOUserClientClass
+    0xFFFFFFF0073C95AD  externalMethod
+    0xFFFFFFF0073CA15A  static IOReturn DIDeviceCreatorUserClient::CreateDevice(OSObject *, void *, IOEx
+    0xFFFFFFF0073CA1C3  static IOReturn DIDeviceCreatorUserClient::QuarantineDevice(OSObject *, void *, 
+    0xFFFFFFF0073CA350  virtual IOReturn DIDeviceCreatorUserClient::externalMethod(uint32_t, IOExternalM
+    0xFFFFFFF0073CB9D3  DIDeviceIOUserClient
+    0xFFFFFFF0073CC220  IOReturn AppleDiskImageDevice::ValidateAndSetupCommonParams(DIDeviceIOUserClient
+    0xFFFFFFF0073CC292  IOReturn AppleDiskImageDevice::InitForIO(DIDeviceIOUserClient *, DIDeviceIOParam
+    0xFFFFFFF0073CC39A  IOReturn AppleDiskImageDevice::ReconnectForIO(DIDeviceIOUserClient *, DIDeviceIO
+    0xFFFFFFF0073CC54F  bool AppleDiskImageDevice::setIOProvider(DIDeviceIOUserClient *)
+    0xFFFFFFF0073CC657  bool AppleDiskImageDevice::onIOClientClose(DIDeviceIOUserClient *)
+    0xFFFFFFF0073CD20A  virtual bool DIDeviceIOUserClient::initWithTask(task_t, void *, UInt32)
+    0xFFFFFFF0073CD26D  virtual bool DIDeviceIOUserClient::start(IOService *)
+    0xFFFFFFF0073CD2A3  virtual void DIDeviceIOUserClient::stop(IOService *)
+    0xFFFFFFF0073CD2D8  uint64_t DIDeviceIOUserClient::ioMem(IOMemoryDescriptor *, size_t, uint64_t, siz
+    0xFFFFFFF0073CD33D  virtual void DIDeviceIOUserClient::free()
+    0xFFFFFFF0073CD37C  /Library/Caches/com.apple.xbs/CC62DFD6-90CA-4B08-B410-ED4147A2AD47/TemporaryDire
+    0xFFFFFFF0073CD429  virtual IOReturn DIDeviceIOUserClient::clientClose()
+    0xFFFFFFF0073CD45E  static IOReturn DIDeviceIOUserClient::Connect(OSObject *, void *, IOExternalMeth
+    0xFFFFFFF0073CD4DC  mach_port_t DIDeviceIOUserClient::findNotificationPort(unsigned int)
+    0xFFFFFFF0073CD526  static IOReturn DIDeviceIOUserClient::AllocPortsArray(OSObject *, void *, IOExte
+    0xFFFFFFF0073CD5C2  static IOReturn DIDeviceIOUserClient::GetCacheStats(OSObject *, void *, IOExtern
+    ... (79 more)
 
 ========================================================================
 ### XREFS TO STRINGS
 ========================================================================
+
+  string @ 0xFFFFFFF007125954 = IOUserClientDefaultLocking
+    xref from 0xFFFFFFF008214D44
+
+  string @ 0xFFFFFFF00712596F = IOUserClientDefaultLockingSetProperties
+    xref from 0xFFFFFFF008214D70
+
+  string @ 0xFFFFFFF007125997 = IOUserClientDefaultLockingSingleThreadExternalMethod
+    xref from 0xFFFFFFF008214D9C
+
+  string @ 0xFFFFFFF0071259CC = IOUserClientEntitlements
+    xref from 0xFFFFFFF008214DC4
+
+  string @ 0xFFFFFFF0071303D8 = ASIOKitUserClient
+    xref from 0xFFFFFFF00821AA94
+    xref from 0xFFFFFFF00821ABD8
+    xref from 0xFFFFFFF00821BD70
+
+  string @ 0xFFFFFFF007130440 = ASIOKit
+    xref from 0xFFFFFFF00821BDCC
+    xref from 0xFFFFFFF00821BF10
+    xref from 0xFFFFFFF00821E07C
+
+  string @ 0xFFFFFFF007145E47 = IOUserClient::initWithTask(inOwningTask, inSecurityToken, inType, inProperties)
+    xref from 0xFFFFFFF008288468
+
+  string @ 0xFFFFFFF00714F159 = static IOReturn AppleAOPAudioPCMAssetManagerUserClient::UpdatePCMAudioAsset(OSOb
+    xref from 0xFFFFFFF0082A9E54
+    xref from 0xFFFFFFF0082A9EA0
+    xref from 0xFFFFFFF0082A9E80
+
+  string @ 0xFFFFFFF0071513C0 = IOUserClient::initWithTask(inOwningTask, inSecurityToken, inType, inProperties)
+    xref from 0xFFFFFFF0082B3034
+    xref from 0xFFFFFFF0082B3048
+
+  string @ 0xFFFFFFF007161BC8 = IOUserClientClass
+    xref from 0xFFFFFFF0082E97D4
+    xref from 0xFFFFFFF00830EFF0
+    xref from 0xFFFFFFF008306214
+    xref from 0xFFFFFFF0083044B0
+    xref from 0xFFFFFFF0083361FC
+    xref from 0xFFFFFFF0082F25F4
+    xref from 0xFFFFFFF008301BDC
+    xref from 0xFFFFFFF008327DF4
+
+  string @ 0xFFFFFFF0071629BD = externalMethod
+    xref from 0xFFFFFFF0082EEEB0
+    xref from 0xFFFFFFF0082EF380
+    xref from 0xFFFFFFF0082EF158
+    xref from 0xFFFFFFF0082EE8B4
+    xref from 0xFFFFFFF0082F2D6C
+    xref from 0xFFFFFFF0082F2F44
+    xref from 0xFFFFFFF0082F2E68
+    xref from 0xFFFFFFF0082F2F7C
+    xref from 0xFFFFFFF00830F984
+
+  string @ 0xFFFFFFF00716613E = Panicing from IOKit spmi command
+
+    xref from 0xFFFFFFF008305370
+
+  string @ 0xFFFFFFF00716769C = IOUserClientDefaultLocking
+    xref from 0xFFFFFFF00830F7F0
+    xref from 0xFFFFFFF00832A564
+
+  string @ 0xFFFFFFF0071676B7 = IOUserClientDefaultLockingSetProperties
+    xref from 0xFFFFFFF00830F81C
+    xref from 0xFFFFFFF00832A590
+
+  string @ 0xFFFFFFF0071676DF = IOUserClientDefaultLockingSingleThreadExternalMethod
+    xref from 0xFFFFFFF00830F848
+    xref from 0xFFFFFFF00832A5BC
+
+  string @ 0xFFFFFFF007167714 = IOUserClientEntitlements
+    xref from 0xFFFFFFF00830F870
+    xref from 0xFFFFFFF00832A5E4
+
+  string @ 0xFFFFFFF00716E9F1 = watchdog userspace and IOKit monitoring defanged on single user mode
+
+    xref from 0xFFFFFFF00833B29C
+
+  string @ 0xFFFFFFF00716EA37 = watchdog configured (source: %s) to monitor userspace, SoC watchdog %sabled, pan
+    xref from 0xFFFFFFF00833B484
+
+  string @ 0xFFFFFFF00716EB3B = IOKitQuiesceWatchdogEnabled
+    xref from 0xFFFFFFF00833B550
+
+  string @ 0xFFFFFFF00716EB57 = IOKitQuiesceWatchdogSupported
+    xref from 0xFFFFFFF00833B57C
+
+  string @ 0xFFFFFFF00718F497 = com_apple_driver_FairPlayIOKit
+    xref from 0xFFFFFFF008355DB4
+
+  string @ 0xFFFFFFF0071945E5 = externalMethod
+    xref from 0xFFFFFFF00838FC60
+    xref from 0xFFFFFFF00838FC8C
+
+  string @ 0xFFFFFFF0071945F4 = IOUserClientDefaultLocking
+    xref from 0xFFFFFFF00838FDF4
+
+  string @ 0xFFFFFFF00719460F = IOUserClientDefaultLockingSetProperties
+    xref from 0xFFFFFFF00838FE20
+
+  string @ 0xFFFFFFF007194637 = IOUserClientDefaultLockingSingleThreadExternalMethod
+    xref from 0xFFFFFFF00838FE4C
+
+  string @ 0xFFFFFFF00719466C = IOUserClientEntitlements
+    xref from 0xFFFFFFF00838FE74
+
+  string @ 0xFFFFFFF0072F5C53 = com_apple_driver_FairPlayIOKit
+    xref from 0xFFFFFFF008451F24
+
+  string @ 0xFFFFFFF00731ADF6 = externalMethod
+    xref from 0xFFFFFFF00855AF50
+    xref from 0xFFFFFFF00855B054
+    xref from 0xFFFFFFF00855AFB8
+    xref from 0xFFFFFFF00855AFF8
+
+  string @ 0xFFFFFFF00731B95E = IOUserClientDefaultLocking
+    xref from 0xFFFFFFF008563904
+
+  string @ 0xFFFFFFF00731B979 = IOUserClientDefaultLockingSetProperties
+    xref from 0xFFFFFFF008563930
+
+  string @ 0xFFFFFFF00731B9A1 = IOUserClientDefaultLockingSingleThreadExternalMethod
+    xref from 0xFFFFFFF008563968
+
+  string @ 0xFFFFFFF00731B9D6 = IOUserClientEntitlements
+    xref from 0xFFFFFFF008563994
+
+  string @ 0xFFFFFFF00737BF75 = IOUserClientClass
+    xref from 0xFFFFFFF0085795C8
+
+  string @ 0xFFFFFFF00737DD8A = externalMethod
+    xref from 0xFFFFFFF0085838F8
+
+  string @ 0xFFFFFFF00739AF7C = IOUserClientClass
+    xref from 0xFFFFFFF0085FBF38
+
+  string @ 0xFFFFFFF00739C9BE = static IOReturn AppleBasebandPCIUserClient::_mapSharedMemory(AppleBasebandPCIUse
+    xref from 0xFFFFFFF00861B6B4
+    xref from 0xFFFFFFF00861B684
+
+  string @ 0xFFFFFFF00739CA6A = static IOReturn AppleBasebandPCIUserClient::_unmapSharedMemory(AppleBasebandPCIU
+    xref from 0xFFFFFFF00861B808
+    xref from 0xFFFFFFF00861B7D8
+
+  string @ 0xFFFFFFF0073A74B2 = IOUserClientClass
+    xref from 0xFFFFFFF008642E68
+    xref from 0xFFFFFFF00864DDB8
+
+  string @ 0xFFFFFFF0073B75A8 = IOUserClientClass
+    xref from 0xFFFFFFF0086B36C8
+    xref from 0xFFFFFFF0086D6BA0
+
+  string @ 0xFFFFFFF0073C95AD = externalMethod
+    xref from 0xFFFFFFF00873A854
+
+  string @ 0xFFFFFFF0073CA15A = static IOReturn DIDeviceCreatorUserClient::CreateDevice(OSObject *, void *, IOEx
+    xref from 0xFFFFFFF00873BB74
+    xref from 0xFFFFFFF00873BBB4
+    xref from 0xFFFFFFF00873BC00
+    xref from 0xFFFFFFF00873BC7C
+    xref from 0xFFFFFFF00873BC3C
+
+  string @ 0xFFFFFFF0073CA1C3 = static IOReturn DIDeviceCreatorUserClient::QuarantineDevice(OSObject *, void *, 
+    xref from 0xFFFFFFF00873BDE0
+    xref from 0xFFFFFFF00873BE24
+    xref from 0xFFFFFFF00873C050
+    xref from 0xFFFFFFF00873C020
+    xref from 0xFFFFFFF00873BFE8
+    xref from 0xFFFFFFF00873BFB4
+    xref from 0xFFFFFFF00873BEC0
+    xref from 0xFFFFFFF00873BE60
+
+  string @ 0xFFFFFFF0073CA350 = virtual IOReturn DIDeviceCreatorUserClient::externalMethod(uint32_t, IOExternalM
+    xref from 0xFFFFFFF00873C818
+
+  string @ 0xFFFFFFF0073CB9D3 = DIDeviceIOUserClient
+    xref from 0xFFFFFFF00874A924
+    xref from 0xFFFFFFF00873E6D0
+    xref from 0xFFFFFFF00874CB7C
+
+  string @ 0xFFFFFFF0073CC220 = IOReturn AppleDiskImageDevice::ValidateAndSetupCommonParams(DIDeviceIOUserClient
+    xref from 0xFFFFFFF008743FBC
+    xref from 0xFFFFFFF008743F78
+
+  string @ 0xFFFFFFF0073CC292 = IOReturn AppleDiskImageDevice::InitForIO(DIDeviceIOUserClient *, DIDeviceIOParam
+    xref from 0xFFFFFFF0087443CC
+
+  string @ 0xFFFFFFF0073CC39A = IOReturn AppleDiskImageDevice::ReconnectForIO(DIDeviceIOUserClient *, DIDeviceIO
+    xref from 0xFFFFFFF008744CA8
+    xref from 0xFFFFFFF008744D3C
+    xref from 0xFFFFFFF008744C18
+
+  string @ 0xFFFFFFF0073CC54F = bool AppleDiskImageDevice::setIOProvider(DIDeviceIOUserClient *)
+    xref from 0xFFFFFFF008744050
+    xref from 0xFFFFFFF0087440C4
+    xref from 0xFFFFFFF00874410C
+    xref from 0xFFFFFFF008744178
+
+  string @ 0xFFFFFFF0073CC657 = bool AppleDiskImageDevice::onIOClientClose(DIDeviceIOUserClient *)
+    xref from 0xFFFFFFF008745C68
+    xref from 0xFFFFFFF008745D08
+    xref from 0xFFFFFFF008745E4C
+    xref from 0xFFFFFFF008745E8C
+
+  string @ 0xFFFFFFF0073CD20A = virtual bool DIDeviceIOUserClient::initWithTask(task_t, void *, UInt32)
+    xref from 0xFFFFFFF00874BAD8
+    xref from 0xFFFFFFF00874BB6C
+    xref from 0xFFFFFFF00874BBD8
+    xref from 0xFFFFFFF00874BBA4
+
+  string @ 0xFFFFFFF0073CD26D = virtual bool DIDeviceIOUserClient::start(IOService *)
+    xref from 0xFFFFFFF00874BCCC
+    xref from 0xFFFFFFF00874BD64
+
+  string @ 0xFFFFFFF0073CD2A3 = virtual void DIDeviceIOUserClient::stop(IOService *)
+    xref from 0xFFFFFFF00874BE3C
+
+  string @ 0xFFFFFFF0073CD2D8 = uint64_t DIDeviceIOUserClient::ioMem(IOMemoryDescriptor *, size_t, uint64_t, siz
+    xref from 0xFFFFFFF00874BF70
+    xref from 0xFFFFFFF00874C0C4
+    xref from 0xFFFFFFF00874BFB0
+
+  string @ 0xFFFFFFF0073CD33D = virtual void DIDeviceIOUserClient::free()
+    xref from 0xFFFFFFF00874C2BC
+
+  string @ 0xFFFFFFF0073CD37C = /Library/Caches/com.apple.xbs/CC62DFD6-90CA-4B08-B410-ED4147A2AD47/TemporaryDire
+    xref from 0xFFFFFFF00874D280
+    xref from 0xFFFFFFF00874C52C
+    xref from 0xFFFFFFF00874C690
+    xref from 0xFFFFFFF00874C7E4
+    xref from 0xFFFFFFF00874C9A8
+    xref from 0xFFFFFFF00874B284
+    xref from 0xFFFFFFF00874CB00
+    xref from 0xFFFFFFF00874CAC0
+
+  string @ 0xFFFFFFF0073CD429 = virtual IOReturn DIDeviceIOUserClient::clientClose()
+    xref from 0xFFFFFFF00874C574
+
+  string @ 0xFFFFFFF0073CD45E = static IOReturn DIDeviceIOUserClient::Connect(OSObject *, void *, IOExternalMeth
+    xref from 0xFFFFFFF00874AD64
+    xref from 0xFFFFFFF00874ADEC
+    xref from 0xFFFFFFF00874AF2C
+    xref from 0xFFFFFFF00874AEC0
+    xref from 0xFFFFFFF00874AF9C
+    xref from 0xFFFFFFF00874AE50
+    xref from 0xFFFFFFF00874AE24
+
+  string @ 0xFFFFFFF0073CD4DC = mach_port_t DIDeviceIOUserClient::findNotificationPort(unsigned int)
+    xref from 0xFFFFFFF00874D2A0
+
+  string @ 0xFFFFFFF0073CD526 = static IOReturn DIDeviceIOUserClient::AllocPortsArray(OSObject *, void *, IOExte
+    xref from 0xFFFFFFF00874B0F8
+    xref from 0xFFFFFFF00874B1A4
+    xref from 0xFFFFFFF00874B1E8
+
+  string @ 0xFFFFFFF0073CD5C2 = static IOReturn DIDeviceIOUserClient::GetCacheStats(OSObject *, void *, IOExtern
+    xref from 0xFFFFFFF00874B2E0
 
 ========================================================================
 ### VTABLE CANDIDATES FROM XREFS
@@ -71,5 +393,5 @@ kernel end  0xFFFFFFF027004000
 ========================================================================
 ### SUMMARY
 ========================================================================
-elapsed 0.9 sec
+elapsed 1.0 sec
 methods dumped: 0
