@@ -1,25 +1,36 @@
-natsuk1 v61 IOKit externalMethod scanner
+natsuk1 v62 IOKit dispatch scanner (loader-agnostic)
 kernel_base=0xFFFFFFF007004000 ktext=[0xFFFFFFF007000000, 0xFFFFFFF010000000)
-dispatch_size=24 max_sources=600 taint_sec=1500
+dispatch_size=24 max_block=134217728
 
 ========================================================================
-### SCANNED SECTIONS
+### ALL BLOCKS
+========================================================================
+start                end                  size         exec  init  name
+0xFFFFFFF007004000   0xFFFFFFF00B003FFF   67108864     True  True  ram
+
+========================================================================
+### SCAN TARGETS
 ========================================================================
 
 ========================================================================
-### DISPATCH ENTRIES (unique fnptr: 0, total entries: 0)
+### SCAN DIAGNOSTICS
 ========================================================================
-fnptr                scalarIn structIn   scalarOut structOut  section
+
+========================================================================
+### DISPATCH ENTRIES (unique fnptr: 0, total: 0)
+========================================================================
+fnptr                scalarIn   structIn   scalarOut  structOut  section
 
 
 ========================================================================
 SUMMARY
 ========================================================================
-scanned sections: 0
+total blocks: 1
+scan targets: 0
 dispatch entries: 0
-unique function pointers: 0
-analyzed functions: 0
+unique fnptr: 0
+analyzed: 0
 total findings: 0
 
 
-unique in_func per sink (top):
+unique in_func per sink:
