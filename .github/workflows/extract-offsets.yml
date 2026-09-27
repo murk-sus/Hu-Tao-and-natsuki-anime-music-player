@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - scripts/kernel_rw.py
+      - scripts/load_symbols.py
       - .github/workflows/extract_offsets.yml
   workflow_dispatch:
 
@@ -133,7 +134,9 @@ jobs:
         run: |
           set -euo pipefail
           test -f "$GITHUB_WORKSPACE/scripts/kernel_rw.py"
+          test -f "$GITHUB_WORKSPACE/scripts/load_symbols.py"
           python3 -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "$GITHUB_WORKSPACE/scripts/kernel_rw.py"
+          python3 -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "$GITHUB_WORKSPACE/scripts/load_symbols.py"
 
       - uses: actions/cache@v4
         id: cache-symbols
@@ -165,7 +168,7 @@ jobs:
         id: cache-project
         with:
           path: ghidra_project
-          key: ghidra-project-24A437-v4
+          key: ghidra-project-24A437-v5
 
       - name: Run Ghidra
         env:
@@ -176,16 +179,17 @@ jobs:
           set -euo pipefail
           echo "project-cache-hit=${{ steps.cache-project.outputs.cache-hit }}"
           test -f "$SYMBOLS_JSON"
-          rm -f result.txt
+          rm -f result.txt symbols_load.log
           JOBS=$(nproc)
           if [ "${{ steps.cache-project.outputs.cache-hit }}" = "true" ]; then
             echo "=== WARM ==="
             "$GHIDRA_ROOT/support/analyzeHeadless" \
               "$GITHUB_WORKSPACE/ghidra_project" KernelProject \
               -process "$KERNEL_NAME" -noanalysis \
+              -preScript load_symbols.py \
               -postScript kernel_rw.py \
               -scriptPath "$GITHUB_WORKSPACE/scripts" \
-              -max-cpu "$JOBS" 2>&1 | tee kernel.log | tail -40
+              -max-cpu "$JOBS" 2>&1 | tee kernel.log | tail -60
           else
             echo "=== COLD ==="
             rm -rf ghidra_project
@@ -196,10 +200,11 @@ jobs:
               -processor AARCH64:LE:64:AppleSilicon \
               -loader BinaryLoader \
               -loader-baseAddr 0xFFFFFFF007004000 \
+              -preScript load_symbols.py \
               -postScript kernel_rw.py \
               -scriptPath "$GITHUB_WORKSPACE/scripts" \
-              -analysisTimeoutPerFile 600 \
-              -max-cpu "$JOBS" 2>&1 | tee kernel.log | tail -40
+              -analysisTimeoutPerFile 900 \
+              -max-cpu "$JOBS" 2>&1 | tee kernel.log | tail -60
           fi
 
       - name: Validate outputs
@@ -207,14 +212,20 @@ jobs:
           set -euo pipefail
           test -s result.txt
           echo "result.txt: $(wc -l < result.txt) lines"
+          if [ -f symbols_load.log ]; then
+            echo "symbols_load.log:"
+            cat symbols_load.log
+          fi
 
       - name: Report tail
         if: always()
         run: |
           echo "=== kernel.log tail ==="
-          tail -60 kernel.log 2>/dev/null || true
+          tail -100 kernel.log 2>/dev/null || true
           echo "=== result.txt tail ==="
           tail -80 result.txt 2>/dev/null || echo missing
+          echo "=== symbols_load.log ==="
+          cat symbols_load.log 2>/dev/null || echo missing
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -224,6 +235,7 @@ jobs:
             result.txt
             kernel.log
             symbols.json
+            symbols_load.log
           retention-days: 30
 
       - name: Commit result
@@ -233,9 +245,10 @@ jobs:
           git config user.name github-actions[bot]
           git config user.email github-actions[bot]@users.noreply.github.com
           git add -f result.txt 2>/dev/null || true
+          git add -f symbols_load.log 2>/dev/null || true
           if git diff --cached --quiet; then
             echo no changes
             exit 0
           fi
-          git commit -m "extract: kernel_rw [skip ci]"
+          git commit -m "extract: kernel_rw + symbols [skip ci]"
           git push
