@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # @runtime Jython
-# kernel_rw.py v51 - all 558 BSD syscalls taint scan
+# kernel_rw.py v52 - dump the 5 remaining targets
 
 import os
 import sys
@@ -27,18 +27,19 @@ WS = os.environ.get("GITHUB_WORKSPACE", "/tmp")
 OUT = os.path.join(WS, "result.txt")
 SEP = "=" * 72
 
-SYSENT_BASE = int("FFFFFFF007C192A0", 16)
-SYSENT_STRIDE = 24
-SYSENT_COUNT = 558
-KERNEL_BASE = int("FFFFFFF007004000", 16)
+A_78A39C  = int("FFFFFFF00A78A39C", 16)
+A_8BBF38  = int("FFFFFFF00A8BBF38", 16)
+A_8BBD20  = int("FFFFFFF00A8BBD20", 16)
+A_755BC4  = int("FFFFFFF00A755BC4", 16)
+A_398DBC  = int("FFFFFFF00A398DBC", 16)
 
-TAINT_SEC = 1800
-DUMP_SEC = 600
-MAX_ANALYZED = 20000
-MAX_WORKLIST = 40000
-MAX_DEPTH = 8
-MAX_DECOMPILE_SEC = 40
-MAX_SOURCES = 300
+DUMP_TARGETS = [
+    (A_78A39C,  "fun_78a39c",  "called from sysent_100/106 when >= 0x81"),
+    (A_8BBF38,  "fun_8bbf38",  "IOKit target from sysent_69"),
+    (A_8BBD20,  "fun_8bbd20",  "IOKit target from sysent_70"),
+    (A_755BC4,  "sysent_501",  "sy_call[501]"),
+    (A_398DBC,  "sysent_502",  "sy_call[502]"),
+]
 
 A_KALLOC   = int("FFFFFFF00A200988", 16)
 A_KALLOC_Z = int("FFFFFFF00A20141C", 16)
@@ -61,7 +62,6 @@ for sk in SINK_LIST:
 
 DEC = None
 MONITOR = ConsoleTaskMonitor()
-START_TS = time.time()
 L = []
 
 
@@ -137,7 +137,7 @@ def ensure_function(addr):
                 pass
         try:
             fm = currentProgram.getFunctionManager()
-            name = "sys_%X" % addr
+            name = "nk_%X" % addr
             f = fm.createFunction(ga, name)
             if f is not None:
                 return f
@@ -158,7 +158,7 @@ def get_dec():
     return DEC
 
 
-def decompile_hf(f, sec=MAX_DECOMPILE_SEC):
+def decompile_hf(f, sec=60):
     try:
         r = get_dec().decompileFunction(f, sec, MONITOR)
         if r is None:
@@ -170,7 +170,7 @@ def decompile_hf(f, sec=MAX_DECOMPILE_SEC):
         return None
 
 
-def decompile_text(f, sec=60):
+def decompile_text(f, sec=90):
     try:
         r = get_dec().decompileFunction(f, sec, MONITOR)
         if r is None:
@@ -186,102 +186,6 @@ def decompile_text(f, sec=60):
         return ["(exception %s)" % e]
 
 
-def read_u8(addr):
-    try:
-        ga = sa(addr)
-        if ga is None:
-            return None
-        b = getBytes(ga, 1)
-        if b is None:
-            return None
-        return b[0] & 0xFF
-    except Exception:
-        return None
-
-
-def read_u16(addr):
-    try:
-        ga = sa(addr)
-        if ga is None:
-            return None
-        b = getBytes(ga, 2)
-        if b is None:
-            return None
-        return (b[0] & 0xFF) | ((b[1] & 0xFF) << 8)
-    except Exception:
-        return None
-
-
-def read_u32(addr):
-    try:
-        ga = sa(addr)
-        if ga is None:
-            return None
-        b = getBytes(ga, 4)
-        if b is None:
-            return None
-        return (b[0] & 0xFF) | ((b[1] & 0xFF) << 8) | ((b[2] & 0xFF) << 16) | ((b[3] & 0xFF) << 24)
-    except Exception:
-        return None
-
-
-def read_u64(addr):
-    try:
-        ga = sa(addr)
-        if ga is None:
-            return None
-        b = getBytes(ga, 8)
-        if b is None:
-            return None
-        r = 0
-        for i in range(8):
-            r = r | ((b[i] & 0xFF) << (i * 8))
-        return r
-    except Exception:
-        return None
-
-
-def unpack_sy_call(raw):
-    """Unpack ptrauth-signed sy_call. low32 = offset from KERNEL_BASE."""
-    if raw is None or raw == 0:
-        return None
-    low = raw & 0xFFFFFFFF
-    if low < 0x1000:
-        return None
-    if low > 0x4000000:
-        return None
-    return KERNEL_BASE + low
-
-
-def parse_sysent():
-    """Return list of (idx, sy_call_addr, n_arg) unique by sy_call."""
-    seen = set()
-    out = []
-    diag = {"total": 0, "unpacked": 0, "zero": 0, "out_of_range": 0, "dup": 0}
-    for i in range(SYSENT_COUNT):
-        base = SYSENT_BASE + i * SYSENT_STRIDE
-        raw = read_u64(base)
-        diag["total"] += 1
-        if raw is None or raw == 0:
-            diag["zero"] += 1
-            continue
-        addr = unpack_sy_call(raw)
-        if addr is None:
-            diag["out_of_range"] += 1
-            continue
-        diag["unpacked"] += 1
-        if addr in seen:
-            diag["dup"] += 1
-            continue
-        seen.add(addr)
-        # n_arg at +0x14 (int16)
-        narg = read_u16(base + 0x14)
-        if narg is None:
-            narg = 0
-        out.append((i, addr, narg))
-    return out, diag
-
-
 def vn_key(vn):
     if vn is None:
         return None
@@ -289,9 +193,7 @@ def vn_key(vn):
         a = vn.getAddress()
         if a is None:
             return None
-        s = a.toString()
-        sz = vn.getSize()
-        return s + ":" + str(sz)
+        return a.toString() + ":" + str(vn.getSize())
     except Exception:
         return None
 
@@ -386,15 +288,12 @@ def propagate(hf, tainted_idx):
                     continue
                 hit = False
                 for i in range(op.getNumInputs()):
-                    try:
-                        ik = vn_key(op.getInput(i))
-                        if ik is None:
-                            continue
-                        if ik in tainted:
-                            hit = True
-                            break
-                    except Exception:
-                        pass
+                    ik = vn_key(op.getInput(i))
+                    if ik is None:
+                        continue
+                    if ik in tainted:
+                        hit = True
+                        break
                 if hit:
                     tainted.add(ok)
                     changed = True
@@ -415,106 +314,63 @@ def call_target(op):
     return None
 
 
-def analyze_source(start_addr, start_name):
-    worklist = [(start_addr, frozenset(range(8)), 0)]
-    findings = []
-    local = set()
-    while worklist:
-        if len(local) >= MAX_ANALYZED:
-            break
-        if time.time() - START_TS > TAINT_SEC:
-            break
-        entry = worklist.pop(0)
-        addr = entry[0]
-        tidx = entry[1]
-        depth = entry[2]
-        key = (addr, tidx)
-        if key in local:
-            continue
-        local.add(key)
-        f = get_func(addr)
-        if f is None:
-            f = ensure_function(addr)
-        if f is None:
-            continue
-        hf = decompile_hf(f)
-        if hf is None:
-            continue
-        tainted = propagate(hf, tidx)
-        if not tainted:
-            continue
-        fname = "?"
+def collect_sinks_local(f):
+    """Find all sink calls in one function with taint info; also list callees."""
+    sinks = []
+    callees = []
+    hf = decompile_hf(f, 60)
+    if hf is None:
+        return sinks, callees
+    tainted = propagate(hf, frozenset(range(8)))
+    try:
+        all_ops = list(hf.getPcodeOps())
+    except Exception:
+        return sinks, callees
+    seen_calls = {}
+    for op in all_ops:
+        is_call = False
         try:
-            fname = str(f.getName())
+            is_call = op.getOpcode() == PcodeOp.CALL
         except Exception:
-            fname = "?"
-        try:
-            all_ops = list(hf.getPcodeOps())
-        except Exception:
-            continue
-        for op in all_ops:
             is_call = False
+        if not is_call:
+            continue
+        target = call_target(op)
+        if target is None:
+            continue
+        v = SINK_MAP.get(target)
+        if v is not None:
+            sname = v[0]
+            sidx = v[1]
+            taint_hit = False
             try:
-                is_call = op.getOpcode() == PcodeOp.CALL
-            except Exception:
-                is_call = False
-            if not is_call:
-                continue
-            target = call_target(op)
-            if target is None:
-                continue
-            v = SINK_MAP.get(target)
-            if v is not None:
-                sname = v[0]
-                sidx = v[1]
-                try:
-                    if sidx < op.getNumInputs():
-                        sk = vn_key(op.getInput(sidx))
-                        if sk is not None:
-                            if sk in tainted:
-                                pc = 0
-                                try:
-                                    pc = _u(op.getSeqnum().getTarget().getOffset())
-                                except Exception:
-                                    pc = 0
-                                findings.append({
-                                    "sink": sname,
-                                    "pc": fmt(pc),
-                                    "in_func": fname,
-                                    "in_func_addr": fmt(addr),
-                                    "depth": depth,
-                                    "via": start_name,
-                                })
-                except Exception:
-                    pass
-                continue
-            nt = set()
-            try:
-                num = op.getNumInputs() - 1
-                for i in range(num):
-                    ak = vn_key(op.getInput(1 + i))
-                    if ak is None:
-                        continue
-                    if ak in tainted:
-                        nt.add(i)
+                if sidx < op.getNumInputs():
+                    sk = vn_key(op.getInput(sidx))
+                    if sk is not None and sk in tainted:
+                        taint_hit = True
             except Exception:
                 pass
-            if not nt:
-                continue
-            if depth >= MAX_DEPTH:
-                continue
-            if get_func(target) is None:
-                continue
-            worklist.append((target, frozenset(nt), depth + 1))
-            if len(worklist) > MAX_WORKLIST:
-                break
-    return findings
-
-
-def sign26(x):
-    if x & 0x02000000:
-        return x - 0x04000000
-    return x
+            pc = 0
+            try:
+                pc = _u(op.getSeqnum().getTarget().getOffset())
+            except Exception:
+                pc = 0
+            sinks.append((sname, fmt(pc), taint_hit))
+        else:
+            # record callee
+            if target not in seen_calls:
+                seen_calls[target] = 0
+            seen_calls[target] = seen_calls[target] + 1
+    for target, cnt in seen_calls.items():
+        cf = getFunctionContaining(sa(target))
+        nm = "?"
+        cfe = target
+        if cf is not None:
+            nm = str(cf.getName())
+            cfe = _u(cf.getEntryPoint().getOffset())
+        callees.append((target, nm, cfe, cnt))
+    callees.sort(key=lambda x: x[0])
+    return sinks, callees
 
 
 _blocks = None
@@ -540,7 +396,13 @@ def blocks():
     return out
 
 
-def bl_callers(target, max_hits=15, budget=30):
+def sign26(x):
+    if x & 0x02000000:
+        return x - 0x04000000
+    return x
+
+
+def bl_callers(target, max_hits=15, budget=45):
     hits = []
     mem = currentProgram.getMemory()
     ts = time.time()
@@ -588,248 +450,81 @@ def bl_callers(target, max_hits=15, budget=30):
     return hits
 
 
-def pick_dump_targets(findings):
-    seen = set()
-    picks = []
-    # priority 1: depth<=1 kalloc/copyin
-    for fd in findings:
-        d = fd.get("depth", 99)
-        if d > 1:
-            continue
-        sk = fd.get("sink")
-        if sk != "kalloc_type" and sk != "copyin":
-            continue
-        a = fd.get("in_func_addr")
-        if a in seen:
-            continue
-        seen.add(a)
-        picks.append((a, fd.get("in_func"), sk + " d=" + str(d)))
-    # priority 2: depth==2 kalloc/copyin
-    for fd in findings:
-        d = fd.get("depth", 99)
-        if d != 2:
-            continue
-        sk = fd.get("sink")
-        if sk != "kalloc_type" and sk != "copyin":
-            continue
-        a = fd.get("in_func_addr")
-        if a in seen:
-            continue
-        seen.add(a)
-        picks.append((a, fd.get("in_func"), sk + " d=" + str(d)))
-    # priority 3: unique kalloc
-    rest = []
-    for fd in findings:
-        if fd.get("sink") != "kalloc_type":
-            continue
-        a = fd.get("in_func_addr")
-        if a in seen:
-            continue
-        rest.append(fd)
-    rest.sort(key=lambda x: x.get("depth", 99))
-    for fd in rest[:10]:
-        a = fd.get("in_func_addr")
-        if a in seen:
-            continue
-        seen.add(a)
-        picks.append((a, fd.get("in_func"), "kalloc_type d=" + str(fd.get("depth"))))
-    return picks[:20]
-
-
 def main():
-    global START_TS
-    START_TS = time.time()
+    log("=== kernel_rw.py v52 dump 5 ===")
 
-    log("=== kernel_rw.py v51 syscalls ===")
-
-    entries, diag = parse_sysent()
-    log("[+] sysent parsed: %s" % repr(diag))
-    log("[+] unique sy_call: %d" % len(entries))
-
-    # sanity
-    sanity = []
-    for pair in entries[:5]:
-        sanity.append(pair)
-    for idx in (500, 501, 502, 503, 504):
-        for pair in entries:
-            if pair[0] == idx:
-                sanity.append(pair)
-                break
-
-    w("natsuk1 syscall taint scan v51")
-    w("sysent_base=%s stride=%d count=%d" % (fmt(SYSENT_BASE), SYSENT_STRIDE, SYSENT_COUNT))
-    w("kernel_base=%s" % fmt(KERNEL_BASE))
-    w("")
-    w("PARSE DIAG: %s" % repr(diag))
-    w("unique sy_call: %d" % len(entries))
-    w("")
-    w("SANITY (first 5 + 500..504):")
-    for pair in sanity:
-        w("  sysent[%d] sy_call=%s narg=%d" % (pair[0], fmt(pair[1]), pair[2]))
+    w("natsuk1 dump-5 targets v52")
+    w("has_disasm=%s has_create=%s" % (HAS_DISASM, HAS_CREATE))
     w("")
 
-    if not entries:
-        w("NO SYSCALLS PARSED")
-        try:
-            fh = open(OUT, "w")
-            for l in L:
-                fh.write(l + "\n")
-            fh.close()
-        except Exception:
-            pass
-        return
+    for entry in DUMP_TARGETS:
+        addr = entry[0]
+        name = entry[1]
+        note = entry[2]
+        log("[*] %s @ %s" % (name, fmt(addr)))
 
-    # filter: only with narg > 0
-    filtered = []
-    for pair in entries:
-        idx = pair[0]
-        addr = pair[1]
-        narg = pair[2]
-        if narg <= 0:
-            continue
-        f = get_func(addr)
-        if f is None:
-            f = ensure_function(addr)
-        if f is None:
-            continue
-        filtered.append(pair)
-        if len(filtered) >= MAX_SOURCES:
-            break
-    log("[+] filtered sources: %d" % len(filtered))
-
-    w("SOURCES TO SCAN: %d (narg>0, resolvable)" % len(filtered))
-    w("")
-
-    all_findings = []
-    per_source_interesting = []
-
-    total = len(filtered)
-    for i in range(total):
-        pair = filtered[i]
-        idx = pair[0]
-        addr = pair[1]
-        narg = pair[2]
-        name = "sysent_%d" % idx
-        log("[%d/%d] %s @ %s narg=%d" % (i + 1, total, name, fmt(addr), narg))
-        try:
-            findings = analyze_source(addr, name)
-        except Exception as ex:
-            findings = []
-            w("SRC %-20s @ %s narg=%d exception %s" % (name, fmt(addr), narg, ex))
-            continue
-        if not findings:
-            w("SRC %-20s @ %s narg=%d (no tainted sinks)" % (name, fmt(addr), narg))
-            continue
-        uniq = {}
-        for fd in findings:
-            k = fd.get("sink") + "|" + fd.get("pc") + "|" + fd.get("in_func_addr")
-            if k not in uniq:
-                uniq[k] = fd
-        uf = list(uniq.values())
-        w("SRC %-20s @ %s narg=%d findings=%d uniq=%d" % (
-            name, fmt(addr), narg, len(findings), len(uf)))
-        for fd in uf:
-            w("  %-12s @ %s  %s  d=%d" % (
-                fd.get("sink"), fd.get("pc"),
-                fd.get("in_func"), fd.get("depth")))
-            all_findings.append(fd)
-        for fd in uf:
-            d = fd.get("depth", 99)
-            if d > 2:
-                continue
-            sk = fd.get("sink")
-            if sk != "copyin" and sk != "kalloc_type":
-                continue
-            per_source_interesting.append((fd.get("in_func_addr"), fd.get("in_func")))
-
-    w("")
-    w(SEP)
-    w("SUMMARY")
-    w(SEP)
-    w("total findings: %d" % len(all_findings))
-    by_sink = {}
-    for fd in all_findings:
-        sk = fd.get("sink")
-        cur = by_sink.get(sk)
-        if cur is None:
-            cur = []
-            by_sink[sk] = cur
-        cur.append(fd)
-    for sk in sorted(by_sink.keys()):
-        w("%s: %d" % (sk, len(by_sink.get(sk, []))))
-    w("")
-    w("unique in_func per sink:")
-    for sk in sorted(by_sink.keys()):
-        uniq = {}
-        for fd in by_sink.get(sk, []):
-            k = fd.get("in_func_addr") + " " + fd.get("in_func")
-            cur = uniq.get(k)
-            if cur is None:
-                cur = []
-                uniq[k] = cur
-            cur.append(fd.get("depth"))
-        w("  %s:" % sk)
-        items = sorted(uniq.items(), key=lambda x: min(x[1]))
-        for pair2 in items[:50]:
-            w("    %s  d=%s" % (pair2[0], sorted(set(pair2[1]))))
-
-    START_TS = time.time()
-    picks = pick_dump_targets(all_findings)
-    log("[*] dump targets: %d" % len(picks))
-
-    w("")
-    w(SEP)
-    w("HOT TARGETS DECOMPILE")
-    w(SEP)
-
-    for pick in picks:
-        if time.time() - START_TS > DUMP_SEC:
-            w("BUDGET EXCEEDED at %s" % pick[1])
-            break
-        name = pick[1]
-        addr_s = pick[0]
-        note = pick[2]
-        try:
-            addr = int(addr_s, 16)
-        except Exception:
-            continue
-        log("  dump %s @ %s" % (name, addr_s))
         w("")
-        w("--- %s @ %s  (%s)" % (name, addr_s, note))
+        w(SEP)
+        w("### %s @ %s" % (name, fmt(addr)))
+        w("note: %s" % note)
+        w(SEP)
+
         f = get_func(addr)
         if f is None:
             f = ensure_function(addr)
         if f is None:
             w("  no function")
             continue
+
         try:
             ent = _u(f.getEntryPoint().getOffset())
             sz = int(f.getBody().getNumAddresses())
-            w("  entry=%s size=0x%X" % (fmt(ent), sz))
+            w("  func=%s entry=%s size=0x%X" % (str(f.getName()), fmt(ent), sz))
         except Exception:
             pass
+
+        w("")
+        w("-- BL callers --")
         try:
-            hits = bl_callers(addr, 15, 30)
-        except Exception:
+            hits = bl_callers(addr, 15, 45)
+        except Exception as e:
             hits = []
-        if hits:
-            w("  BL callers:")
-            for pair3 in hits:
-                pc = pair3[0]
-                kind = pair3[1]
-                cf = getFunctionContaining(sa(pc))
-                nm = "?"
-                if cf is not None:
-                    nm = str(cf.getName())
-                cfe = 0
-                if cf is not None:
-                    cfe = _u(cf.getEntryPoint().getOffset())
-                w("    %s %s in %s @ %s" % (fmt(pc), kind, nm, fmt(cfe)))
-        else:
-            w("  BL callers: (none)")
-        w("  decompile:")
-        for l in decompile_text(f, 60):
-            w("    " + l)
+            w("  exception %s" % e)
+        if not hits:
+            w("  (none)")
+        for pair in hits:
+            pc = pair[0]
+            kind = pair[1]
+            cf = getFunctionContaining(sa(pc))
+            nm = "?"
+            if cf is not None:
+                nm = str(cf.getName())
+            cfe = 0
+            if cf is not None:
+                cfe = _u(cf.getEntryPoint().getOffset())
+            w("  %s %s in %s @ %s" % (fmt(pc), kind, nm, fmt(cfe)))
+
+        w("")
+        w("-- sink calls + taint --")
+        try:
+            sinks, callees = collect_sinks_local(f)
+        except Exception as e:
+            sinks, callees = [], []
+            w("  exception %s" % e)
+        if not sinks:
+            w("  no sink calls in body")
+        for snk in sinks:
+            w("  %s @ %s tainted=%s" % (snk[0], snk[1], snk[2]))
+
+        w("")
+        w("-- callees --")
+        for ce in callees[:40]:
+            w("  %s  %s  @ %s  x%d" % (fmt(ce[0]), ce[1], fmt(ce[2]), ce[3]))
+
+        w("")
+        w("-- decompile --")
+        for l in decompile_text(f, 90):
+            w("  " + l)
 
     try:
         fh = open(OUT, "w")
