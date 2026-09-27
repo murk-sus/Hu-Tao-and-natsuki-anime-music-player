@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # @runtime Jython
-# kernel_rw.py v59 - final NECP closures
+# kernel_rw.py v60 - NECP tail + channel_sync + fcntl
 
 import os
 import sys
@@ -26,22 +26,26 @@ WS = os.environ.get("GITHUB_WORKSPACE", "/tmp")
 OUT = os.path.join(WS, "result.txt")
 SEP = "=" * 72
 
+SYSENT_BASE = int("FFFFFFF007C192D0", 16)
+SYSENT_STRIDE = 24
+KERNEL_BASE = int("FFFFFFF007004000", 16)
+
 DUMP_TARGETS = [
-    (int("FFFFFFF00A4F3840", 16), "necp_hot_d2",      "TLV parser from handler_core"),
-    (int("FFFFFFF00A4C3558", 16), "necp_packer",      "buffer packer called by 0xA4F3840"),
-    (int("FFFFFFF00A4E76F4", 16), "necp_case_02",     "remove_client path"),
-    (int("FFFFFFF00A4E7158", 16), "necp_case_13",     "claim path"),
-    (int("FFFFFFF00A4EAC7C", 16), "necp_case_09",     "copy_interface path"),
-    (int("FFFFFFF00A4DD078", 16), "necp_arena_parse", "arena parser sub"),
-    (int("FFFFFFF00A4E9904", 16), "necp_case_06",     "request_nexus path"),
-    (int("FFFFFFF00A4EA0B4", 16), "necp_case_07",     "agent_action path"),
-    (int("FFFFFFF00A4EBA0C", 16), "necp_case_0B",     "copy_route_stats"),
-    (int("FFFFFFF00A4EA8A0", 16), "necp_case_0C",     "copy_parameters"),
-    (int("FFFFFFF00A4EAB50", 16), "necp_case_16",     "copy_agent_alt"),
-    (int("FFFFFFF00A4ECC4C", 16), "necp_case_18",     "get_signed_id"),
-    (int("FFFFFFF00A4ECE88", 16), "necp_case_19",     "set_signed_id"),
-    (int("FFFFFFF00A4ED170", 16), "necp_case_1B",     "get_flow_stats"),
+    # NECP tail (3 leftovers)
+    (int("FFFFFFF00A4F516C", 16), "necp_tail_516c",   "called from necp_hot_d2 x2"),
+    (int("FFFFFFF00A4C0E2C", 16), "necp_tail_0e2c",   "TLV packer from arena_parse"),
+    (int("FFFFFFF00A4ED67C", 16), "necp_tail_d67c",   "get_flow_stats body"),
+    # __channel_sync path (from v57)
+    (int("FFFFFFF00A7161A4", 16), "channel_sync_h1",  "copyout d=8 from __channel_sync"),
+    (int("FFFFFFF00A2BBDC4", 16), "channel_sync_h2",  "copyin d=6 from __channel_sync"),
+    (int("FFFFFFF00A7DBBF0", 16), "channel_sync",     "__channel_sync itself"),
+    # fcntl (sysent_92 with correct base)
+    (int("FFFFFFF00A6CEB4C", 16), "sys_fcntl",        "sysent_92 fcntl dispatcher"),
+    (int("FFFFFFF00A753850", 16), "sys_persona",      "sysent_94 persona (was mislabeled)"),
+    (int("FFFFFFF00A753408", 16), "sys_setattrlist",  "nbr of fcntl"),
 ]
+
+ANCHOR_INDICES = [92, 94, 516]
 
 MAX_DECOMPILE_SEC = 90
 BUDGET_SEC = 700
@@ -78,6 +82,59 @@ def sa(a):
         return currentProgram.getAddressFactory().getAddress(s)
     except Exception:
         return None
+
+
+def read_u16(addr):
+    try:
+        ga = sa(addr)
+        if ga is None:
+            return None
+        b = getBytes(ga, 2)
+        if b is None:
+            return None
+        return (b[0] & 0xFF) | ((b[1] & 0xFF) << 8)
+    except Exception:
+        return None
+
+
+def read_u32(addr):
+    try:
+        ga = sa(addr)
+        if ga is None:
+            return None
+        b = getBytes(ga, 4)
+        if b is None:
+            return None
+        return (b[0] & 0xFF) | ((b[1] & 0xFF) << 8) | ((b[2] & 0xFF) << 16) | ((b[3] & 0xFF) << 24)
+    except Exception:
+        return None
+
+
+def read_u64(addr):
+    try:
+        ga = sa(addr)
+        if ga is None:
+            return None
+        b = getBytes(ga, 8)
+        if b is None:
+            return None
+        r = 0
+        for i in range(8):
+            r = r | ((b[i] & 0xFF) << (i * 8))
+        return r
+    except Exception:
+        return None
+
+
+def unpack(raw):
+    if raw is None or raw == 0:
+        return None
+    low = raw & 0xFFFFFFFF
+    if low < 0x1000:
+        return None
+    if low > 0x4000000:
+        return None
+    return KERNEL_BASE + low
 
 
 def get_func(addr):
@@ -238,6 +295,24 @@ def bl_callers(target, max_hits=20, budget=40):
     return hits
 
 
+def dump_sysent_anchors():
+    w(SEP)
+    w("### SYSENT ANCHORS (base=%s)" % fmt(SYSENT_BASE))
+    w(SEP)
+    w("%-5s %-20s %-6s %-10s" % ("idx", "unwrapped", "narg", "flags"))
+    for idx in ANCHOR_INDICES:
+        base = SYSENT_BASE + idx * SYSENT_STRIDE
+        raw = read_u64(base)
+        addr = unpack(raw)
+        narg = read_u16(base + 0x14)
+        flags = read_u32(base + 0x10)
+        w("%-5d %-20s %-6s %-10s" % (
+            idx, fmt(addr) if addr else "?", narg if narg is not None else "?",
+            fmt(flags) if flags is not None else "?"))
+    w("  expected: 92 = fcntl-ish dispatcher, 516 = __channel_sync")
+    w("")
+
+
 def dump_one(addr, name, note):
     w("")
     w(SEP)
@@ -289,11 +364,13 @@ def main():
     global START_TS
     START_TS = time.time()
 
-    log("=== kernel_rw.py v59 ===")
+    log("=== kernel_rw.py v60 ===")
 
-    w("natsuk1 v59 final NECP closures")
+    w("natsuk1 v60 NECP tail + channel_sync + fcntl")
     w("targets=%d" % len(DUMP_TARGETS))
     w("")
+
+    dump_sysent_anchors()
 
     for entry in DUMP_TARGETS:
         addr = entry[0]
