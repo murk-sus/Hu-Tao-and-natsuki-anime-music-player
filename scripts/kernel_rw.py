@@ -1,10 +1,9 @@
 # -*- coding: utf-8 -*-
 # @runtime Jython
-# kernel_rw.py v65 - NECP client lifetime UAF hunt
+# kernel_rw.py v66 - dump FUN_fffffff00a4e5284
 
 import os
 import sys
-import json
 import time
 import traceback
 from jarray import zeros
@@ -25,82 +24,20 @@ except Exception:
 
 WS = os.environ.get("GITHUB_WORKSPACE", "/tmp")
 OUT = os.path.join(WS, "result.txt")
-SYMBOLS_JSON = os.environ.get("SYMBOLS_JSON", os.path.join(WS, "symbols.json"))
 SEP = "=" * 72
 
-# NECP cluster range
-NECP_LO = int("FFFFFFF00A4D0000", 16)
-NECP_HI = int("FFFFFFF00A520000", 16)
+TARGET = int("FFFFFFF00A4E5284", 16)
+TARGET_NAME = "release_or_free_session"
 
-# Explicit targets for full dump (client lifetime)
-DUMP_TARGETS = [
-    (int("FFFFFFF00A4E60DC", 16), "add_client"),
-    (int("FFFFFFF00A4E76F4", 16), "remove_client"),
-    (int("FFFFFFF00A4ED864", 16), "session_lookup"),
-    (int("FFFFFFF00A4ED8BC", 16), "copy_state"),
-    (int("FFFFFFF00A4DB9F0", 16), "session_alloc"),
-    (int("FFFFFFF00A4E575C", 16), "remove_flow_1"),
-    (int("FFFFFFF00A4DAAC8", 16), "remove_list_1"),
-    (int("FFFFFFF00A4DB38C", 16), "remove_list_2"),
-    (int("FFFFFFF00A4DB8D4", 16), "lookup_or_alloc"),
-    (int("FFFFFFF00A4E3278", 16), "ref_release_or_free"),
-    (int("FFFFFFF00A4F7044", 16), "add_client_tail_1"),
-    (int("FFFFFFF00A4F709C", 16), "add_client_tail_2"),
-    (int("FFFFFFF00A4D9940", 16), "add_client_tail_3"),
-    (int("FFFFFFF00A4DA2B8", 16), "add_client_tail_4"),
-    (int("FFFFFFF00A4F516C", 16), "update_arena_state"),
-    (int("FFFFFFF00A4E93C4", 16), "remove_flow"),
-    (int("FFFFFFF00A4E843C", 16), "add_flow"),
-    (int("FFFFFFF00A4E5C28", 16), "client_action"),
-    (int("FFFFFFF00A4E411C", 16), "necp_open"),
-]
-
-# Functions we want to look up by name (symbol resolution)
-LOOKUP_NAMES = [
-    "lck_mtx_lock",
-    "lck_mtx_unlock",
-    "lck_mtx_lock_spin",
-    "lck_mtx_unlock_spin",
-    "lck_rw_lock_shared",
-    "lck_rw_unlock_shared",
-    "lck_rw_lock_exclusive",
-    "lck_rw_unlock_exclusive",
-    "lck_rw_lock",
-    "lck_rw_unlock",
-    "lck_rw_done",
-    "os_ref_retain",
-    "os_ref_release",
-    "os_ref_release_locked",
-    "os_ref_release_barrier",
-    "os_ref_retain_try",
-    "os_atomic_inc_orig",
-    "os_atomic_dec_orig",
-    "os_atomic_add_orig",
-    "os_atomic_sub_orig",
-    "iolock_alloc",
-    "iolock_lock",
-    "iolock_unlock",
-    "iolock_free",
-    "mtx_lock",
-    "mtx_unlock",
-    "kfree_type",
-    "kfree_data",
-    "kfree_ext",
-    "zone_free",
-    "zfree",
-    "thread_call_enter",
-    "thread_call_enter_delayed",
-    "wakeup",
-    "wakeup_one",
-    "_wakeup",
-    "_wakeup_one",
-    "panic",
-    "SoftwareBreakpoint",
+# Also dump the raw lookup to compare ref semantics
+EXTRA = [
+    (int("FFFFFFF00A4DB8D4", 16), "raw_lookup"),
+    (int("FFFFFFF00A4DBD40", 16), "lookup_neighbor_a"),
+    (int("FFFFFFF00A4DBE00", 16), "lookup_neighbor_b"),
 ]
 
 DEC = None
 MONITOR = ConsoleTaskMonitor()
-START_TS = time.time()
 L = []
 
 
@@ -130,43 +67,6 @@ def sa(a):
         return currentProgram.getAddressFactory().getAddress(s)
     except Exception:
         return None
-
-
-def is_str(x):
-    try:
-        if isinstance(x, unicode):
-            return True
-    except Exception:
-        pass
-    try:
-        if isinstance(x, str):
-            return True
-    except Exception:
-        pass
-    return False
-
-
-def load_symbols(path):
-    out = {}
-    if not os.path.exists(path):
-        return out
-    try:
-        fh = open(path)
-        data = json.load(fh)
-        fh.close()
-    except Exception:
-        return out
-    if isinstance(data, dict):
-        for k, v in data.items():
-            try:
-                a = int(k)
-            except Exception:
-                continue
-            if is_str(v):
-                nm = v.strip()
-                if nm:
-                    out[nm] = a
-    return out
 
 
 def get_func(addr):
@@ -279,7 +179,7 @@ def blocks():
     return out
 
 
-def bl_callers(target, max_hits=30, budget=45):
+def bl_callers(target, max_hits=40, budget=60):
     hits = []
     mem = currentProgram.getMemory()
     ts = time.time()
@@ -327,157 +227,64 @@ def bl_callers(target, max_hits=30, budget=45):
     return hits
 
 
-def collect_calls(func):
-    """Return dict: callee_addr -> count, plus list of kfree call sites."""
-    calls = {}
-    kfree_sites = []
-    mem_after = []
+def dump_one(addr, name):
+    w("")
+    w(SEP)
+    w("### %s @ %s" % (name, fmt(addr)))
+    w(SEP)
+
+    f = get_func(addr)
+    if f is None:
+        f = ensure_function(addr)
+    if f is None:
+        w("  no function")
+        return
+
     try:
-        listing = currentProgram.getListing()
-        body = func.getBody()
-        it = body.getAddresses(True)
+        ent = _u(f.getEntryPoint().getOffset())
+        sz = int(f.getBody().getNumAddresses())
+        w("  func=%s entry=%s size=0x%X" % (str(f.getName()), fmt(ent), sz))
     except Exception:
-        return calls, kfree_sites
-    kfree_addr = None
-    global KFREE_ADDR
+        pass
+
+    w("")
+    w("-- BL callers --")
     try:
-        kfree_addr = KFREE_ADDR
+        hits = bl_callers(addr, 40, 60)
     except Exception:
-        kfree_addr = int("FFFFFFF00A201000", 16)
-    cnt = 0
-    while it.hasNext() and cnt < 40000:
-        a = it.next()
-        cnt += 1
-        try:
-            insn = listing.getInstructionAt(a)
-            if insn is None:
-                continue
-            pcode = insn.getPcode()
-            if pcode is None:
-                continue
-            for p in pcode:
-                if p.getOpcode() != 1:
-                    continue
-                inp0 = p.getInput(0)
-                tgt = None
-                if inp0.isAddress():
-                    tgt = _u(inp0.getAddress().getOffset())
-                elif inp0.isConstant():
-                    tgt = _u(inp0.getOffset())
-                if tgt is None:
-                    continue
-                if tgt in calls:
-                    calls[tgt] = calls[tgt] + 1
-                else:
-                    calls[tgt] = 1
-                if tgt == kfree_addr:
-                    kfree_sites.append(_u(a.getOffset()))
-        except Exception:
-            pass
-    return calls, kfree_sites
+        hits = []
+    if not hits:
+        w("  (none)")
+    for pair in hits:
+        pc = pair[0]
+        kind = pair[1]
+        cf = getFunctionContaining(sa(pc))
+        nm = "?"
+        if cf is not None:
+            nm = str(cf.getName())
+        cfe = 0
+        if cf is not None:
+            cfe = _u(cf.getEntryPoint().getOffset())
+        w("  %s %s in %s @ %s" % (fmt(pc), kind, nm, fmt(cfe)))
+
+    w("")
+    w("-- decompile --")
+    for l in decompile_text(f, 90):
+        w("  " + l)
 
 
 def main():
-    global START_TS
-    START_TS = time.time()
+    log("=== kernel_rw.py v66 ===")
 
-    log("=== kernel_rw.py v65 ===")
-
-    syms = load_symbols(SYMBOLS_JSON)
-    log("[+] symbols: %d" % len(syms))
-
-    w("natsuk1 v65 NECP client lifetime UAF hunt")
-    w("symbols_loaded=%d" % len(syms))
-    w("necp_range=[%s, %s)" % (fmt(NECP_LO), fmt(NECP_HI)))
+    w("natsuk1 v66 one-target dump")
+    w("target=%s (%s)" % (fmt(TARGET), TARGET_NAME))
     w("")
 
-    # Resolve interesting symbols
-    resolved = {}
-    w(SEP)
-    w("### LOCK / REFCOUNT / FREE PRIMITIVES")
-    w(SEP)
-    for nm in LOOKUP_NAMES:
-        a = syms.get(nm)
-        if a is None:
-            # try with underscore prefix
-            a = syms.get("_" + nm)
-        if a is None:
-            continue
-        resolved[nm] = a
-        w("  %-40s %s" % (nm, fmt(a)))
-    w("")
+    dump_one(TARGET, TARGET_NAME)
 
-    # Any addresses we couldn't resolve - list them for the reader
-    missing = []
-    for nm in LOOKUP_NAMES:
-        if nm not in resolved:
-            missing.append(nm)
-    if missing:
-        w("  UNRESOLVED: %s" % ", ".join(missing))
-        w("")
-
-    # Dump each target
-    for entry in DUMP_TARGETS:
-        addr = entry[0]
-        name = entry[1]
-        log("[*] %s @ %s" % (name, fmt(addr)))
-        if time.time() - START_TS > 900:
-            w("BUDGET EXCEEDED at %s" % name)
-            break
-        f = get_func(addr)
-        if f is None:
-            f = ensure_function(addr)
-        if f is None:
-            w("--- %s @ %s NO FUNCTION" % (name, fmt(addr)))
-            continue
-
-        w("")
-        w(SEP)
-        w("### %s @ %s" % (name, fmt(addr)))
-        w(SEP)
-        try:
-            ent = _u(f.getEntryPoint().getOffset())
-            sz = int(f.getBody().getNumAddresses())
-            w("  func=%s entry=%s size=0x%X" % (str(f.getName()), fmt(ent), sz))
-        except Exception:
-            pass
-
-        # Calls summary
-        calls, kfree_sites = collect_calls(f)
-        if kfree_sites:
-            w("  kfree sites: %s" % ", ".join([fmt(a) for a in kfree_sites]))
-
-        # Match calls to known locks/refcount
-        hits = {}
-        for nm, a in resolved.items():
-            if a in calls:
-                hits[nm] = calls[a]
-        if hits:
-            w("  lock/ref/free calls:")
-            for nm in sorted(hits.keys()):
-                w("    %-40s x%d" % (nm, hits[nm]))
-
-        # BL callers
-        w("  BL callers:")
-        hits = bl_callers(addr, 25, 40)
-        if not hits:
-            w("    (none)")
-        for pair in hits:
-            pc = pair[0]
-            kind = pair[1]
-            cf = getFunctionContaining(sa(pc))
-            nm = "?"
-            if cf is not None:
-                nm = str(cf.getName())
-            cfe = 0
-            if cf is not None:
-                cfe = _u(cf.getEntryPoint().getOffset())
-            w("    %s %s in %s @ %s" % (fmt(pc), kind, nm, fmt(cfe)))
-
-        # Full decompile
-        w("  decompile:")
-        for l in decompile_text(f, 90):
-            w("    " + l)
+    for entry in EXTRA:
+        log("[*] %s @ %s" % (entry[1], fmt(entry[0])))
+        dump_one(entry[0], entry[1])
 
     try:
         fh = open(OUT, "w")
