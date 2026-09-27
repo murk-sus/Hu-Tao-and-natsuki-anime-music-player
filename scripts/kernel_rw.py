@@ -1,67 +1,25 @@
 # -*- coding: utf-8 -*-
 # @runtime Jython
-# kernel_rw.py v52 - dump the 5 remaining targets
+# kernel_rw.py v54 - full sysent dump with symbol resolution
 
 import os
 import sys
-import time
+import json
 import traceback
-from jarray import zeros
-from ghidra.app.decompiler import DecompInterface
-from ghidra.util.task import ConsoleTaskMonitor
-from ghidra.program.model.pcode import PcodeOp
-
-try:
-    from ghidra.app.cmd.disassemble import DisassembleCommand as _DC
-    HAS_DISASM = True
-except Exception:
-    HAS_DISASM = False
-
-try:
-    from ghidra.app.cmd.function import CreateFunctionCmd as _CFC
-    HAS_CREATE = True
-except Exception:
-    HAS_CREATE = False
 
 WS = os.environ.get("GITHUB_WORKSPACE", "/tmp")
 OUT = os.path.join(WS, "result.txt")
+SYMBOLS_JSON = os.environ.get("SYMBOLS_JSON", os.path.join(WS, "symbols.json"))
 SEP = "=" * 72
 
-A_78A39C  = int("FFFFFFF00A78A39C", 16)
-A_8BBF38  = int("FFFFFFF00A8BBF38", 16)
-A_8BBD20  = int("FFFFFFF00A8BBD20", 16)
-A_755BC4  = int("FFFFFFF00A755BC4", 16)
-A_398DBC  = int("FFFFFFF00A398DBC", 16)
+SYSENT_BASE = int("FFFFFFF007C192A0", 16)
+SYSENT_STRIDE = 24
+SYSENT_COUNT = 558
+KERNEL_BASE = int("FFFFFFF007004000", 16)
 
-DUMP_TARGETS = [
-    (A_78A39C,  "fun_78a39c",  "called from sysent_100/106 when >= 0x81"),
-    (A_8BBF38,  "fun_8bbf38",  "IOKit target from sysent_69"),
-    (A_8BBD20,  "fun_8bbd20",  "IOKit target from sysent_70"),
-    (A_755BC4,  "sysent_501",  "sy_call[501]"),
-    (A_398DBC,  "sysent_502",  "sy_call[502]"),
-]
+NECP_LO = int("FFFFFFF00A300000", 16)
+NECP_HI = int("FFFFFFF00A520000", 16)
 
-A_KALLOC   = int("FFFFFFF00A200988", 16)
-A_KALLOC_Z = int("FFFFFFF00A20141C", 16)
-A_COPYIN   = int("FFFFFFF00A368EC0", 16)
-A_COPYOUT  = int("FFFFFFF00A369A3C", 16)
-A_MEMMOVE  = int("FFFFFFF00AA40D30", 16)
-A_MEMSET   = int("FFFFFFF00AA40EE0", 16)
-
-SINK_LIST = [
-    ("kalloc_type", A_KALLOC, 1),
-    ("kalloc_zone", A_KALLOC_Z, 1),
-    ("copyin", A_COPYIN, 3),
-    ("copyout", A_COPYOUT, 3),
-    ("memmove", A_MEMMOVE, 3),
-    ("memset", A_MEMSET, 3),
-]
-SINK_MAP = {}
-for sk in SINK_LIST:
-    SINK_MAP[sk[1]] = (sk[0], sk[2])
-
-DEC = None
-MONITOR = ConsoleTaskMonitor()
 L = []
 
 
@@ -87,444 +45,200 @@ def fmt(v):
 
 def sa(a):
     try:
-        s = "%X" % (int(a) & 0xFFFFFFFFFFFFFFFF)
-        return currentProgram.getAddressFactory().getAddress(s)
+        return currentProgram.getAddressFactory().getAddress(
+            "%X" % (int(a) & 0xFFFFFFFFFFFFFFFF))
     except Exception:
         return None
 
 
-def get_func(addr):
+def read_u16(addr):
     try:
         ga = sa(addr)
         if ga is None:
             return None
-        f = getFunctionAt(ga)
-        if f is not None:
-            return f
-        return getFunctionContaining(ga)
+        b = getBytes(ga, 2)
+        if b is None:
+            return None
+        return (b[0] & 0xFF) | ((b[1] & 0xFF) << 8)
     except Exception:
         return None
 
 
-def disassemble(addr):
-    if not HAS_DISASM:
-        return
-    try:
-        ga = sa(addr)
-        if ga is None:
-            return
-        _DC(ga, None, True).applyTo(currentProgram)
-    except Exception:
-        pass
-
-
-def ensure_function(addr):
+def read_u32(addr):
     try:
         ga = sa(addr)
         if ga is None:
             return None
-        f = getFunctionAt(ga)
-        if f is not None:
-            return f
-        f = getFunctionContaining(ga)
-        if f is not None:
-            return f
-        disassemble(ga)
-        if HAS_CREATE:
-            try:
-                _CFC(ga).applyTo(currentProgram)
-            except Exception:
-                pass
-        try:
-            fm = currentProgram.getFunctionManager()
-            name = "nk_%X" % addr
-            f = fm.createFunction(ga, name)
-            if f is not None:
-                return f
-        except Exception:
-            pass
-        return getFunctionAt(ga) or getFunctionContaining(ga)
+        b = getBytes(ga, 4)
+        if b is None:
+            return None
+        return (b[0] & 0xFF) | ((b[1] & 0xFF) << 8) | ((b[2] & 0xFF) << 16) | ((b[3] & 0xFF) << 24)
     except Exception:
         return None
 
 
-def get_dec():
-    global DEC
-    if DEC is not None:
-        return DEC
-    d = DecompInterface()
-    d.openProgram(currentProgram)
-    DEC = d
-    return DEC
-
-
-def decompile_hf(f, sec=60):
+def read_u64(addr):
     try:
-        r = get_dec().decompileFunction(f, sec, MONITOR)
-        if r is None:
+        ga = sa(addr)
+        if ga is None:
             return None
-        if not r.decompileCompleted():
+        b = getBytes(ga, 8)
+        if b is None:
             return None
-        return r.getHighFunction()
+        r = 0
+        for i in range(8):
+            r = r | ((b[i] & 0xFF) << (i * 8))
+        return r
     except Exception:
         return None
 
 
-def decompile_text(f, sec=90):
+def unpack(raw):
+    if raw is None or raw == 0:
+        return None
+    low = raw & 0xFFFFFFFF
+    if low < 0x1000:
+        return None
+    if low > 0x4000000:
+        return None
+    return KERNEL_BASE + low
+
+
+def load_symbols(path):
+    if not os.path.exists(path):
+        log("[!] symbols missing")
+        return {}
     try:
-        r = get_dec().decompileFunction(f, sec, MONITOR)
-        if r is None:
-            return ["(decompile failed)"]
-        if not r.decompileCompleted():
-            return ["(decompile failed)"]
-        c = r.getDecompiledFunction()
-        if c is None:
-            return ["(empty)"]
-        raw = c.getC()
-        return [line.rstrip() for line in raw.split("\n")]
+        fh = open(path)
+        data = json.load(fh)
+        fh.close()
     except Exception as e:
-        return ["(exception %s)" % e]
-
-
-def vn_key(vn):
-    if vn is None:
-        return None
-    try:
-        a = vn.getAddress()
-        if a is None:
-            return None
-        return a.toString() + ":" + str(vn.getSize())
-    except Exception:
-        return None
-
-
-def get_param_keys(hf):
-    result = {}
-    try:
-        lsm = hf.getLocalSymbolMap()
-        if lsm is None:
-            return result
-        syms = lsm.getSymbols()
-        if syms is None:
-            return result
-        cnt = 0
-        while syms.hasNext():
-            cnt += 1
-            if cnt > 500:
-                break
-            sym = syms.next()
-            ok = False
+        log("[!] parse fail %s" % e)
+        return {}
+    out = {}
+    if isinstance(data, dict):
+        for k, v in data.items():
             try:
-                ok = sym.isParameter()
-            except Exception:
-                ok = False
-            if not ok:
-                continue
-            cat = 0
-            try:
-                cat = sym.getCategoryIndex()
-            except Exception:
-                cat = 0
-            hv = None
-            try:
-                hv = sym.getHighVariable()
-            except Exception:
-                hv = None
-            if hv is None:
-                continue
-            insts = None
-            try:
-                insts = hv.getInstances()
-            except Exception:
-                insts = None
-            if insts is None:
-                continue
-            try:
-                for vn in insts:
-                    k = vn_key(vn)
-                    if k is None:
-                        continue
-                    cur = result.get(cat)
-                    if cur is None:
-                        cur = set()
-                        result[cat] = cur
-                    cur.add(k)
+                a = int(k)
+                if isinstance(v, str):
+                    out[a] = v
             except Exception:
                 pass
-    except Exception:
-        pass
-    return result
-
-
-def propagate(hf, tainted_idx):
-    pm = get_param_keys(hf)
-    tainted = set()
-    for i in tainted_idx:
-        cur = pm.get(i)
-        if cur is None:
-            continue
-        for k in cur:
-            tainted.add(k)
-    if not tainted:
-        return tainted
-    try:
-        all_ops = list(hf.getPcodeOps())
-    except Exception:
-        return tainted
-    changed = True
-    iters = 0
-    while changed and iters < 200:
-        changed = False
-        iters += 1
-        for op in all_ops:
-            try:
-                out = op.getOutput()
-                if out is None:
-                    continue
-                ok = vn_key(out)
-                if ok is None:
-                    continue
-                if ok in tainted:
-                    continue
-                hit = False
-                for i in range(op.getNumInputs()):
-                    ik = vn_key(op.getInput(i))
-                    if ik is None:
-                        continue
-                    if ik in tainted:
-                        hit = True
-                        break
-                if hit:
-                    tainted.add(ok)
-                    changed = True
-            except Exception:
-                pass
-    return tainted
-
-
-def call_target(op):
-    try:
-        inp0 = op.getInput(0)
-        if inp0.isAddress():
-            return _u(inp0.getAddress().getOffset())
-        if inp0.isConstant():
-            return _u(inp0.getOffset())
-    except Exception:
-        pass
-    return None
-
-
-def collect_sinks_local(f):
-    """Find all sink calls in one function with taint info; also list callees."""
-    sinks = []
-    callees = []
-    hf = decompile_hf(f, 60)
-    if hf is None:
-        return sinks, callees
-    tainted = propagate(hf, frozenset(range(8)))
-    try:
-        all_ops = list(hf.getPcodeOps())
-    except Exception:
-        return sinks, callees
-    seen_calls = {}
-    for op in all_ops:
-        is_call = False
-        try:
-            is_call = op.getOpcode() == PcodeOp.CALL
-        except Exception:
-            is_call = False
-        if not is_call:
-            continue
-        target = call_target(op)
-        if target is None:
-            continue
-        v = SINK_MAP.get(target)
-        if v is not None:
-            sname = v[0]
-            sidx = v[1]
-            taint_hit = False
-            try:
-                if sidx < op.getNumInputs():
-                    sk = vn_key(op.getInput(sidx))
-                    if sk is not None and sk in tainted:
-                        taint_hit = True
-            except Exception:
-                pass
-            pc = 0
-            try:
-                pc = _u(op.getSeqnum().getTarget().getOffset())
-            except Exception:
-                pc = 0
-            sinks.append((sname, fmt(pc), taint_hit))
-        else:
-            # record callee
-            if target not in seen_calls:
-                seen_calls[target] = 0
-            seen_calls[target] = seen_calls[target] + 1
-    for target, cnt in seen_calls.items():
-        cf = getFunctionContaining(sa(target))
-        nm = "?"
-        cfe = target
-        if cf is not None:
-            nm = str(cf.getName())
-            cfe = _u(cf.getEntryPoint().getOffset())
-        callees.append((target, nm, cfe, cnt))
-    callees.sort(key=lambda x: x[0])
-    return sinks, callees
-
-
-_blocks = None
-
-
-def blocks():
-    global _blocks
-    if _blocks is not None:
-        return _blocks
-    out = []
-    try:
-        for b in currentProgram.getMemory().getBlocks():
-            if not b.isInitialized():
-                continue
-            if not b.isExecute():
-                continue
-            s = _u(b.getStart().getOffset())
-            e = _u(b.getEnd().getOffset())
-            out.append((s, e))
-    except Exception:
-        pass
-    _blocks = out
+    log("[+] symbols loaded: %d" % len(out))
     return out
 
 
-def sign26(x):
-    if x & 0x02000000:
-        return x - 0x04000000
-    return x
-
-
-def bl_callers(target, max_hits=15, budget=45):
-    hits = []
-    mem = currentProgram.getMemory()
-    ts = time.time()
-    for pair in blocks():
-        if time.time() - ts > budget:
-            break
-        s = pair[0]
-        e = pair[1]
-        size = e - s + 1
-        if size <= 0:
-            continue
-        if size > 0x1000000:
-            continue
-        try:
-            jbuf = zeros(size, 'b')
-            ga = sa(s)
-            if ga is None:
-                continue
-            mem.getBytes(ga, jbuf)
-        except Exception:
-            continue
-        pc = s
-        i = 0
-        while i + 4 <= size:
-            b0 = int(jbuf[i]) & 0xFF
-            b1 = int(jbuf[i + 1]) & 0xFF
-            b2 = int(jbuf[i + 2]) & 0xFF
-            b3 = int(jbuf[i + 3]) & 0xFF
-            raw = b0 | (b1 << 8) | (b2 << 16) | (b3 << 24)
-            op = raw & 0xFC000000
-            if op == 0x94000000 or op == 0x14000000:
-                imm = sign26(raw & 0x03FFFFFF) << 2
-                dst = (pc + imm) & 0xFFFFFFFFFFFFFFFF
-                if dst == target:
-                    kind = "BL"
-                    if op == 0x14000000:
-                        kind = "B"
-                    hits.append((pc, kind))
-                    if len(hits) >= max_hits:
-                        del jbuf
-                        return hits
-            i += 4
-            pc += 4
-        del jbuf
-    return hits
+def resolve_name(addr, syms):
+    if addr is None:
+        return "?"
+    n = syms.get(addr)
+    if n is not None:
+        return n
+    # try function container
+    try:
+        ga = sa(addr)
+        if ga is None:
+            return "?"
+        f = getFunctionAt(ga) or getFunctionContaining(ga)
+        if f is not None:
+            return str(f.getName())
+    except Exception:
+        pass
+    return "?"
 
 
 def main():
-    log("=== kernel_rw.py v52 dump 5 ===")
+    log("=== kernel_rw.py v54 sysent dump ===")
 
-    w("natsuk1 dump-5 targets v52")
-    w("has_disasm=%s has_create=%s" % (HAS_DISASM, HAS_CREATE))
+    syms = load_symbols(SYMBOLS_JSON)
+
+    w("natsuk1 sysent full dump v54")
+    w("base=%s stride=%d count=%d" % (fmt(SYSENT_BASE), SYSENT_STRIDE, SYSENT_COUNT))
+    w("kernel_base=%s" % fmt(KERNEL_BASE))
+    w("symbols_loaded=%d" % len(syms))
     w("")
 
-    for entry in DUMP_TARGETS:
-        addr = entry[0]
-        name = entry[1]
-        note = entry[2]
-        log("[*] %s @ %s" % (name, fmt(addr)))
+    necp_hits = []
+    other_hits = []
+    rows = []
 
-        w("")
-        w(SEP)
-        w("### %s @ %s" % (name, fmt(addr)))
-        w("note: %s" % note)
-        w(SEP)
+    for i in range(SYSENT_COUNT):
+        base = SYSENT_BASE + i * SYSENT_STRIDE
+        raw = read_u64(base)
+        addr = unpack(raw)
+        narg = read_u16(base + 0x14)
+        flags = read_u32(base + 0x10)
+        name = resolve_name(addr, syms)
+        rows.append((i, raw, addr, narg, flags, name))
+        if addr is not None and NECP_LO <= addr < NECP_HI:
+            necp_hits.append((i, addr, name))
+        if addr is not None and name != "?":
+            low = name.lower()
+            if "necp" in low:
+                other_hits.append((i, addr, name))
 
-        f = get_func(addr)
-        if f is None:
-            f = ensure_function(addr)
-        if f is None:
-            w("  no function")
+    w(SEP)
+    w("### NECP-RANGE ENTRIES (addr in [%s, %s))" % (fmt(NECP_LO), fmt(NECP_HI)))
+    w(SEP)
+    if not necp_hits:
+        w("  (none)")
+    for h in necp_hits:
+        w("  sysent[%d] = %s  %s" % (h[0], fmt(h[1]), h[2]))
+    w("")
+
+    w(SEP)
+    w("### ANY ENTRY WITH 'necp' IN NAME")
+    w(SEP)
+    if not other_hits:
+        w("  (none)")
+    for h in other_hits:
+        w("  sysent[%d] = %s  %s" % (h[0], fmt(h[1]), h[2]))
+    w("")
+
+    w(SEP)
+    w("### FULL TABLE [%d..%d]" % (SYSENT_COUNT - 30, SYSENT_COUNT - 1))
+    w(SEP)
+    w("%-5s %-20s %-20s %-6s %-10s %s" % ("idx", "raw_low32", "unwrapped", "narg", "flags", "name"))
+    for r in rows[-30:]:
+        i = r[0]
+        raw = r[1]
+        addr = r[2]
+        narg = r[3]
+        flags = r[4]
+        name = r[5]
+        low32 = raw & 0xFFFFFFFF if raw is not None else 0
+        w("%-5d 0x%08X           %-20s %-6s %-10s %s" % (
+            i, low32, fmt(addr) if addr else "?", narg if narg is not None else "?",
+            fmt(flags) if flags is not None else "?", name))
+    w("")
+
+    w(SEP)
+    w("### FULL TABLE [490..520]")
+    w(SEP)
+    w("%-5s %-20s %-20s %-6s %-10s %s" % ("idx", "raw_low32", "unwrapped", "narg", "flags", "name"))
+    for r in rows:
+        i = r[0]
+        if i < 490 or i > 520:
             continue
+        raw = r[1]
+        addr = r[2]
+        narg = r[3]
+        flags = r[4]
+        name = r[5]
+        low32 = raw & 0xFFFFFFFF if raw is not None else 0
+        w("%-5d 0x%08X           %-20s %-6s %-10s %s" % (
+            i, low32, fmt(addr) if addr else "?", narg if narg is not None else "?",
+            fmt(flags) if flags is not None else "?", name))
+    w("")
 
-        try:
-            ent = _u(f.getEntryPoint().getOffset())
-            sz = int(f.getBody().getNumAddresses())
-            w("  func=%s entry=%s size=0x%X" % (str(f.getName()), fmt(ent), sz))
-        except Exception:
-            pass
-
-        w("")
-        w("-- BL callers --")
-        try:
-            hits = bl_callers(addr, 15, 45)
-        except Exception as e:
-            hits = []
-            w("  exception %s" % e)
-        if not hits:
-            w("  (none)")
-        for pair in hits:
-            pc = pair[0]
-            kind = pair[1]
-            cf = getFunctionContaining(sa(pc))
-            nm = "?"
-            if cf is not None:
-                nm = str(cf.getName())
-            cfe = 0
-            if cf is not None:
-                cfe = _u(cf.getEntryPoint().getOffset())
-            w("  %s %s in %s @ %s" % (fmt(pc), kind, nm, fmt(cfe)))
-
-        w("")
-        w("-- sink calls + taint --")
-        try:
-            sinks, callees = collect_sinks_local(f)
-        except Exception as e:
-            sinks, callees = [], []
-            w("  exception %s" % e)
-        if not sinks:
-            w("  no sink calls in body")
-        for snk in sinks:
-            w("  %s @ %s tainted=%s" % (snk[0], snk[1], snk[2]))
-
-        w("")
-        w("-- callees --")
-        for ce in callees[:40]:
-            w("  %s  %s  @ %s  x%d" % (fmt(ce[0]), ce[1], fmt(ce[2]), ce[3]))
-
-        w("")
-        w("-- decompile --")
-        for l in decompile_text(f, 90):
-            w("  " + l)
+    w(SEP)
+    w("### ALL NAMED ENTRIES [0..557] (only where name != ?)")
+    w(SEP)
+    for r in rows:
+        if r[5] == "?":
+            continue
+        w("  sysent[%d] = %s  %s  narg=%s" % (r[0], fmt(r[2]) if r[2] else "?",
+                                              r[5], r[3] if r[3] is not None else "?"))
 
     try:
         fh = open(OUT, "w")
