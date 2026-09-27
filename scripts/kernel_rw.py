@@ -1,11 +1,12 @@
 # -*- coding: utf-8 -*-
 # @runtime Jython
-# mig_scan.py v5 - sink search by hex address
+# iokit_scan.py v1 - IOUserClient externalMethod scanner
 
 import os
 import sys
 import time
 import traceback
+from jarray import zeros
 from ghidra.app.decompiler import DecompInterface
 from ghidra.util.task import ConsoleTaskMonitor
 
@@ -26,34 +27,43 @@ OUT = os.path.join(WS, "result.txt")
 SEP = "=" * 72
 
 KERNEL_BASE = int("FFFFFFF007004000", 16)
-MACH_TRAP_TABLE = int("FFFFFFF007BE8018", 16)
-STRIDE = 24
-OFF_FN = 8
-OFF_FILT = 16
-MAX_TRAPS = 220
-MAX_DECOMPILE_SEC = 60
-BUDGET_SEC = 2400
 
-KERN_INVALID = int("FFFFFFF00A23CB1C", 16)
+USER_CLIENT_VTABLE_NAMES = [
+    "IOUserClient",
+    "IOUserClient_vtable",
+]
 
-SINKS = {
-    "copyin":      [0xFFFFFFF00A368EC0],
-    "copyout":     [0xFFFFFFF00A369A3C],
-    "memmove":     [0xFFFFFFF00AA40D30],
-    "memset":      [0xFFFFFFF00AA40EE0],
-    "kalloc_type": [0xFFFFFFF00A200988],
-    "kalloc_zone": [0xFFFFFFF00A20141C],
-    "kfree_type":  [0xFFFFFFF00A201000],
-    "ref_dec":     [0xFFFFFFF00A4E3278],
+EXT_METHOD_SIGS = [
+    "externalMethod",
+    "getTargetAndMethodForIndex",
+    "externalMethodOverride",
+]
+
+SINK_ADDRS = {
+    "copyin":      int("FFFFFFF00A368EC0", 16),
+    "copyout":     int("FFFFFFF00A369A3C", 16),
+    "memmove":     int("FFFFFFF00AA40D30", 16),
+    "memset":      int("FFFFFFF00AA40EE0", 16),
+    "kalloc_type": int("FFFFFFF00A200988", 16),
+    "kalloc_zone": int("FFFFFFF00A20141C", 16),
+    "kfree_type":  int("FFFFFFF00A201000", 16),
+    "is_io_service_open_extended": int("FFFFFFF00A988758", 16),
+    "iokit_user_client_trap":      int("FFFFFFF00A98C2E8", 16),
+    "io_connect_method":           int("FFFFFFF00A9AD62C", 16),
 }
 
-FILTER_NAMES = ["mig_filter", "ipc_filter", "filter_msg", "ip_filter"]
-PORT_NAMES   = ["mach_port_", "ipc_port_", "mach_vm_", "vm_map_", "vm_object_"]
+STRUCT_CHECK_NAMES = [
+    "checkScalarInputCount",
+    "checkStructureInputSize",
+    "checkScalarOutputCount",
+    "checkStructureOutputSize",
+]
 
 DEC = None
 MONITOR = ConsoleTaskMonitor()
 START_TS = time.time()
 L = []
+_DECOMP_CACHE = {}
 
 
 def log(m):
@@ -94,6 +104,26 @@ def get_dec():
     return DEC
 
 
+def decompile_text(f, sec=60):
+    try:
+        ent = _u(f.getEntryPoint().getOffset())
+    except Exception:
+        ent = 0
+    if ent in _DECOMP_CACHE:
+        return _DECOMP_CACHE[ent]
+    try:
+        r = get_dec().decompileFunction(f, sec, MONITOR)
+        if r is None or not r.decompileCompleted():
+            out = ["(decompile failed)"]
+        else:
+            c = r.getDecompiledFunction()
+            out = ["(empty)"] if c is None else [l.rstrip() for l in c.getC().split("\n")]
+    except Exception as e:
+        out = ["(exception %s)" % e]
+    _DECOMP_CACHE[ent] = out
+    return out
+
+
 def ensure_function(addr):
     ga = sa(addr)
     if ga is None:
@@ -117,186 +147,210 @@ def ensure_function(addr):
             _CFC(ga).applyTo(currentProgram)
         except Exception:
             pass
-    f = getFunctionAt(ga)
-    if f is not None:
-        return f
-    return getFunctionContaining(ga)
+    return getFunctionAt(ga) or getFunctionContaining(ga)
 
 
-def decompile_text(f, sec=MAX_DECOMPILE_SEC):
+def find_user_client_vtables():
+    """Find vtables whose first entries match IOUserClient method names."""
+    hits = []
+    sym = currentProgram.getSymbolTable()
     try:
-        r = get_dec().decompileFunction(f, sec, MONITOR)
-        if r is None or not r.decompileCompleted():
-            return ["(decompile failed)"]
-        c = r.getDecompiledFunction()
-        if c is None:
-            return ["(empty)"]
-        return [l.rstrip() for l in c.getC().split("\n")]
+        it = sym.getAllSymbols(True)
+        while it.hasNext():
+            s = it.next()
+            nm = str(s.getName())
+            for pat in USER_CLIENT_VTABLE_NAMES:
+                if pat in nm:
+                    hits.append((_u(s.getAddress().getOffset()), nm))
     except Exception as e:
-        return ["(exception %s)" % e]
+        log("[!] symtab: %s" % e)
+
+    # Fallback: scan data for "IOUserClient" string and follow xrefs
+    if not hits:
+        try:
+            mem = currentProgram.getMemory()
+            for block in mem.getBlocks():
+                if not block.isInitialized():
+                    continue
+                if block.isExecute():
+                    continue
+                start = _u(block.getStart().getOffset())
+                end = _u(block.getEnd().getOffset())
+                size = end - start
+                if size <= 0 or size > 0x1000000:
+                    continue
+                buf = zeros(size, 'b')
+                try:
+                    mem.getBytes(block.getStart(), buf)
+                except Exception:
+                    continue
+                for i in range(0, size - 16, 8):
+                    val = int(buf[i]) & 0xFF
+                    if val == 0:
+                        continue
+                del buf
+        except Exception as e:
+            log("[!] memscan: %s" % e)
+    return hits
 
 
-def read_u64(addr):
-    try:
-        ga = sa(addr)
-        if ga is None:
-            return None
-        return _u(currentProgram.getMemory().getLong(ga))
-    except Exception:
-        return None
+def vtable_entries(addr, max_entries=256):
+    out = []
+    for i in range(max_entries):
+        raw = None
+        try:
+            ga = sa(addr + i * 8)
+            raw = _u(currentProgram.getMemory().getLong(ga))
+        except Exception:
+            break
+        if raw == 0:
+            break
+        target = KERNEL_BASE + (raw & 0xFFFFFFFF)
+        if target < KERNEL_BASE or target > KERNEL_BASE + 0x20000000:
+            break
+        out.append((i, raw, target))
+    return out
 
 
-def addr_token(addr):
-    return ("%X" % (addr & 0xFFFFFFFFFFFFFFFF)).lower()
+def resolve_name(addr):
+    f = getFunctionContaining(sa(addr))
+    if f is not None:
+        try:
+            return str(f.getName())
+        except Exception:
+            pass
+    return "?"
+
+
+def find_methods_in_vtable(vt_addr):
+    """Return indices and names where vtable slot resolves to ext method sig."""
+    out = []
+    for idx, raw, target in vtable_entries(vt_addr):
+        nm = resolve_name(target)
+        for sig in EXT_METHOD_SIGS:
+            if sig in nm:
+                out.append((idx, target, nm))
+                break
+    return out
+
+
+def extract_dispatch_table(fn_addr):
+    """Decompile and look for stack / const dispatch structs."""
+    f = ensure_function(fn_addr)
+    if f is None:
+        return None, None
+    text = decompile_text(f)
+    lines = [l.strip() for l in text]
+
+    # find array-ish patterns
+    dispatch_hits = []
+    for i, line in enumerate(lines):
+        for sname in STRUCT_CHECK_NAMES:
+            if sname in line:
+                dispatch_hits.append((i, line))
+                break
+
+    return f, {"lines": lines, "dispatch_hits": dispatch_hits}
 
 
 def count_sinks(text):
     joined = "\n".join(text).lower()
     out = {}
-    for name, addrs in SINKS.items():
-        n = 0
-        for a in addrs:
-            n += joined.count(addr_token(a))
-        out[name] = n
-    for name in FILTER_NAMES:
-        out[name] = joined.count(name)
-    for name in PORT_NAMES:
-        out[name] = joined.count(name)
+    for name, addr in SINK_ADDRS.items():
+        tok = ("%x" % (addr & 0xFFFFFFFFFFFFFFFF))
+        out[name] = joined.count(tok)
+    for name in ("copyin", "copyout", "memmove", "memset"):
+        out[name] = out.get(name, 0) + joined.count(name)
     return out
 
 
-def dump_one(fn_addr, idxs, args_list, filt_list, f, text, c):
+def dump_one(addr, label, extra=""):
     w("")
     w(SEP)
-    w("### trap_fn @ %s" % fmt(fn_addr))
-    w("  name = %s" % f.getName())
-    w("  traps = %s" % idxs)
-    w("  args = %s" % args_list)
-    w("  filters = %s" % filt_list)
+    w("### %s @ %s %s" % (label, fmt(addr), extra))
+    w(SEP)
+    f = ensure_function(addr)
+    if f is None:
+        w("  no function")
+        return None
     try:
+        w("  name = %s" % f.getName())
         w("  size = 0x%X" % int(f.getBody().getNumAddresses()))
     except Exception:
         pass
+    text = decompile_text(f)
+    c = count_sinks(text)
     parts = []
     for k in sorted(c.keys()):
         if c[k] > 0:
             parts.append("%s=%d" % (k, c[k]))
-    w("  counts: %s" % (" ".join(parts) if parts else "(none)"))
+    w("  sinks: %s" % (" ".join(parts) if parts else "(none)"))
     w("")
     w("-- decompile --")
     for l in text:
         w("  " + l)
+    return {"addr": addr, "name": str(f.getName()), "sinks": c, "text": text}
 
 
 def main():
     global START_TS
     START_TS = time.time()
 
-    log("=== mig_scan v5 ===")
-    w("natsuk1 mig_scan v5")
+    log("=== iokit_scan v1 ===")
+    w("natsuk1 iokit_scan v1")
     w("kernel base %s" % fmt(KERNEL_BASE))
-    w("mach_trap_table %s stride %d" % (fmt(MACH_TRAP_TABLE), STRIDE))
     w("")
 
-    entries = []
-    for i in range(MAX_TRAPS):
-        base = MACH_TRAP_TABLE + i * STRIDE
-        args_raw = read_u64(base)
-        fn_raw = read_u64(base + OFF_FN)
-        filt_raw = read_u64(base + OFF_FILT)
-        if fn_raw is None:
-            break
-        if fn_raw == 0:
-            continue
-        fn_addr = KERNEL_BASE + (fn_raw & 0xFFFFFFFF)
-        if fn_addr < KERNEL_BASE or fn_addr > KERNEL_BASE + 0x20000000:
-            continue
-        filt_addr = 0
-        if filt_raw and filt_raw != 0:
-            fa = KERNEL_BASE + (filt_raw & 0xFFFFFFFF)
-            if fa >= KERNEL_BASE and fa <= KERNEL_BASE + 0x20000000:
-                filt_addr = fa
-        entries.append((i, args_raw or 0, fn_addr, filt_addr))
+    log("[*] finding IOUserClient vtables")
+    vtables = find_user_client_vtables()
+    log("[*] vtable candidates: %d" % len(vtables))
 
-    log("[*] entries: %d" % len(entries))
-
-    by_fn = {}
-    for i, args, fn_addr, filt_addr in entries:
-        if fn_addr == KERN_INVALID:
-            continue
-        by_fn.setdefault(fn_addr, {"traps": [], "args": [], "filters": []})
-        by_fn[fn_addr]["traps"].append(i)
-        by_fn[fn_addr]["args"].append(args)
-        by_fn[fn_addr]["filters"].append(filt_addr)
-
-    log("[*] unique fn: %d" % len(by_fn))
+    w("")
+    w(SEP)
+    w("### VTABLE CANDIDATES")
+    w(SEP)
+    for a, nm in vtables:
+        w("  %s  %s" % (fmt(a), nm))
 
     results = []
-    no_func = 0
-    decomp_fail = 0
-    for fn_addr, meta in sorted(by_fn.items()):
-        if time.time() - START_TS > BUDGET_SEC:
+    for vt_addr, vt_name in vtables:
+        if time.time() - START_TS > 2400:
             w("BUDGET EXCEEDED")
             break
-        f = ensure_function(fn_addr)
-        if f is None:
-            no_func += 1
-            continue
-        text = decompile_text(f)
-        if text and text[0] and text[0].startswith("(decompile"):
-            decomp_fail += 1
-        c = count_sinks(text)
-        has_in = c.get("copyin", 0) > 0
-        has_out = c.get("copyout", 0) > 0
-        has_alloc = c.get("kalloc_type", 0) + c.get("kalloc_zone", 0) > 0
-        has_filter = sum(c.get(n, 0) for n in FILTER_NAMES) > 0
-        has_portvm = sum(c.get(n, 0) for n in PORT_NAMES) > 0
-        has_any = has_in or has_out or has_alloc or has_portvm
-        if not has_any:
-            continue
-        hp = "HIGH" if (has_in and not has_filter) else ""
-        mp = "ALLOC" if (has_in and has_alloc) else ""
-        results.append({
-            "addr": fn_addr,
-            "meta": meta,
-            "f": f,
-            "text": text,
-            "c": c,
-            "hp": hp,
-            "mp": mp,
-        })
+        log("[*] vtable %s @ %s" % (vt_name, fmt(vt_addr)))
+        methods = find_methods_in_vtable(vt_addr)
 
-    log("[*] interesting: %d (no_func=%d decomp_fail=%d)" % (len(results), no_func, decomp_fail))
+        w("")
+        w(SEP)
+        w("### VTABLE @ %s (%s)" % (fmt(vt_addr), vt_name))
+        w(SEP)
+        for idx, raw, target in vtable_entries(vt_addr):
+            nm = resolve_name(target)
+            w("  [%3d] %s -> %s  %s" % (idx, fmt(raw), fmt(target), nm))
 
-    results.sort(key=lambda r: (0 if r["hp"] else 1 if r["mp"] else 2, r["addr"]))
-
-    for r in results:
-        if time.time() - START_TS > BUDGET_SEC:
-            w("BUDGET EXCEEDED during dump")
-            break
-        dump_one(r["addr"], r["meta"]["traps"],
-                 ["0x%X" % a for a in r["meta"]["args"]],
-                 [fmt(x) for x in r["meta"]["filters"]],
-                 r["f"], r["text"], r["c"])
+        for idx, target, nm in methods:
+            log("[*] method %s @ %s (vtable slot %d)" % (nm, fmt(target), idx))
+            r = dump_one(target, "ext_method", extra="slot=%d name=%s" % (idx, nm))
+            if r is not None:
+                r["vtable"] = vt_addr
+                r["slot"] = idx
+                results.append(r)
 
     w("")
     w(SEP)
     w("### SUMMARY")
     w(SEP)
-    w("total entries: %d" % len(entries))
-    w("unique handlers: %d" % len(by_fn))
-    w("no function: %d" % no_func)
-    w("decompile failed: %d" % decomp_fail)
-    w("interesting: %d" % len(results))
+    w("vtables: %d" % len(vtables))
+    w("methods dumped: %d" % len(results))
     w("")
     for r in results:
         parts = []
-        for k in sorted(r["c"].keys()):
-            if r["c"][k] > 0:
-                parts.append("%s=%d" % (k, r["c"][k]))
-        w("  [%s%s] %s traps=%s  %s" % (
-            r["hp"] or "-", r["mp"] or "", fmt(r["addr"]),
-            r["meta"]["traps"], " ".join(parts)))
+        for k in sorted(r["sinks"].keys()):
+            if r["sinks"][k] > 0:
+                parts.append("%s=%d" % (k, r["sinks"][k]))
+        w("  %s %s vtable=%s slot=%d  %s" % (
+            fmt(r["addr"]), r["name"], fmt(r["vtable"]),
+            r["slot"], " ".join(parts)))
     w("")
     w("elapsed %.1f sec" % (time.time() - START_TS))
 
