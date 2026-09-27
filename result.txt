@@ -1,253 +1,601 @@
-natsuk1 IOKit taint scan v49
-symbols_loaded=39689 iokit_sources=2
+natsuk1 IOKit taint scan v50
+symbols_loaded=39689 iokit_sources=80
 sinks=6 depth=14 budget=1200s
 
-SOURCES:
+SOURCES (80):
   0xFFFFFFF00A98C2E8  iokit_user_client_trap
   0xFFFFFFF00A988758  is_io_service_open_extended
+  0xFFFFFFF009E5DD40  __ZN25IOUSBMassStorageDriverNub13willTerminateEP9IOServicej
+  0xFFFFFFF008F6AD34  __ZN11ApplePMGRv212_publishNubsEP15IORegistryEntry
+  0xFFFFFFF009AF88D4  __ZN24IONVMeBlockStorageDevice5startEP9IOService.cold.8
+  0xFFFFFFF009AF8834  __ZN24IONVMeBlockStorageDevice5startEP9IOService.cold.6
+  0xFFFFFFF009E3A300  __ZN18AppleUSB20XHCIPort20initWithDeviceMemoryEP14IODeviceMemoryPN15StandardUSBXHCI33StandardUSBXHCIProtocolCapabilityEP15IORegistryEntry
+  0xFFFFFFF00867AA78  __ZN20AppleBluetoothModule23amfmMessageHandlerGatedEjP9IOServicePvm
+  0xFFFFFFF00A32DC3C  _Xio_service_add_notification_64
+  0xFFFFFFF009C50730  __ZN17IOTimeSyncService5startEP9IOService
+  0xFFFFFFF008FE9450  __ZN12ApplePPMCPMS9initLocalEP9IOService.cold.2
+  0xFFFFFFF008FE94B0  __ZN12ApplePPMCPMS9initLocalEP9IOService.cold.3
+  0xFFFFFFF007C1FA70  vtable for IOServiceNotificationDispatchSource
+  0xFFFFFFF008FE94F4  __ZN12ApplePPMCPMS9initLocalEP9IOService.cold.4
+  0xFFFFFFF008FE9524  __ZN12ApplePPMCPMS9initLocalEP9IOService.cold.5
+  0xFFFFFFF008FE9554  __ZN12ApplePPMCPMS9initLocalEP9IOService.cold.6
+  0xFFFFFFF008FB83E0  __ZN12ApplePPMCPMS9initLocalEP9IOService.cold.7
+  0xFFFFFFF008FE95CC  __ZN12ApplePPMCPMS9initLocalEP9IOService.cold.8
+  0xFFFFFFF008FE95FC  __ZN12ApplePPMCPMS9initLocalEP9IOService.cold.9
+  0xFFFFFFF00942B8D8  __ZN23AppleUSBAudioStreamNode5startEP9IOService
+  0xFFFFFFF0088D84E0  ____ZN25AFKEndpointInterfaceRelay5startEP9IOService_block_invoke_2.cold.1
+  0xFFFFFFF0098150F0  __ZN25IOAccessoryIDBusTransport4stopEP9IOService
+  0xFFFFFFF00925E018  __ZN20AppleSPUSphereDriver5startEP9IOService
+  0xFFFFFFF008896C28  __ZN26AFKiBootSharedMemoryRegion5startEP9IOService
+  0xFFFFFFF00838FFEC  __ZN18AppleAVDUserClient4stopEP9IOService
+  0xFFFFFFF007C20450  vtable for IOService::MetaClass
+  0xFFFFFFF0088D96A4  __ZN21AFKSharedMemoryRegion5startEP9IOService.cold.1
+  0xFFFFFFF0088D977C  __ZN21AFKSharedMemoryRegion5startEP9IOService.cold.2
+  0xFFFFFFF0088D97AC  __ZN21AFKSharedMemoryRegion5startEP9IOService.cold.3
+  0xFFFFFFF00827DD9C  __ZN22AppleAOPAudioSawDevice4initEP15IORegistryEntryPK15IORegistryPlane
+  0xFFFFFFF0088D97DC  __ZN21AFKSharedMemoryRegion5startEP9IOService.cold.4
+  0xFFFFFFF0088D989C  __ZN21AFKSharedMemoryRegion5startEP9IOService.cold.5
+  0xFFFFFFF008737DD0  __Z14nameWakeReasonPcmPKcP9IOService
+  0xFFFFFFF009B9CD58  __ZN25IOSkywalkPacketBufferPool23checkInReportingServiceEP9IOServicePK18IOSkywalkInterfaceb
+  0xFFFFFFF008885830  __ZN13AppleTICD2E225startEP9IOService
+  0xFFFFFFF0086A0D30  __ZN26AppleConvergedIPCBTAdapter4initEP9IOService
+  0xFFFFFFF0082C7AE0  __ZN22AppleARMDMAAudioDevice5startEP9IOServicePK7OSArrayxjPKjPKS4_PKNS_14DataFormatTypeES8_S6_S8_S6_S8_S6_
+  0xFFFFFFF00858C058  __ZN16AppleAuthCPMGAID5startEP9IOService
+  0xFFFFFFF00A91D07C  __ZN9IOService34pmTellCapabilityClientWithResponseEP8OSObjectPv
+  0xFFFFFFF00867753C  __ZN20AppleBluetoothModule22powerStateWillChangeToEmmP9IOService
+  0xFFFFFFF0088F043C  __ZN19AppleGPIOUserClient5startEP9IOService
+  0xFFFFFFF008FC97D8  __ZN35ApplePPMCPMSSystemCapabilityMonitor18_asbArrivalHandlerEPvP9IOServiceP10IONotifier
+  0xFFFFFFF0099511A0  __ZN5IOGPU5startEP9IOService
+  0xFFFFFFF00A91CE98  __ZN9IOService19stop_watchdog_timerEv
+  0xFFFFFFF008727038  __ZN14AppleDCPExpert5startEP9IOService
+  0xFFFFFFF00829DCB8  __ZN31AppleAOPAudioButtonOutputDevice5startEP9IOService
+  0xFFFFFFF00922AFC8  __ZN21AppleSPUDispADCDriver5startEP9IOService
+  0xFFFFFFF008789BD8  __ZN21AppleMCKAudioFunction27initWithTargetDataAndSymbolEP9IOServicePK6OSDataPK8OSSymbol.cold.1
+  0xFFFFFFF008789C58  __ZN21AppleMCKAudioFunction27initWithTargetDataAndSymbolEP9IOServicePK6OSDataPK8OSSymbol.cold.3
+  0xFFFFFFF008789C18  __ZN21AppleMCKAudioFunction27initWithTargetDataAndSymbolEP9IOServicePK6OSDataPK8OSSymbol.cold.2
+  0xFFFFFFF00984DC4C  __ZN18IOAccessoryIDBusPD19managerNotificationEPvjP9IOServiceS0_m
+  0xFFFFFFF009205848  __ZN17AppleSPUHIDDevice17publishPropertiesEP9IOService
+  0xFFFFFFF00990EB30  __ZN13IODPSwitchUFP11handleStartEP9IOService.cold.1
+  0xFFFFFFF00A98BE44  is_io_catalog_send_data
+  0xFFFFFFF00990980C  __ZN10IODPTXPort21waitForDPSwitchParentEP9IOService.cold.6
+  0xFFFFFFF009909430  __ZN10IODPTXPort21waitForDPSwitchParentEP9IOService.cold.2
+  0xFFFFFFF0099095B4  __ZN10IODPTXPort21waitForDPSwitchParentEP9IOService.cold.3
+  0xFFFFFFF00990967C  __ZN10IODPTXPort21waitForDPSwitchParentEP9IOService.cold.4
+  0xFFFFFFF009909744  __ZN10IODPTXPort21waitForDPSwitchParentEP9IOService.cold.5
+  0xFFFFFFF00828A57C  AppleAOPAudioServiceBase::AppleAOPAudioServiceBase
+  0xFFFFFFF0099092E0  __ZN10IODPTXPort21waitForDPSwitchParentEP9IOService.cold.1
+  0xFFFFFFF009C3FB3C  __ZN22IOTimeSyncClockManager5startEP9IOService
+  0xFFFFFFF007C209E0  vtable for _IOServiceJob
+  0xFFFFFFF00AD76490  IOServiceNotificationDispatchSource::gMetaClass
+  0xFFFFFFF008304350  __ZN18AppleARMSPMIDevice21initWithRegistryEntryEP15IORegistryEntryP31AppleARMSPMIControllerInterface
+  0xFFFFFFF008F81F14  __ZN9ApplePMGR12_publishNubsEP15IORegistryEntry.cold.1
+  0xFFFFFFF0082C5464  __ZN22AppleARMIISAudioDevice28_initExternalPowerDependencyEP9IOService.cold.1
+  0xFFFFFFF0097BAA3C  __ZN29IOPortTunnelingTransportState4stopEP9IOService
+  0xFFFFFFF00A9270C4  __ZN9IOService19waitForPMDriverCallEPS_
+  0xFFFFFFF00A331C50  _Xio_connect_add_client
+  0xFFFFFFF00A9BE434  __ZN19IOPerfControlClient7workEndEP9IOServiceyPNS_11WorkEndArgsEb
+  0xFFFFFFF0085802F0  __ZN27AppleActuatorHIDEventDriver7messageEjP9IOServicePv
+  0xFFFFFFF008D10ED0  __ZN19AppleM2ScalerCSCHal11withOptionsEjP22AppleM2ScalerCSCDriverP9IOServiceP10IOWorkLoop
+  0xFFFFFFF00944E494  __ZN30AppleUSBEthernetControllerAX885startEP9IOService
+  0xFFFFFFF008FA2280  __ZN45ApplePPMPolicyCPMSPowerServoLowerLayerBudgets14initWithParamsEP9IOServicePFvP8OSObjectyES5_
+  0xFFFFFFF0082DF604  __ZN22AppleARMPMUPowerSource5startEP9IOService.cold.1
+  0xFFFFFFF008AC4064  __ZN29AppleHIDKeyboardEventDriverV25startEP9IOService
+  0xFFFFFFF009DE501C  __ZL19controllerPublishedPvS_P9IOServiceP10IONotifier
+  0xFFFFFFF009C41078  __ZN22IOTimeSyncClockManager28interfaceMatchedNotificationEPvS0_P9IOServiceP10IONotifier
+  0xFFFFFFF0097ECC2C  __ZN22IOPortTransportStateCC5startEP9IOService
 
-SRC iokit_user_client_trap                   findings=35
-  copyin       @ 0xFFFFFFF00A9AD6C4  FUN_fffffff00a9ad62c  d=1
-  memmove      @ 0xFFFFFFF00A3341C8  FUN_fffffff00a334174  d=7
-  memmove      @ 0xFFFFFFF00A37D554  FUN_fffffff00a37ce88  d=8
-  memmove      @ 0xFFFFFFF00A333E2C  FUN_fffffff00a333dd0  d=9
-  memmove      @ 0xFFFFFFF00A6E66E4  FUN_fffffff00a6e656c  d=10
-  memmove      @ 0xFFFFFFF00A1CB018  FUN_fffffff00a1caf1c  d=10
-  memmove      @ 0xFFFFFFF00A1CB044  FUN_fffffff00a1caf1c  d=10
-  kalloc_type  @ 0xFFFFFFF00A1C6D44  FUN_fffffff00a1c6b80  d=11
-  memmove      @ 0xFFFFFFF00A7879E0  FUN_fffffff00a78772c  d=12
+SRC iokit_user_client_trap                           findings=35 uniq=20
   memmove      @ 0xFFFFFFF00A771DD4  FUN_fffffff00a77172c  d=12
-  memmove      @ 0xFFFFFFF00A3ADE0C  FUN_fffffff00a3ad3ec  d=12
+  copyin       @ 0xFFFFFFF00A9AD6C4  FUN_fffffff00a9ad62c  d=1
+  memmove      @ 0xFFFFFFF00A7879E0  FUN_fffffff00a78772c  d=12
   kalloc_type  @ 0xFFFFFFF00A3ACE28  FUN_fffffff00a3aca70  d=12
-  memmove      @ 0xFFFFFFF00A7879E0  FUN_fffffff00a78772c  d=13
-  memmove      @ 0xFFFFFFF00A771DD4  FUN_fffffff00a77172c  d=13
-  memmove      @ 0xFFFFFFF00A6E66E4  FUN_fffffff00a6e656c  d=13
-  memmove      @ 0xFFFFFFF00A6E66E4  FUN_fffffff00a6e656c  d=13
-  memmove      @ 0xFFFFFFF00A2DBA48  FUN_fffffff00a2db9fc  d=13
-  memmove      @ 0xFFFFFFF00A2DBA84  FUN_fffffff00a2db9fc  d=13
-  memmove      @ 0xFFFFFFF00A2DBAA0  FUN_fffffff00a2db9fc  d=13
+  memmove      @ 0xFFFFFFF00A1CB044  FUN_fffffff00a1caf1c  d=10
+  memmove      @ 0xFFFFFFF00A37D554  FUN_fffffff00a37ce88  d=8
+  kalloc_type  @ 0xFFFFFFF00A1C6D44  FUN_fffffff00a1c6b80  d=11
   memmove      @ 0xFFFFFFF00A2DBAD0  FUN_fffffff00a2db9fc  d=13
-  memmove      @ 0xFFFFFFF00A3FDFAC  FUN_fffffff00a3fddf4  d=13
-  memmove      @ 0xFFFFFFF00A3341C8  FUN_fffffff00a334174  d=13
-  memmove      @ 0xFFFFFFF00A3341FC  FUN_fffffff00a334174  d=13
-  memmove      @ 0xFFFFFFF00A4C9674  FUN_fffffff00a4c7a38  d=14
+  memmove      @ 0xFFFFFFF00A333E2C  FUN_fffffff00a333dd0  d=9
+  memmove      @ 0xFFFFFFF00A1CB018  FUN_fffffff00a1caf1c  d=10
   memmove      @ 0xFFFFFFF00A4C9690  FUN_fffffff00a4c7a38  d=14
-  memmove      @ 0xFFFFFFF00A7879E0  FUN_fffffff00a78772c  d=14
-  memmove      @ 0xFFFFFFF00A2DBA48  FUN_fffffff00a2db9fc  d=14
-  memmove      @ 0xFFFFFFF00A2DBA84  FUN_fffffff00a2db9fc  d=14
-  memmove      @ 0xFFFFFFF00A2DBAA0  FUN_fffffff00a2db9fc  d=14
-  memmove      @ 0xFFFFFFF00A2DBAD0  FUN_fffffff00a2db9fc  d=14
-  memmove      @ 0xFFFFFFF00A2DBA48  FUN_fffffff00a2db9fc  d=14
-  memmove      @ 0xFFFFFFF00A2DBA84  FUN_fffffff00a2db9fc  d=14
-  memmove      @ 0xFFFFFFF00A2DBAA0  FUN_fffffff00a2db9fc  d=14
-  memmove      @ 0xFFFFFFF00A2DBAD0  FUN_fffffff00a2db9fc  d=14
-  kalloc_type  @ 0xFFFFFFF00A3ACE28  FUN_fffffff00a3aca70  d=14
-SRC is_io_service_open_extended              findings=22
-  memmove      @ 0xFFFFFFF00A333E2C  FUN_fffffff00a333dd0  d=3
-  memmove      @ 0xFFFFFFF00A3341C8  FUN_fffffff00a334174  d=8
-  memmove      @ 0xFFFFFFF00A37D554  FUN_fffffff00a37ce88  d=9
-  memmove      @ 0xFFFFFFF00A6E66E4  FUN_fffffff00a6e656c  d=11
-  memmove      @ 0xFFFFFFF00A1CB018  FUN_fffffff00a1caf1c  d=11
-  memmove      @ 0xFFFFFFF00A1CB044  FUN_fffffff00a1caf1c  d=11
-  kalloc_type  @ 0xFFFFFFF00A1C6D44  FUN_fffffff00a1c6b80  d=12
-  memmove      @ 0xFFFFFFF00A7879E0  FUN_fffffff00a78772c  d=13
+  memmove      @ 0xFFFFFFF00A3341C8  FUN_fffffff00a334174  d=7
+  memmove      @ 0xFFFFFFF00A6E66E4  FUN_fffffff00a6e656c  d=10
+  memmove      @ 0xFFFFFFF00A2DBA48  FUN_fffffff00a2db9fc  d=13
+  memmove      @ 0xFFFFFFF00A3FDFAC  FUN_fffffff00a3fddf4  d=13
+  memmove      @ 0xFFFFFFF00A2DBAA0  FUN_fffffff00a2db9fc  d=13
+  memmove      @ 0xFFFFFFF00A3ADE0C  FUN_fffffff00a3ad3ec  d=12
+  memmove      @ 0xFFFFFFF00A4C9674  FUN_fffffff00a4c7a38  d=14
+  memmove      @ 0xFFFFFFF00A3341FC  FUN_fffffff00a334174  d=13
+  memmove      @ 0xFFFFFFF00A2DBA84  FUN_fffffff00a2db9fc  d=13
+SRC is_io_service_open_extended                      findings=22 uniq=17
   memmove      @ 0xFFFFFFF00A771DD4  FUN_fffffff00a77172c  d=13
-  memmove      @ 0xFFFFFFF00A3ADE0C  FUN_fffffff00a3ad3ec  d=13
+  memmove      @ 0xFFFFFFF00A7879E0  FUN_fffffff00a78772c  d=13
   kalloc_type  @ 0xFFFFFFF00A3ACE28  FUN_fffffff00a3aca70  d=13
-  memmove      @ 0xFFFFFFF00A7879E0  FUN_fffffff00a78772c  d=14
-  memmove      @ 0xFFFFFFF00A771DD4  FUN_fffffff00a77172c  d=14
-  memmove      @ 0xFFFFFFF00A6E66E4  FUN_fffffff00a6e656c  d=14
-  memmove      @ 0xFFFFFFF00A6E66E4  FUN_fffffff00a6e656c  d=14
-  memmove      @ 0xFFFFFFF00A2DBA48  FUN_fffffff00a2db9fc  d=14
-  memmove      @ 0xFFFFFFF00A2DBA84  FUN_fffffff00a2db9fc  d=14
-  memmove      @ 0xFFFFFFF00A2DBAA0  FUN_fffffff00a2db9fc  d=14
+  memmove      @ 0xFFFFFFF00A1CB044  FUN_fffffff00a1caf1c  d=11
+  memmove      @ 0xFFFFFFF00A37D554  FUN_fffffff00a37ce88  d=9
+  kalloc_type  @ 0xFFFFFFF00A1C6D44  FUN_fffffff00a1c6b80  d=12
   memmove      @ 0xFFFFFFF00A2DBAD0  FUN_fffffff00a2db9fc  d=14
+  memmove      @ 0xFFFFFFF00A333E2C  FUN_fffffff00a333dd0  d=3
+  memmove      @ 0xFFFFFFF00A1CB018  FUN_fffffff00a1caf1c  d=11
+  memmove      @ 0xFFFFFFF00A3341C8  FUN_fffffff00a334174  d=8
+  memmove      @ 0xFFFFFFF00A6E66E4  FUN_fffffff00a6e656c  d=11
+  memmove      @ 0xFFFFFFF00A2DBA48  FUN_fffffff00a2db9fc  d=14
   memmove      @ 0xFFFFFFF00A3FDFAC  FUN_fffffff00a3fddf4  d=14
-  memmove      @ 0xFFFFFFF00A3341C8  FUN_fffffff00a334174  d=14
+  memmove      @ 0xFFFFFFF00A2DBAA0  FUN_fffffff00a2db9fc  d=14
+  memmove      @ 0xFFFFFFF00A3ADE0C  FUN_fffffff00a3ad3ec  d=13
   memmove      @ 0xFFFFFFF00A3341FC  FUN_fffffff00a334174  d=14
+  memmove      @ 0xFFFFFFF00A2DBA84  FUN_fffffff00a2db9fc  d=14
+SRC __ZN25IOUSBMassStorageDriverNub13willTerminateEP (no tainted sinks)
+SRC __ZN11ApplePMGRv212_publishNubsEP15IORegistryEnt (no tainted sinks)
+SRC __ZN24IONVMeBlockStorageDevice5startEP9IOService (no tainted sinks)
+SRC __ZN24IONVMeBlockStorageDevice5startEP9IOService (no tainted sinks)
+SRC __ZN18AppleUSB20XHCIPort20initWithDeviceMemoryEP (no tainted sinks)
+SRC __ZN20AppleBluetoothModule23amfmMessageHandlerGa (no tainted sinks)
+SRC _Xio_service_add_notification_64                 (no tainted sinks)
+SRC __ZN17IOTimeSyncService5startEP9IOService        (no tainted sinks)
+SRC __ZN12ApplePPMCPMS9initLocalEP9IOService.cold.2  (no tainted sinks)
+SRC __ZN12ApplePPMCPMS9initLocalEP9IOService.cold.3  (no tainted sinks)
+SRC vtable for IOServiceNotificationDispatchSource   (no tainted sinks)
+SRC __ZN12ApplePPMCPMS9initLocalEP9IOService.cold.4  (no tainted sinks)
+SRC __ZN12ApplePPMCPMS9initLocalEP9IOService.cold.5  (no tainted sinks)
+SRC __ZN12ApplePPMCPMS9initLocalEP9IOService.cold.6  (no tainted sinks)
+SRC __ZN12ApplePPMCPMS9initLocalEP9IOService.cold.7  (no tainted sinks)
+SRC __ZN12ApplePPMCPMS9initLocalEP9IOService.cold.8  (no tainted sinks)
+SRC __ZN12ApplePPMCPMS9initLocalEP9IOService.cold.9  (no tainted sinks)
+SRC __ZN23AppleUSBAudioStreamNode5startEP9IOService  (no tainted sinks)
+SRC ____ZN25AFKEndpointInterfaceRelay5startEP9IOServ (no tainted sinks)
+SRC __ZN25IOAccessoryIDBusTransport4stopEP9IOService (no tainted sinks)
+SRC __ZN20AppleSPUSphereDriver5startEP9IOService     (no tainted sinks)
+SRC __ZN26AFKiBootSharedMemoryRegion5startEP9IOServi (no tainted sinks)
+SRC __ZN18AppleAVDUserClient4stopEP9IOService        (no tainted sinks)
+SRC vtable for IOService::MetaClass                  (no tainted sinks)
+SRC __ZN21AFKSharedMemoryRegion5startEP9IOService.co (no tainted sinks)
+SRC __ZN21AFKSharedMemoryRegion5startEP9IOService.co (no tainted sinks)
+SRC __ZN21AFKSharedMemoryRegion5startEP9IOService.co (no tainted sinks)
+SRC __ZN22AppleAOPAudioSawDevice4initEP15IORegistryE (no tainted sinks)
+SRC __ZN21AFKSharedMemoryRegion5startEP9IOService.co (no tainted sinks)
+SRC __ZN21AFKSharedMemoryRegion5startEP9IOService.co (no tainted sinks)
+SRC __Z14nameWakeReasonPcmPKcP9IOService             (no tainted sinks)
+SRC __ZN25IOSkywalkPacketBufferPool23checkInReportin (no tainted sinks)
+SRC __ZN13AppleTICD2E225startEP9IOService            (no tainted sinks)
+SRC __ZN26AppleConvergedIPCBTAdapter4initEP9IOServic (no tainted sinks)
+SRC __ZN22AppleARMDMAAudioDevice5startEP9IOServicePK (no tainted sinks)
+SRC __ZN16AppleAuthCPMGAID5startEP9IOService         (no tainted sinks)
+SRC __ZN9IOService34pmTellCapabilityClientWithRespon findings=23 uniq=17
+  memmove      @ 0xFFFFFFF00A771DD4  FUN_fffffff00a77172c  d=13
+  memmove      @ 0xFFFFFFF00A7879E0  FUN_fffffff00a78772c  d=13
+  kalloc_type  @ 0xFFFFFFF00A3ACE28  FUN_fffffff00a3aca70  d=13
+  memmove      @ 0xFFFFFFF00A1CB044  FUN_fffffff00a1caf1c  d=11
+  memmove      @ 0xFFFFFFF00A37D554  FUN_fffffff00a37ce88  d=9
+  kalloc_type  @ 0xFFFFFFF00A1C6D44  FUN_fffffff00a1c6b80  d=12
+  memmove      @ 0xFFFFFFF00A2DBAD0  FUN_fffffff00a2db9fc  d=14
+  memmove      @ 0xFFFFFFF00A333E2C  FUN_fffffff00a333dd0  d=10
+  memmove      @ 0xFFFFFFF00A1CB018  FUN_fffffff00a1caf1c  d=11
+  memmove      @ 0xFFFFFFF00A3341C8  FUN_fffffff00a334174  d=2
+  memmove      @ 0xFFFFFFF00A6E66E4  FUN_fffffff00a6e656c  d=11
+  memmove      @ 0xFFFFFFF00A2DBA48  FUN_fffffff00a2db9fc  d=14
+  memmove      @ 0xFFFFFFF00A3FDFAC  FUN_fffffff00a3fddf4  d=14
+  memmove      @ 0xFFFFFFF00A2DBAA0  FUN_fffffff00a2db9fc  d=14
+  memmove      @ 0xFFFFFFF00A3ADE0C  FUN_fffffff00a3ad3ec  d=13
+  memmove      @ 0xFFFFFFF00A3341FC  FUN_fffffff00a334174  d=14
+  memmove      @ 0xFFFFFFF00A2DBA84  FUN_fffffff00a2db9fc  d=14
+SRC __ZN20AppleBluetoothModule22powerStateWillChange (no tainted sinks)
+SRC __ZN19AppleGPIOUserClient5startEP9IOService      (no tainted sinks)
+SRC __ZN35ApplePPMCPMSSystemCapabilityMonitor18_asbA (no tainted sinks)
+SRC __ZN5IOGPU5startEP9IOService                     (no tainted sinks)
+SRC __ZN9IOService19stop_watchdog_timerEv            findings=34 uniq=19
+  memmove      @ 0xFFFFFFF00A771DD4  FUN_fffffff00a77172c  d=12
+  memmove      @ 0xFFFFFFF00A7879E0  FUN_fffffff00a78772c  d=12
+  kalloc_type  @ 0xFFFFFFF00A3ACE28  FUN_fffffff00a3aca70  d=12
+  memmove      @ 0xFFFFFFF00A1CB044  FUN_fffffff00a1caf1c  d=10
+  memmove      @ 0xFFFFFFF00A37D554  FUN_fffffff00a37ce88  d=8
+  kalloc_type  @ 0xFFFFFFF00A1C6D44  FUN_fffffff00a1c6b80  d=11
+  memmove      @ 0xFFFFFFF00A2DBAD0  FUN_fffffff00a2db9fc  d=13
+  memmove      @ 0xFFFFFFF00A333E2C  FUN_fffffff00a333dd0  d=9
+  memmove      @ 0xFFFFFFF00A1CB018  FUN_fffffff00a1caf1c  d=10
+  memmove      @ 0xFFFFFFF00A4C9690  FUN_fffffff00a4c7a38  d=14
+  memmove      @ 0xFFFFFFF00A3341C8  FUN_fffffff00a334174  d=7
+  memmove      @ 0xFFFFFFF00A6E66E4  FUN_fffffff00a6e656c  d=10
+  memmove      @ 0xFFFFFFF00A2DBA48  FUN_fffffff00a2db9fc  d=13
+  memmove      @ 0xFFFFFFF00A3FDFAC  FUN_fffffff00a3fddf4  d=13
+  memmove      @ 0xFFFFFFF00A2DBAA0  FUN_fffffff00a2db9fc  d=13
+  memmove      @ 0xFFFFFFF00A3ADE0C  FUN_fffffff00a3ad3ec  d=12
+  memmove      @ 0xFFFFFFF00A4C9674  FUN_fffffff00a4c7a38  d=14
+  memmove      @ 0xFFFFFFF00A3341FC  FUN_fffffff00a334174  d=13
+  memmove      @ 0xFFFFFFF00A2DBA84  FUN_fffffff00a2db9fc  d=13
+SRC __ZN14AppleDCPExpert5startEP9IOService           (no tainted sinks)
+SRC __ZN31AppleAOPAudioButtonOutputDevice5startEP9IO (no tainted sinks)
+SRC __ZN21AppleSPUDispADCDriver5startEP9IOService    (no tainted sinks)
+SRC __ZN21AppleMCKAudioFunction27initWithTargetDataA (no tainted sinks)
+SRC __ZN21AppleMCKAudioFunction27initWithTargetDataA (no tainted sinks)
+SRC __ZN21AppleMCKAudioFunction27initWithTargetDataA (no tainted sinks)
+SRC __ZN18IOAccessoryIDBusPD19managerNotificationEPv (no tainted sinks)
+SRC __ZN17AppleSPUHIDDevice17publishPropertiesEP9IOS (no tainted sinks)
+SRC __ZN13IODPSwitchUFP11handleStartEP9IOService.col (no tainted sinks)
+SRC is_io_catalog_send_data                          findings=105 uniq=60
+  memmove      @ 0xFFFFFFF00A281644  FUN_fffffff00a2813b0  d=8
+  kalloc_type  @ 0xFFFFFFF00A3ACE28  FUN_fffffff00a3aca70  d=6
+  copyout      @ 0xFFFFFFF00A6F3040  FUN_fffffff00a6f18ac  d=7
+  copyout      @ 0xFFFFFFF00A28A86C  FUN_fffffff00a28a64c  d=8
+  memmove      @ 0xFFFFFFF00A716364  FUN_fffffff00a7161a4  d=10
+  memmove      @ 0xFFFFFFF00A201788  FUN_fffffff00a20150c  d=3
+  memmove      @ 0xFFFFFFF00A3FDFAC  FUN_fffffff00a3fddf4  d=5
+  memmove      @ 0xFFFFFFF00A3BFCC8  FUN_fffffff00a3bf498  d=10
+  memmove      @ 0xFFFFFFF00A27EDBC  FUN_fffffff00a27ed34  d=8
+  copyin       @ 0xFFFFFFF00A2BEAE0  FUN_fffffff00a2bea38  d=3
+  memmove      @ 0xFFFFFFF00A29FCBC  FUN_fffffff00a29fb38  d=12
+  memmove      @ 0xFFFFFFF00A3ADE0C  FUN_fffffff00a3ad3ec  d=6
+  memmove      @ 0xFFFFFFF00A2AB048  FUN_fffffff00a2aaf74  d=13
+  memmove      @ 0xFFFFFFF00A27EF70  FUN_fffffff00a27ed34  d=8
+  memmove      @ 0xFFFFFFF00A8B065C  FUN_fffffff00a8b04f8  d=3
+  memmove      @ 0xFFFFFFF00A2E55CC  FUN_fffffff00a2e54b4  d=8
+  memmove      @ 0xFFFFFFF00A37D554  FUN_fffffff00a37ce88  d=9
+  memmove      @ 0xFFFFFFF00A2CDFC0  FUN_fffffff00a2cdcec  d=10
+  memmove      @ 0xFFFFFFF00A333E2C  FUN_fffffff00a333dd0  d=3
+  memmove      @ 0xFFFFFFF00A1CB018  FUN_fffffff00a1caf1c  d=10
+  memmove      @ 0xFFFFFFF00A27F074  FUN_fffffff00a27ef90  d=8
+  memmove      @ 0xFFFFFFF00A2BEA8C  FUN_fffffff00a2bea38  d=3
+  memmove      @ 0xFFFFFFF00A201970  FUN_fffffff00a20150c  d=3
+  memmove      @ 0xFFFFFFF00A1CBAD0  FUN_fffffff00a1cba6c  d=10
+  memmove      @ 0xFFFFFFF00A71B13C  FUN_fffffff00a71afa8  d=14
+  memmove      @ 0xFFFFFFF00A2DBAA0  FUN_fffffff00a2db9fc  d=5
+  memmove      @ 0xFFFFFFF00A1CBB48  FUN_fffffff00a1cba6c  d=10
+  memmove      @ 0xFFFFFFF00A3341FC  FUN_fffffff00a334174  d=7
+  kalloc_type  @ 0xFFFFFFF00A71B088  FUN_fffffff00a71afa8  d=14
+  memmove      @ 0xFFFFFFF00A1CBB1C  FUN_fffffff00a1cba6c  d=10
+  memmove      @ 0xFFFFFFF00A3C0488  FUN_fffffff00a3c0404  d=10
+  memmove      @ 0xFFFFFFF00A2DBAD0  FUN_fffffff00a2db9fc  d=5
+  kalloc_type  @ 0xFFFFFFF00A1C6D44  FUN_fffffff00a1c6b80  d=11
+  copyout      @ 0xFFFFFFF00A2BEBE0  FUN_fffffff00a2beb34  d=3
+  memmove      @ 0xFFFFFFF00A3341C8  FUN_fffffff00a334174  d=4
+  memmove      @ 0xFFFFFFF00A6E66E4  FUN_fffffff00a6e656c  d=13
+  copyin       @ 0xFFFFFFF00A2BEB0C  FUN_fffffff00a2bea38  d=3
+  memmove      @ 0xFFFFFFF00A767CCC  FUN_fffffff00a767a64  d=7
+  memmove      @ 0xFFFFFFF00A281390  FUN_fffffff00a281154  d=8
+  copyout      @ 0xFFFFFFF00A716338  FUN_fffffff00a7161a4  d=10
+  memmove      @ 0xFFFFFFF00A281494  FUN_fffffff00a2813b0  d=8
+  memmove      @ 0xFFFFFFF00A2AB1E0  FUN_fffffff00a2aaf74  d=13
+  memmove      @ 0xFFFFFFF00A246DB4  FUN_fffffff00a246178  d=7
+  memmove      @ 0xFFFFFFF00A8AF520  FUN_fffffff00a8af464  d=4
+  memmove      @ 0xFFFFFFF00A2DBA84  FUN_fffffff00a2db9fc  d=5
+  copyout      @ 0xFFFFFFF00A6F30A4  FUN_fffffff00a6f18ac  d=7
+  memmove      @ 0xFFFFFFF00A281A48  FUN_fffffff00a281984  d=8
+  memmove      @ 0xFFFFFFF00A27F224  FUN_fffffff00a27ef90  d=8
+  copyout      @ 0xFFFFFFF00A2BEC00  FUN_fffffff00a2beb34  d=3
+  memmove      @ 0xFFFFFFF00A2BEB8C  FUN_fffffff00a2beb34  d=3
+  memmove      @ 0xFFFFFFF00A1CB044  FUN_fffffff00a1caf1c  d=10
+  memmove      @ 0xFFFFFFF00A3BFD04  FUN_fffffff00a3bf498  d=10
+  memmove      @ 0xFFFFFFF00A8AF58C  FUN_fffffff00a8af464  d=4
+  memmove      @ 0xFFFFFFF00A6F3094  FUN_fffffff00a6f18ac  d=7
+  copyin       @ 0xFFFFFFF00A2BBE5C  FUN_fffffff00a2bbdc4  d=8
+  memmove      @ 0xFFFFFFF00A8AE2E8  FUN_fffffff00a8ae264  d=3
+  memmove      @ 0xFFFFFFF00A2DBA48  FUN_fffffff00a2db9fc  d=5
+  memmove      @ 0xFFFFFFF00A3C053C  FUN_fffffff00a3c0404  d=10
+  memmove      @ 0xFFFFFFF00A2811DC  FUN_fffffff00a281154  d=8
+  memmove      @ 0xFFFFFFF00A281BF8  FUN_fffffff00a281984  d=8
+SRC __ZN10IODPTXPort21waitForDPSwitchParentEP9IOServ (no tainted sinks)
+SRC __ZN10IODPTXPort21waitForDPSwitchParentEP9IOServ (no tainted sinks)
+SRC __ZN10IODPTXPort21waitForDPSwitchParentEP9IOServ (no tainted sinks)
+SRC __ZN10IODPTXPort21waitForDPSwitchParentEP9IOServ (no tainted sinks)
+SRC __ZN10IODPTXPort21waitForDPSwitchParentEP9IOServ (no tainted sinks)
+SRC AppleAOPAudioServiceBase::AppleAOPAudioServiceBa (no tainted sinks)
+SRC __ZN10IODPTXPort21waitForDPSwitchParentEP9IOServ (no tainted sinks)
+SRC __ZN22IOTimeSyncClockManager5startEP9IOService   (no tainted sinks)
+SRC vtable for _IOServiceJob                         (no tainted sinks)
+SRC IOServiceNotificationDispatchSource::gMetaClass  no function
+SRC __ZN18AppleARMSPMIDevice21initWithRegistryEntryE (no tainted sinks)
+SRC __ZN9ApplePMGR12_publishNubsEP15IORegistryEntry. (no tainted sinks)
+SRC __ZN22AppleARMIISAudioDevice28_initExternalPower (no tainted sinks)
+SRC __ZN29IOPortTunnelingTransportState4stopEP9IOSer (no tainted sinks)
+SRC __ZN9IOService19waitForPMDriverCallEPS_          findings=22 uniq=17
+  memmove      @ 0xFFFFFFF00A771DD4  FUN_fffffff00a77172c  d=13
+  memmove      @ 0xFFFFFFF00A7879E0  FUN_fffffff00a78772c  d=13
+  kalloc_type  @ 0xFFFFFFF00A3ACE28  FUN_fffffff00a3aca70  d=13
+  memmove      @ 0xFFFFFFF00A1CB044  FUN_fffffff00a1caf1c  d=11
+  memmove      @ 0xFFFFFFF00A37D554  FUN_fffffff00a37ce88  d=9
+  kalloc_type  @ 0xFFFFFFF00A1C6D44  FUN_fffffff00a1c6b80  d=12
+  memmove      @ 0xFFFFFFF00A2DBAD0  FUN_fffffff00a2db9fc  d=14
+  memmove      @ 0xFFFFFFF00A333E2C  FUN_fffffff00a333dd0  d=10
+  memmove      @ 0xFFFFFFF00A1CB018  FUN_fffffff00a1caf1c  d=11
+  memmove      @ 0xFFFFFFF00A3341C8  FUN_fffffff00a334174  d=8
+  memmove      @ 0xFFFFFFF00A6E66E4  FUN_fffffff00a6e656c  d=11
+  memmove      @ 0xFFFFFFF00A2DBA48  FUN_fffffff00a2db9fc  d=14
+  memmove      @ 0xFFFFFFF00A3FDFAC  FUN_fffffff00a3fddf4  d=14
+  memmove      @ 0xFFFFFFF00A2DBAA0  FUN_fffffff00a2db9fc  d=14
+  memmove      @ 0xFFFFFFF00A3ADE0C  FUN_fffffff00a3ad3ec  d=13
+  memmove      @ 0xFFFFFFF00A3341FC  FUN_fffffff00a334174  d=14
+  memmove      @ 0xFFFFFFF00A2DBA84  FUN_fffffff00a2db9fc  d=14
+SRC _Xio_connect_add_client                          findings=11 uniq=11
+  memmove      @ 0xFFFFFFF00A771DD4  FUN_fffffff00a77172c  d=14
+  memmove      @ 0xFFFFFFF00A7879E0  FUN_fffffff00a78772c  d=14
+  kalloc_type  @ 0xFFFFFFF00A3ACE28  FUN_fffffff00a3aca70  d=14
+  memmove      @ 0xFFFFFFF00A1CB044  FUN_fffffff00a1caf1c  d=12
+  memmove      @ 0xFFFFFFF00A37D554  FUN_fffffff00a37ce88  d=10
+  kalloc_type  @ 0xFFFFFFF00A1C6D44  FUN_fffffff00a1c6b80  d=13
+  memmove      @ 0xFFFFFFF00A333E2C  FUN_fffffff00a333dd0  d=11
+  memmove      @ 0xFFFFFFF00A1CB018  FUN_fffffff00a1caf1c  d=12
+  memmove      @ 0xFFFFFFF00A3341C8  FUN_fffffff00a334174  d=9
+  memmove      @ 0xFFFFFFF00A6E66E4  FUN_fffffff00a6e656c  d=12
+  memmove      @ 0xFFFFFFF00A3ADE0C  FUN_fffffff00a3ad3ec  d=14
+SRC __ZN19IOPerfControlClient7workEndEP9IOServiceyPN findings=11 uniq=11
+  memmove      @ 0xFFFFFFF00A771DD4  FUN_fffffff00a77172c  d=14
+  memmove      @ 0xFFFFFFF00A7879E0  FUN_fffffff00a78772c  d=14
+  kalloc_type  @ 0xFFFFFFF00A3ACE28  FUN_fffffff00a3aca70  d=14
+  memmove      @ 0xFFFFFFF00A1CB044  FUN_fffffff00a1caf1c  d=12
+  memmove      @ 0xFFFFFFF00A37D554  FUN_fffffff00a37ce88  d=10
+  kalloc_type  @ 0xFFFFFFF00A1C6D44  FUN_fffffff00a1c6b80  d=13
+  memmove      @ 0xFFFFFFF00A333E2C  FUN_fffffff00a333dd0  d=11
+  memmove      @ 0xFFFFFFF00A1CB018  FUN_fffffff00a1caf1c  d=12
+  memmove      @ 0xFFFFFFF00A3341C8  FUN_fffffff00a334174  d=9
+  memmove      @ 0xFFFFFFF00A6E66E4  FUN_fffffff00a6e656c  d=12
+  memmove      @ 0xFFFFFFF00A3ADE0C  FUN_fffffff00a3ad3ec  d=14
+SRC __ZN27AppleActuatorHIDEventDriver7messageEjP9IOS (no tainted sinks)
+SRC __ZN19AppleM2ScalerCSCHal11withOptionsEjP22Apple (no tainted sinks)
+SRC __ZN30AppleUSBEthernetControllerAX885startEP9IOS (no tainted sinks)
+SRC __ZN45ApplePPMPolicyCPMSPowerServoLowerLayerBudg (no tainted sinks)
+SRC __ZN22AppleARMPMUPowerSource5startEP9IOService.c (no tainted sinks)
+SRC __ZN29AppleHIDKeyboardEventDriverV25startEP9IOSe (no tainted sinks)
+SRC __ZL19controllerPublishedPvS_P9IOServiceP10IONot (no tainted sinks)
+SRC __ZN22IOTimeSyncClockManager28interfaceMatchedNo (no tainted sinks)
+SRC __ZN22IOPortTransportStateCC5startEP9IOService   (no tainted sinks)
 
 ========================================================================
 SUMMARY
 ========================================================================
-total findings: 57
-copyin: 1
-kalloc_type: 5
-memmove: 51
+total findings: 172
+copyin: 4
+copyout: 6
+kalloc_type: 17
+memmove: 145
 
-unique in_func per sink:
+unique in_func per sink (top):
   copyin:
     0xFFFFFFF00A9AD62C FUN_fffffff00a9ad62c  d=[1]
+    0xFFFFFFF00A2BEA38 FUN_fffffff00a2bea38  d=[3]
+    0xFFFFFFF00A2BBDC4 FUN_fffffff00a2bbdc4  d=[8]
+  copyout:
+    0xFFFFFFF00A2BEB34 FUN_fffffff00a2beb34  d=[3]
+    0xFFFFFFF00A6F18AC FUN_fffffff00a6f18ac  d=[7]
+    0xFFFFFFF00A28A64C FUN_fffffff00a28a64c  d=[8]
+    0xFFFFFFF00A7161A4 FUN_fffffff00a7161a4  d=[10]
   kalloc_type:
-    0xFFFFFFF00A1C6B80 FUN_fffffff00a1c6b80  d=[11, 12]
-    0xFFFFFFF00A3ACA70 FUN_fffffff00a3aca70  d=[12, 13, 14]
+    0xFFFFFFF00A3ACA70 FUN_fffffff00a3aca70  d=[6, 12, 13, 14]
+    0xFFFFFFF00A1C6B80 FUN_fffffff00a1c6b80  d=[11, 12, 13]
+    0xFFFFFFF00A71AFA8 FUN_fffffff00a71afa8  d=[14]
   memmove:
-    0xFFFFFFF00A333DD0 FUN_fffffff00a333dd0  d=[3, 9]
-    0xFFFFFFF00A334174 FUN_fffffff00a334174  d=[7, 8, 13, 14]
-    0xFFFFFFF00A37CE88 FUN_fffffff00a37ce88  d=[8, 9]
-    0xFFFFFFF00A1CAF1C FUN_fffffff00a1caf1c  d=[10, 11]
-    0xFFFFFFF00A6E656C FUN_fffffff00a6e656c  d=[10, 11, 13, 14]
+    0xFFFFFFF00A334174 FUN_fffffff00a334174  d=[2, 4, 7, 8, 9, 13, 14]
+    0xFFFFFFF00A2BEA38 FUN_fffffff00a2bea38  d=[3]
+    0xFFFFFFF00A333DD0 FUN_fffffff00a333dd0  d=[3, 9, 10, 11]
+    0xFFFFFFF00A8B04F8 FUN_fffffff00a8b04f8  d=[3]
+    0xFFFFFFF00A20150C FUN_fffffff00a20150c  d=[3]
+    0xFFFFFFF00A8AE264 FUN_fffffff00a8ae264  d=[3]
+    0xFFFFFFF00A2BEB34 FUN_fffffff00a2beb34  d=[3]
+    0xFFFFFFF00A8AF464 FUN_fffffff00a8af464  d=[4]
+    0xFFFFFFF00A3FDDF4 FUN_fffffff00a3fddf4  d=[5, 13, 14]
+    0xFFFFFFF00A2DB9FC FUN_fffffff00a2db9fc  d=[5, 13, 14]
+    0xFFFFFFF00A3AD3EC FUN_fffffff00a3ad3ec  d=[6, 12, 13, 14]
+    0xFFFFFFF00A6F18AC FUN_fffffff00a6f18ac  d=[7]
+    0xFFFFFFF00A246178 FUN_fffffff00a246178  d=[7]
+    0xFFFFFFF00A767A64 FUN_fffffff00a767a64  d=[7]
+    0xFFFFFFF00A37CE88 FUN_fffffff00a37ce88  d=[8, 9, 10]
+    0xFFFFFFF00A27EF90 FUN_fffffff00a27ef90  d=[8]
+    0xFFFFFFF00A281154 FUN_fffffff00a281154  d=[8]
+    0xFFFFFFF00A281984 FUN_fffffff00a281984  d=[8]
+    0xFFFFFFF00A2E54B4 FUN_fffffff00a2e54b4  d=[8]
+    0xFFFFFFF00A2813B0 FUN_fffffff00a2813b0  d=[8]
+    0xFFFFFFF00A27ED34 FUN_fffffff00a27ed34  d=[8]
+    0xFFFFFFF00A3C0404 FUN_fffffff00a3c0404  d=[10]
+    0xFFFFFFF00A7161A4 FUN_fffffff00a7161a4  d=[10]
+    0xFFFFFFF00A1CAF1C FUN_fffffff00a1caf1c  d=[10, 11, 12]
+    0xFFFFFFF00A1CBA6C FUN_fffffff00a1cba6c  d=[10]
+    0xFFFFFFF00A2CDCEC FUN_fffffff00a2cdcec  d=[10]
+    0xFFFFFFF00A6E656C FUN_fffffff00a6e656c  d=[10, 11, 12, 13]
+    0xFFFFFFF00A3BF498 FUN_fffffff00a3bf498  d=[10]
     0xFFFFFFF00A78772C FUN_fffffff00a78772c  d=[12, 13, 14]
-    0xFFFFFFF00A3AD3EC FUN_fffffff00a3ad3ec  d=[12, 13]
+    0xFFFFFFF00A29FB38 FUN_fffffff00a29fb38  d=[12]
     0xFFFFFFF00A77172C FUN_fffffff00a77172c  d=[12, 13, 14]
-    0xFFFFFFF00A2DB9FC FUN_fffffff00a2db9fc  d=[13, 14]
-    0xFFFFFFF00A3FDDF4 FUN_fffffff00a3fddf4  d=[13, 14]
+    0xFFFFFFF00A2AAF74 FUN_fffffff00a2aaf74  d=[13]
     0xFFFFFFF00A4C7A38 FUN_fffffff00a4c7a38  d=[14]
+    0xFFFFFFF00A71AFA8 FUN_fffffff00a71afa8  d=[14]
 
 ========================================================================
 HOT TARGETS DECOMPILE
 ========================================================================
 
---- FUN_fffffff00a1c6b80 @ 0xFFFFFFF00A1C6B80  (kalloc_type d=11)
-  entry=0xFFFFFFF00A1C6B80 size=0x2F0
+--- FUN_fffffff00a9ad62c @ 0xFFFFFFF00A9AD62C  (hard)
+  entry=0xFFFFFFF00A9AD62C size=0x458
   BL callers: (none)
   decompile:
     
-    long FUN_fffffff00a1c6b80(uint param_1,uint param_2,ulong param_3,uint param_4)
+    ulong FUN_fffffff00a9ad62c
+                    (long *param_1,undefined8 param_2,ulong param_3,undefined8 param_4,
+                    undefined1 *param_5,undefined8 param_6)
     
     {
-      undefined *puVar1;
-      long lVar2;
-      long lVar3;
+      ulong uVar1;
+      undefined1 *puVar2;
+      uint uVar3;
       ulong uVar4;
-      uint uVar5;
-      uint uVar6;
-      ulong uVar7;
-      long lVar8;
-      int iVar9;
-      byte bVar10;
+      int iVar5;
+      undefined8 *puVar6;
+      long *plVar7;
+      ulong uVar8;
+      long lVar9;
+      undefined1 *puStack_8d0;
+      undefined1 *puStack_8c8;
+      undefined4 uStack_8c0;
+      int iStack_8bc;
+      undefined1 *puStack_8b8;
+      undefined1 auStack_8b0 [36];
+      undefined1 auStack_88c [4];
+      undefined4 auStack_888 [6];
+      uint auStack_870 [2];
+      undefined1 auStack_868 [4];
+      uint uStack_864;
+      ulong uStack_860;
+      ulong uStack_858;
+      undefined8 uStack_850;
+      long *aplStack_848 [253];
     
-      if ((param_4 & 1) == 0) {
-        uVar4 = param_3 << 2 & 0x3fffffffc;
-        uVar7 = param_3 << 2 & 0xfffffffc;
-        if (uVar4 != uVar7) {
-          return 0;
-        }
-        if (0xfffffff7 < uVar7) {
-          return 0;
-        }
-        uVar5 = (int)uVar4 + 8;
+      FUN_fffffff00aa40ee0(auStack_8b0,0x848);
+      if (CARRY8(param_3,(ulong)param_5)) {
+        return 0xe00002e1;
       }
-      else {
-        uVar5 = 0;
+      if ((undefined1 *)0x800 < param_5 + param_3) {
+        return 0xe00002e1;
       }
-      uVar6 = uVar5 + param_1 + 0x44;
-      if (0xffffffbb < param_1) {
-        return 0;
-      }
-      if (CARRY4(uVar5,param_1 + 0x44)) {
-        return 0;
-      }
-      uVar5 = uVar6 + param_2;
-      if (CARRY4(uVar6,param_2)) {
-    LAB_fffffff00a1c6c04:
-        lVar2 = 0;
-      }
-      else {
-        if (uVar5 < 0xc1) {
-          bVar10 = 0;
-          iVar9 = 0;
-          uVar6 = 0;
-        }
-        else {
-          if ((param_4 >> 2 & 1) != 0) {
+      if (0x17 < param_3) {
+        if (0x800 < param_3) {
                         /* WARNING: Subroutine does not return */
-            FUN_fffffff00aa284f8(&DAT_fffffff007043ed8);
-          }
-          if ((param_4 >> 4 & 1) == 0) {
-            uVar4 = param_3 << 4 & 0xffffffff0;
-            uVar7 = param_3 << 4 & 0xfffffff0;
-            if (uVar4 != uVar7) {
-              return 0;
-            }
-            if (0xffffffdb < uVar7) {
-              return 0;
-            }
-            uVar6 = 0xc;
-            if ((param_4 & 1) != 0) {
-              uVar6 = 0x10;
-            }
-            uVar7 = (param_3 & 0xffffffff) * (ulong)uVar6;
-            if ((uVar7 & 0xffffffff00000000) != 0) {
-              return 0;
-            }
-            uVar6 = (uint)uVar7;
-            if (0xffffffdf < uVar6) {
-              return 0;
-            }
-            uVar6 = uVar6 + 0x20;
-            iVar9 = uVar5 - uVar6;
-            if (uVar5 < uVar6) goto LAB_fffffff00a1c6c04;
-            uVar6 = (int)uVar4 + 0x24;
-            bVar10 = 3;
-            if (uVar6 < 0xa9) {
-              bVar10 = 1;
-            }
-          }
-          else {
-            if (param_2 != 0) {
-                        /* WARNING: Subroutine does not return */
-              FUN_fffffff00aa284f8(&DAT_fffffff007043f15);
-            }
-            iVar9 = 0;
-            bVar10 = 2;
-          }
+          FUN_fffffff00aa284f8(&DAT_fffffff0070b7bbb);
         }
-        uVar5 = (param_4 & 8) << 0xc | (param_4 >> 1 & 1) << 2;
-        if (iVar9 == 0) {
-          lVar3 = 0;
+        iVar5 = FUN_fffffff00a368ec0(param_2,auStack_868,param_3);
+        if (iVar5 != 0) {
+          return 0xe00002c8;
+        }
+        if (1 < uStack_858 - 1) {
+          return 0xe00002c7;
+        }
+        if (((uint)uStack_860 >> 7 & 1) == 0) {
+          return 0xe00002c7;
+        }
+        uStack_860 = uStack_860 & 0xfffffffffffffffa;
+        uVar8 = param_3 + uStack_858 * 0x10 + 0x24;
+        uStack_8c0 = (undefined4)uVar8;
+        auStack_888[uStack_858 * -4] = uStack_8c0;
+        auStack_870[uStack_858 * -4] = 0x4da2b68c;
+        auStack_870[uStack_858 * -4 + 1] = (uint)uStack_858;
+        puVar2 = auStack_868 + param_3;
+        iStack_8bc = 0x800 - (int)param_3;
+        uStack_850 = 0;
+        puStack_8d0 = auStack_88c + uStack_858 * -0x10;
+        puStack_8c8 = puVar2;
+        puStack_8b8 = auStack_868;
+        if (param_1 != (long *)0x0) {
+          puVar6 = (undefined8 *)(**(code **)(*param_1 + 0x38))(param_1);
+          do {
+            if (puVar6 == &DAT_fffffff00ad763f0) {
+              uVar1 = (ulong)auStack_870[uStack_858 * -4 + 1] * 0x10 + 0x3c;
+              uVar4 = 0;
+              if (uVar1 <= uVar8) {
+                uVar4 = uVar8 - uVar1 >> 3 & 0xffffffff;
+              }
+              if (uStack_858 <= uVar4) {
+                if (1 < uStack_858) {
+                  plVar7 = (long *)FUN_fffffff00a9aa3a4(param_1,auStack_868);
+                  aplStack_848[0] = param_1;
+                  if ((DAT_fffffff007c317e8 >> 2 & 1) != 0) {
+                    lVar9 = (**(code **)(*plVar7 + 0x38))();
+                    if (*(long **)(lVar9 + 0x18) != (long *)0x0) {
+                      (**(code **)(**(long **)(lVar9 + 0x18) + 0xa8))();
+                    }
+                    FUN_fffffff00a8de8ac(&DAT_fffffff0070b69ec);
+                  }
+                  uVar8 = (**(code **)(*plVar7 + 0x60))(plVar7,&puStack_8d0);
+                  return uVar8;
+                }
+                FUN_fffffff00a8de8ac(&DAT_fffffff0070b69bc);
+                return 0xe00002c2;
+              }
+              return 0xe00002c2;
+            }
+            puVar6 = (undefined8 *)puVar6[2];
+          } while (puVar6 != (undefined8 *)0x0);
+        }
+        if (uStack_858 < 2) {
+          plVar7 = (long *)0x0;
+        }
+        else if ((int)param_6 == 0) {
+          plVar7 = (long *)0x0;
+          aplStack_848[0] = plVar7;
         }
         else {
-          lVar3 = FUN_fffffff00a200988(&DAT_fffffff007c62e68,iVar9,uVar5,0);
-          if (((param_4 & 8) == 0) && (lVar3 == 0)) goto LAB_fffffff00a1c6c04;
-        }
-        if (bVar10 < 2) {
-          lVar8 = 0;
-        }
-        else {
-          if (bVar10 == 3) {
-            puVar1 = &DAT_fffffff007c79008;
-            uVar4 = (param_3 & 0xffffffff) * 0x10 + 0x24;
-          }
-          else {
-            uVar4 = (ulong)uVar6;
-            puVar1 = (undefined *)0xfffffff007c79698;
-          }
-          lVar8 = FUN_fffffff00a200988((ulong)puVar1 | 1,uVar4,uVar5,0);
-          if (((param_4 & 8) == 0) && (lVar8 == 0)) {
-            FUN_fffffff00a201000(&DAT_fffffff007c62e68,lVar3,iVar9);
-            return 0;
+          plVar7 = (long *)FUN_fffffff00a32b414(param_6);
+          aplStack_848[0] = plVar7;
+          if (plVar7 == (long *)0x0) {
+            return 0xe00002bf;
           }
         }
-        lVar2 = FUN_fffffff00a272a18(DAT_fffffff00ad2d380,DAT_fffffff00ad2d388,0x8004);
-        *(byte *)(lVar2 + 0x3f) = *(byte *)(lVar2 + 0x3f) & 0x3f | bVar10 << 6;
-        *(short *)(lVar2 + 0x30) = (short)param_2;
-        if ((param_4 >> 5 & 1) != 0) {
-          *(undefined1 *)(lVar2 + 0x32) = 1;
+        if ((DAT_fffffff007c317e8 >> 2 & 1) != 0) {
+          lVar9 = (**(code **)(*param_1 + 0x38))(param_1);
+          if (*(long **)(lVar9 + 0x18) != (long *)0x0) {
+            (**(code **)(**(long **)(lVar9 + 0x18) + 0xa8))();
+          }
+          FUN_fffffff00a8de8ac(&DAT_fffffff0070b69ec);
         }
-        if (bVar10 != 0) {
-          if (bVar10 == 1) {
-            *(long *)(lVar2 + 0xe8) = lVar2 + 0x40;
+        uVar8 = (**(code **)(*param_1 + 0x60))(param_1,&puStack_8d0);
+        if ((DAT_fffffff007c317e8 >> 2 & 1) != 0) {
+          lVar9 = (**(code **)(*param_1 + 0x38))(param_1);
+          if (*(long **)(lVar9 + 0x18) != (long *)0x0) {
+            (**(code **)(**(long **)(lVar9 + 0x18) + 0xa8))();
           }
-          else if (lVar8 == 0) {
-            *(long *)(lVar2 + 0xe8) = 0;
+          FUN_fffffff00a8de8ac(&DAT_fffffff0070b6a11);
+        }
+        if (plVar7 != (long *)0x0) {
+          (**(code **)(*plVar7 + 0x28))(plVar7);
+        }
+        if ((int)uVar8 != 0) {
+          return uVar8;
+        }
+        if ((*(int *)((long)aplStack_848 + param_3) == 0) &&
+           (lVar9 = FUN_fffffff00a9ad5b4(puVar2), lVar9 != 0)) {
+          if (puVar2 + ((ulong)*(uint *)((long)&uStack_864 + param_3) - lVar9) + 8 <= param_5) {
+            *(ulong *)(lVar9 + -8) =
+                 (ulong)(puVar2 + ((ulong)*(uint *)((long)&uStack_864 + param_3) - lVar9) + 8);
+            iVar5 = FUN_fffffff00a369a3c((ulong *)(lVar9 + -8),param_4);
+            uVar3 = 0;
+            if (iVar5 != 0) {
+              uVar3 = 0xe00002c8;
+            }
+            return (ulong)uVar3;
           }
-          else {
-            *(long *)(lVar2 + 0xe8) = lVar8;
-          }
-          if (lVar3 == 0) {
-            lVar3 = 0;
-          }
-          *(long *)(lVar2 + 0xf0) = lVar3;
-          *(uint *)(lVar2 + 0xf8) = uVar6;
-          *(int *)(lVar2 + 0xfc) = iVar9;
+          return 0xe00002bf;
         }
       }
-      return lVar2;
+      return 0xe00002bf;
     }
     
     
 
---- FUN_fffffff00a3aca70 @ 0xFFFFFFF00A3ACA70  (kalloc_type d=12)
+--- FUN_fffffff00a2bea38 @ 0xFFFFFFF00A2BEA38  (copyin d=3)
+  entry=0xFFFFFFF00A2BEA38 size=0xFC
+  BL callers: (none)
+  decompile:
+    
+    bool FUN_fffffff00a2bea38
+                   (long param_1,undefined8 param_2,undefined8 param_3,undefined8 param_4,
+                   undefined8 param_5)
+    
+    {
+      long lVar1;
+      bool bVar2;
+      int iVar3;
+      undefined1 auStack_58 [24];
+    
+      if ((*(undefined8 **)(param_1 + 0x58) == (undefined8 *)0x0) ||
+         (*(undefined8 **)(param_1 + 0x58) != &DAT_fffffff00ad4cb90)) {
+        lVar1 = tpidr_el1;
+        if (*(long *)(lVar1 + 0x418) == param_1) {
+          iVar3 = FUN_fffffff00a368ec0(param_2,param_3,param_4);
+          bVar2 = iVar3 != 0;
+        }
+        else {
+          FUN_fffffff00a2c64b4();
+          FUN_fffffff00a2c7b94(auStack_58,param_1,param_5);
+          iVar3 = FUN_fffffff00a368ec0(param_2,param_3,param_4);
+          bVar2 = iVar3 != 0;
+          FUN_fffffff00a2c7d1c(auStack_58);
+          FUN_fffffff00a2c6648(param_1);
+        }
+      }
+      else {
+        FUN_fffffff00aa40d30(param_3,param_2,param_4);
+        bVar2 = false;
+      }
+      return bVar2;
+    }
+    
+    
+
+--- FUN_fffffff00a3aca70 @ 0xFFFFFFF00A3ACA70  (kalloc_type d=6)
   entry=0xFFFFFFF00A3ACA70 size=0x47C
   BL callers: (none)
   decompile:
@@ -477,6 +825,379 @@ HOT TARGETS DECOMPILE
       }
       FUN_fffffff00a208a88(&DAT_fffffff00ad521a8);
       return plVar16[2];
+    }
+    
+    
+
+--- FUN_fffffff00a2bbdc4 @ 0xFFFFFFF00A2BBDC4  (copyin d=8)
+  entry=0xFFFFFFF00A2BBDC4 size=0x3E4
+  BL callers: (none)
+  decompile:
+    
+    /* WARNING: Globals starting with '_' overlap smaller symbols at the same address */
+    
+    void FUN_fffffff00a2bbdc4(ulong param_1,ulong *param_2,ulong *param_3)
+    
+    {
+      byte bVar1;
+      int iVar2;
+      ulong *puVar3;
+      uint uVar4;
+      ulong *puVar5;
+      uint uVar6;
+      ulong *puVar7;
+      ulong uVar8;
+      uint uVar9;
+      ulong uVar10;
+      ulong uVar11;
+      uint uVar12;
+      long lVar13;
+      uint uVar14;
+      undefined4 in_wzr;
+      byte bVar15;
+      byte bVar16;
+      byte bVar17;
+      byte bVar18;
+      ulong uVar19;
+      undefined1 auVar20 [16];
+      undefined1 auVar21 [16];
+      ulong uVar22;
+      undefined1 auVar23 [16];
+      undefined1 auVar24 [16];
+      undefined1 auVar25 [16];
+      undefined1 auVar26 [16];
+    
+      lVar13 = tpidr_el1;
+      lVar13 = *(long *)(lVar13 + 0x418);
+      if ((lVar13 == 0) || (lVar13 == 0)) {
+        uVar14 = 0x4000;
+      }
+      else {
+        uVar14 = 0x4000;
+        if (*(byte *)(lVar13 + 0x2c) < 0xe) {
+          uVar14 = 1 << (ulong)(*(byte *)(lVar13 + 0x2c) & 0x1f);
+        }
+      }
+      puVar3 = (ulong *)FUN_fffffff00a200988(&DAT_fffffff007c62e68,uVar14,0,0);
+      iVar2 = FUN_fffffff00a368ec0(param_1 & (long)(int)-uVar14,puVar3,uVar14);
+      if (iVar2 == 0) {
+        uVar4 = 0;
+        bVar1 = 0;
+        uVar9 = uVar14 >> 3 & 0xffffffe;
+        puVar5 = puVar3;
+        puVar7 = param_2;
+        do {
+          uVar11 = *puVar5;
+          uVar8 = *puVar7;
+          bVar15 = (byte)DAT_fffffff00700dc10;
+          bVar16 = (byte)((ulong)DAT_fffffff00700dc10 >> 0x10);
+          bVar17 = (byte)((ulong)DAT_fffffff00700dc10 >> 0x20);
+          bVar18 = (byte)((ulong)DAT_fffffff00700dc10 >> 0x30);
+          if (uVar11 != uVar8) {
+            uVar10 = uVar8 ^ uVar11;
+            if ((uVar4 == 0) && ((uVar10 & uVar10 - 1) == 0)) {
+              bVar1 = 1;
+              uVar4 = 1;
+            }
+            else {
+              auVar20._8_8_ = uVar11;
+              auVar20._0_8_ = uVar11;
+              auVar21 = NEON_ushl(auVar20,_DAT_fffffff00700e9d0,8);
+              auVar20 = NEON_ushl(auVar20,_DAT_fffffff00700e9e0,8);
+              auVar23._8_8_ = uVar8;
+              auVar23._0_8_ = uVar8;
+              auVar24 = NEON_ushl(auVar23,_DAT_fffffff00700e9d0,8);
+              auVar23 = NEON_ushl(auVar23,_DAT_fffffff00700e9e0,8);
+              uVar22 = CONCAT26(auVar24._8_2_,
+                                CONCAT24(auVar24._0_2_,CONCAT22(auVar23._8_2_,auVar23._0_2_))) &
+                       0xff00ff00ff00ff;
+              uVar19 = CONCAT26(auVar21._8_2_,
+                                CONCAT24(auVar21._0_2_,CONCAT22(auVar20._8_2_,auVar20._0_2_))) &
+                       0xff00ff00ff00ff;
+              uVar6 = (uint)(byte)POPCOUNT((bVar15 & ~-((short)uVar19 == (short)uVar22)) +
+                                           (bVar16 & ~-((short)(uVar19 >> 0x10) ==
+                                                       (short)(uVar22 >> 0x10))) +
+                                           (bVar17 & ~-((short)(uVar19 >> 0x20) ==
+                                                       (short)(uVar22 >> 0x20))) +
+                                           (bVar18 & ~-((short)(uVar19 >> 0x30) ==
+                                                       (short)(uVar22 >> 0x30))) & 0xf);
+              if (((uint)uVar11 & 0xff) != ((uint)uVar8 & 0xff)) {
+                uVar6 = uVar6 + 1;
+              }
+              uVar12 = (uint)(((ushort)(uVar11 >> 0x30) & 0xff) != ((ushort)(uVar8 >> 0x30) & 0xff));
+              if (((uint)(uVar11 >> 0x28) & 0xff) != ((uint)(uVar8 >> 0x28) & 0xff)) {
+                uVar12 = uVar12 + 1;
+              }
+              if ((uVar10 & 0xff00000000000000) != 0) {
+                uVar4 = uVar4 + 1;
+              }
+              uVar4 = uVar6 + uVar12 + uVar4;
+            }
+          }
+          uVar11 = puVar5[1];
+          uVar8 = puVar7[1];
+          if (uVar11 != uVar8) {
+            uVar10 = uVar8 ^ uVar11;
+            if ((uVar4 == 0) && ((uVar10 & uVar10 - 1) == 0)) {
+              bVar1 = 1;
+              uVar4 = 1;
+            }
+            else {
+              auVar21._8_8_ = uVar11;
+              auVar21._0_8_ = uVar11;
+              auVar23 = NEON_ushl(auVar21,_DAT_fffffff00700e9d0,8);
+              auVar20 = NEON_ushl(auVar21,_DAT_fffffff00700e9e0,8);
+              auVar24._8_8_ = uVar8;
+              auVar24._0_8_ = uVar8;
+              auVar26 = NEON_ushl(auVar24,_DAT_fffffff00700e9d0,8);
+              auVar21 = NEON_ushl(auVar24,_DAT_fffffff00700e9e0,8);
+              uVar22 = CONCAT26(auVar26._8_2_,
+                                CONCAT24(auVar26._0_2_,CONCAT22(auVar21._8_2_,auVar21._0_2_))) &
+                       0xff00ff00ff00ff;
+              uVar19 = CONCAT26(auVar23._8_2_,
+                                CONCAT24(auVar23._0_2_,CONCAT22(auVar20._8_2_,auVar20._0_2_))) &
+                       0xff00ff00ff00ff;
+              uVar6 = (uint)(byte)POPCOUNT((bVar15 & ~-((short)uVar19 == (short)uVar22)) +
+                                           (bVar16 & ~-((short)(uVar19 >> 0x10) ==
+                                                       (short)(uVar22 >> 0x10))) +
+                                           (bVar17 & ~-((short)(uVar19 >> 0x20) ==
+                                                       (short)(uVar22 >> 0x20))) +
+                                           (bVar18 & ~-((short)(uVar19 >> 0x30) ==
+                                                       (short)(uVar22 >> 0x30))) & 0xf);
+              if (((uint)uVar11 & 0xff) != ((uint)uVar8 & 0xff)) {
+                uVar6 = uVar6 + 1;
+              }
+              uVar12 = (uint)(((ushort)(uVar11 >> 0x30) & 0xff) != ((ushort)(uVar8 >> 0x30) & 0xff));
+              if (((uint)(uVar11 >> 0x28) & 0xff) != ((uint)(uVar8 >> 0x28) & 0xff)) {
+                uVar12 = uVar12 + 1;
+              }
+              if ((uVar10 & 0xff00000000000000) != 0) {
+                uVar4 = uVar4 + 1;
+              }
+              uVar4 = uVar6 + uVar12 + uVar4;
+            }
+          }
+          puVar5 = puVar5 + 2;
+          puVar7 = puVar7 + 2;
+          uVar9 = uVar9 - 2;
+        } while (uVar9 != 0);
+        if ((uVar14 >> 3 & 1) == 0) {
+    LAB_fffffff00a2bc0f4:
+          if (uVar4 == 0) {
+            *(undefined1 *)((long)param_3 + 0xb) = 1;
+          }
+          else {
+            *param_3 = (ulong)uVar4;
+          }
+          if (!(bool)(uVar4 < 2 & bVar1)) goto LAB_fffffff00a2bc12c;
+        }
+        else {
+          uVar11 = *puVar5;
+          uVar8 = *puVar7;
+          if (uVar11 == uVar8) goto LAB_fffffff00a2bc0f4;
+          uVar10 = uVar8 ^ uVar11;
+          if ((uVar4 != 0) || ((uVar10 & uVar10 - 1) != 0)) {
+            auVar26._8_8_ = uVar11;
+            auVar26._0_8_ = uVar11;
+            auVar24 = NEON_ushl(auVar26,_DAT_fffffff00700e9d0,8);
+            auVar23 = NEON_ushl(auVar26,_DAT_fffffff00700e9e0,8);
+            auVar25._8_8_ = uVar8;
+            auVar25._0_8_ = uVar8;
+            auVar20 = NEON_ushl(auVar25,_DAT_fffffff00700e9d0,8);
+            auVar21 = NEON_ushl(auVar25,_DAT_fffffff00700e9e0,8);
+            uVar19 = CONCAT26(auVar20._8_2_,
+                              CONCAT24(auVar20._0_2_,CONCAT22(auVar21._8_2_,auVar21._0_2_))) &
+                     0xff00ff00ff00ff;
+            uVar22 = CONCAT26(auVar24._8_2_,
+                              CONCAT24(auVar24._0_2_,CONCAT22(auVar23._8_2_,auVar23._0_2_))) &
+                     0xff00ff00ff00ff;
+            uVar9 = (uint)(byte)POPCOUNT((bVar15 & ~-((short)uVar22 == (short)uVar19)) +
+                                         (bVar16 & ~-((short)(uVar22 >> 0x10) == (short)(uVar19 >> 0x10)
+                                                     )) +
+                                         (bVar17 & ~-((short)(uVar22 >> 0x20) == (short)(uVar19 >> 0x20)
+                                                     )) +
+                                         (bVar18 & ~-((short)(uVar22 >> 0x30) == (short)(uVar19 >> 0x30)
+                                                     )) & 0xf);
+            if (((uint)uVar11 & 0xff) != ((uint)uVar8 & 0xff)) {
+              uVar9 = uVar9 + 1;
+            }
+            uVar6 = (uint)(((ushort)(uVar11 >> 0x30) & 0xff) != ((ushort)(uVar8 >> 0x30) & 0xff));
+            if (((uint)(uVar11 >> 0x28) & 0xff) != ((uint)(uVar8 >> 0x28) & 0xff)) {
+              uVar6 = uVar6 + 1;
+            }
+            if ((uVar10 & 0xff00000000000000) != 0) {
+              uVar4 = uVar4 + 1;
+            }
+            uVar4 = uVar9 + uVar6 + uVar4;
+            goto LAB_fffffff00a2bc0f4;
+          }
+          *param_3 = 1;
+        }
+        lVar13 = 0xc;
+      }
+      else {
+        lVar13 = 10;
+      }
+      *(undefined1 *)((long)param_3 + lVar13) = 1;
+    LAB_fffffff00a2bc12c:
+      FUN_fffffff00a201000(&DAT_fffffff007c62e68,puVar3,uVar14);
+      FUN_fffffff00a2be79c(DAT_fffffff007c5f790,param_2,uVar14,0,0);
+      if (DAT_fffffff00ad99d50 != 1) {
+                        /* WARNING: Subroutine does not return */
+        FUN_fffffff00aa284f8(&DAT_fffffff00704eccb);
+      }
+      DAT_fffffff00ad99d50 = in_wzr;
+      return;
+    }
+    
+    
+
+--- FUN_fffffff00a1c6b80 @ 0xFFFFFFF00A1C6B80  (kalloc_type d=11)
+  entry=0xFFFFFFF00A1C6B80 size=0x2F0
+  BL callers: (none)
+  decompile:
+    
+    long FUN_fffffff00a1c6b80(uint param_1,uint param_2,ulong param_3,uint param_4)
+    
+    {
+      undefined *puVar1;
+      long lVar2;
+      long lVar3;
+      ulong uVar4;
+      uint uVar5;
+      uint uVar6;
+      ulong uVar7;
+      long lVar8;
+      int iVar9;
+      byte bVar10;
+    
+      if ((param_4 & 1) == 0) {
+        uVar4 = param_3 << 2 & 0x3fffffffc;
+        uVar7 = param_3 << 2 & 0xfffffffc;
+        if (uVar4 != uVar7) {
+          return 0;
+        }
+        if (0xfffffff7 < uVar7) {
+          return 0;
+        }
+        uVar5 = (int)uVar4 + 8;
+      }
+      else {
+        uVar5 = 0;
+      }
+      uVar6 = uVar5 + param_1 + 0x44;
+      if (0xffffffbb < param_1) {
+        return 0;
+      }
+      if (CARRY4(uVar5,param_1 + 0x44)) {
+        return 0;
+      }
+      uVar5 = uVar6 + param_2;
+      if (CARRY4(uVar6,param_2)) {
+    LAB_fffffff00a1c6c04:
+        lVar2 = 0;
+      }
+      else {
+        if (uVar5 < 0xc1) {
+          bVar10 = 0;
+          iVar9 = 0;
+          uVar6 = 0;
+        }
+        else {
+          if ((param_4 >> 2 & 1) != 0) {
+                        /* WARNING: Subroutine does not return */
+            FUN_fffffff00aa284f8(&DAT_fffffff007043ed8);
+          }
+          if ((param_4 >> 4 & 1) == 0) {
+            uVar4 = param_3 << 4 & 0xffffffff0;
+            uVar7 = param_3 << 4 & 0xfffffff0;
+            if (uVar4 != uVar7) {
+              return 0;
+            }
+            if (0xffffffdb < uVar7) {
+              return 0;
+            }
+            uVar6 = 0xc;
+            if ((param_4 & 1) != 0) {
+              uVar6 = 0x10;
+            }
+            uVar7 = (param_3 & 0xffffffff) * (ulong)uVar6;
+            if ((uVar7 & 0xffffffff00000000) != 0) {
+              return 0;
+            }
+            uVar6 = (uint)uVar7;
+            if (0xffffffdf < uVar6) {
+              return 0;
+            }
+            uVar6 = uVar6 + 0x20;
+            iVar9 = uVar5 - uVar6;
+            if (uVar5 < uVar6) goto LAB_fffffff00a1c6c04;
+            uVar6 = (int)uVar4 + 0x24;
+            bVar10 = 3;
+            if (uVar6 < 0xa9) {
+              bVar10 = 1;
+            }
+          }
+          else {
+            if (param_2 != 0) {
+                        /* WARNING: Subroutine does not return */
+              FUN_fffffff00aa284f8(&DAT_fffffff007043f15);
+            }
+            iVar9 = 0;
+            bVar10 = 2;
+          }
+        }
+        uVar5 = (param_4 & 8) << 0xc | (param_4 >> 1 & 1) << 2;
+        if (iVar9 == 0) {
+          lVar3 = 0;
+        }
+        else {
+          lVar3 = FUN_fffffff00a200988(&DAT_fffffff007c62e68,iVar9,uVar5,0);
+          if (((param_4 & 8) == 0) && (lVar3 == 0)) goto LAB_fffffff00a1c6c04;
+        }
+        if (bVar10 < 2) {
+          lVar8 = 0;
+        }
+        else {
+          if (bVar10 == 3) {
+            puVar1 = &DAT_fffffff007c79008;
+            uVar4 = (param_3 & 0xffffffff) * 0x10 + 0x24;
+          }
+          else {
+            uVar4 = (ulong)uVar6;
+            puVar1 = (undefined *)0xfffffff007c79698;
+          }
+          lVar8 = FUN_fffffff00a200988((ulong)puVar1 | 1,uVar4,uVar5,0);
+          if (((param_4 & 8) == 0) && (lVar8 == 0)) {
+            FUN_fffffff00a201000(&DAT_fffffff007c62e68,lVar3,iVar9);
+            return 0;
+          }
+        }
+        lVar2 = FUN_fffffff00a272a18(DAT_fffffff00ad2d380,DAT_fffffff00ad2d388,0x8004);
+        *(byte *)(lVar2 + 0x3f) = *(byte *)(lVar2 + 0x3f) & 0x3f | bVar10 << 6;
+        *(short *)(lVar2 + 0x30) = (short)param_2;
+        if ((param_4 >> 5 & 1) != 0) {
+          *(undefined1 *)(lVar2 + 0x32) = 1;
+        }
+        if (bVar10 != 0) {
+          if (bVar10 == 1) {
+            *(long *)(lVar2 + 0xe8) = lVar2 + 0x40;
+          }
+          else if (lVar8 == 0) {
+            *(long *)(lVar2 + 0xe8) = 0;
+          }
+          else {
+            *(long *)(lVar2 + 0xe8) = lVar8;
+          }
+          if (lVar3 == 0) {
+            lVar3 = 0;
+          }
+          *(long *)(lVar2 + 0xf0) = lVar3;
+          *(uint *)(lVar2 + 0xf8) = uVar6;
+          *(int *)(lVar2 + 0xfc) = iVar9;
+        }
+      }
+      return lVar2;
     }
     
     
