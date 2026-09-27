@@ -1,749 +1,226 @@
-natsuk1 dump-5 targets v52
-has_disasm=True has_create=True
-
+natsuk1 sysent full dump v54
+base=0xFFFFFFF007C192A0 stride=24 count=558
+kernel_base=0xFFFFFFF007004000
+symbols_loaded=0
 
 ========================================================================
-### fun_78a39c @ 0xFFFFFFF00A78A39C
-note: called from sysent_100/106 when >= 0x81
+### NECP-RANGE ENTRIES (addr in [0xFFFFFFF00A300000, 0xFFFFFFF00A520000))
 ========================================================================
-  func=FUN_fffffff00a78a39c entry=0xFFFFFFF00A78A39C size=0x13C
+  sysent[7] = 0xFFFFFFF00A3DF364  ?
+  sysent[11] = 0xFFFFFFF00A3E07D0  ?
+  sysent[12] = 0xFFFFFFF00A3E1BD8  ?
+  sysent[14] = 0xFFFFFFF00A3DDD04  ?
+  sysent[15] = 0xFFFFFFF00A3DDA94  ?
+  sysent[16] = 0xFFFFFFF00A3DFC24  ?
+  sysent[17] = 0xFFFFFFF00A3E4BC8  ?
+  sysent[18] = 0xFFFFFFF00A3E512C  ?
+  sysent[20] = 0xFFFFFFF00A3DCFE0  ?
+  sysent[35] = 0xFFFFFFF00A3E2C54  ?
+  sysent[36] = 0xFFFFFFF00A3E3DF8  ?
+  sysent[37] = 0xFFFFFFF00A3E41D0  ?
+  sysent[38] = 0xFFFFFFF00A3DBE98  FUN_fffffff00a3dbe98
+  sysent[58] = 0xFFFFFFF00A3EA820  ?
+  sysent[59] = 0xFFFFFFF00A3E0FC4  ?
+  sysent[60] = 0xFFFFFFF00A3E3D18  ?
+  sysent[62] = 0xFFFFFFF00A3EA6DC  ?
+  sysent[63] = 0xFFFFFFF00A3DDF5C  ?
+  sysent[97] = 0xFFFFFFF00A3E64E0  ?
+  sysent[125] = 0xFFFFFFF00A3E59C8  ?
+  sysent[126] = 0xFFFFFFF00A3E5028  ?
+  sysent[130] = 0xFFFFFFF00A3E7318  ?
+  sysent[134] = 0xFFFFFFF00A3E03F4  ?
+  sysent[138] = 0xFFFFFFF00A3E9C98  ?
+  sysent[139] = 0xFFFFFFF00A3E9E20  ?
+  sysent[140] = 0xFFFFFFF00A3E5A54  ?
+  sysent[141] = 0xFFFFFFF00A3E5EB4  ?
+  sysent[159] = 0xFFFFFFF00A3DC42C  ?
+  sysent[160] = 0xFFFFFFF00A3DCAC8  ?
+  sysent[161] = 0xFFFFFFF00A3DAD48  ?
+  sysent[166] = 0xFFFFFFF00A3DBCF0  ?
+  sysent[167] = 0xFFFFFFF00A3DC420  ?
+  sysent[169] = 0xFFFFFFF00A3D9174  ?
+  sysent[189] = 0xFFFFFFF00A3E6660  ?
+  sysent[190] = 0xFFFFFFF00A3E35BC  ?
+  sysent[192] = 0xFFFFFFF00A3E36B4  ?
+  sysent[193] = 0xFFFFFFF00A3E3830  ?
+  sysent[198] = 0xFFFFFFF00A3EA118  ?
+  sysent[201] = 0xFFFFFFF00A3E23A8  ?
+  sysent[202] = 0xFFFFFFF00A3E5F84  ?
+  sysent[203] = 0xFFFFFFF00A3E64C4  ?
+  sysent[207] = 0xFFFFFFF00A3E1424  ?
+  sysent[216] = 0xFFFFFFF00A3E4178  ?
+  sysent[217] = 0xFFFFFFF00A3EA78C  ?
+  sysent[218] = 0xFFFFFFF00A3DF2F8  ?
+  sysent[219] = 0xFFFFFFF00A3EDDA4  ?
+  sysent[220] = 0xFFFFFFF00A3DEFD0  ?
+  sysent[222] = 0xFFFFFFF00A3A2274  ?
+  sysent[223] = 0xFFFFFFF00A3A34DC  ?
+  sysent[224] = 0xFFFFFFF00A3EAAD4  ?
+  sysent[225] = 0xFFFFFFF00A3EAE6C  ?
+  sysent[227] = 0xFFFFFFF00A3EB474  ?
+  sysent[228] = 0xFFFFFFF00A3E1B9C  ?
+  sysent[229] = 0xFFFFFFF00A3E669C  ?
+  sysent[230] = 0xFFFFFFF00A39F364  ?
+  sysent[231] = 0xFFFFFFF00A3A4380  ?
+  sysent[236] = 0xFFFFFFF00A3ECAD0  ?
+  sysent[237] = 0xFFFFFFF00A3ECDC8  ?
+  sysent[238] = 0xFFFFFFF00A3ED03C  ?
+  sysent[239] = 0xFFFFFFF00A3ED290  ?
+  sysent[240] = 0xFFFFFFF00A3ED4B8  ?
+  sysent[241] = 0xFFFFFFF00A3ED6E0  ?
+  sysent[242] = 0xFFFFFFF00A3ED844  ?
+  sysent[243] = 0xFFFFFFF00A3EDA9C  ?
+  sysent[244] = 0xFFFFFFF00A3EB644  ?
+  sysent[247] = 0xFFFFFFF00A3EC9DC  ?
+  sysent[251] = 0xFFFFFFF00A3EC9C0  ?
+  sysent[279] = 0xFFFFFFF00A3DEDB0  ?
+  sysent[280] = 0xFFFFFFF00A3EA62C  ?
+  sysent[281] = 0xFFFFFFF00A3E2F7C  ?
+  sysent[282] = 0xFFFFFFF00A3E3678  ?
+  sysent[284] = 0xFFFFFFF00A3E4560  ?
+  sysent[285] = 0xFFFFFFF00A3E4E44  ?
+  sysent[286] = 0xFFFFFFF00A3E272C  ?
+  sysent[293] = 0xFFFFFFF00A3E0288  ?
+  sysent[294] = 0xFFFFFFF00A3E97EC  ?
+  sysent[340] = 0xFFFFFFF00A3E35FC  ?
+  sysent[342] = 0xFFFFFFF00A3E36F4  ?
+  sysent[343] = 0xFFFFFFF00A3E363C  ?
+  sysent[344] = 0xFFFFFFF00A3E3734  ?
+  sysent[346] = 0xFFFFFFF00A3EA56C  ?
+  sysent[347] = 0xFFFFFFF00A3DCCEC  ?
+  sysent[348] = 0xFFFFFFF00A3DCE88  ?
+  sysent[349] = 0xFFFFFFF00A3DD3E4  ?
+  sysent[350] = 0xFFFFFFF00A3DDE30  ?
+  sysent[351] = 0xFFFFFFF00A3DDAD0  ?
+  sysent[366] = 0xFFFFFFF00A3E5668  ?
+  sysent[400] = 0xFFFFFFF00A3DF4D4  ?
+  sysent[410] = 0xFFFFFFF00A3E6654  ?
+  sysent[426] = 0xFFFFFFF00A3D91B4  FUN_fffffff00a3d91b4
+  sysent[428] = 0xFFFFFFF00A3DD024  FUN_fffffff00a3dd024
+  sysent[429] = 0xFFFFFFF00A3EDC64  ?
+  sysent[457] = 0xFFFFFFF00A3EDDC0  ?
+  sysent[462] = 0xFFFFFFF00A4F75D8  ?
+  sysent[463] = 0xFFFFFFF00A3A256C  ?
+  sysent[464] = 0xFFFFFFF00A3E6ACC  ?
+  sysent[465] = 0xFFFFFFF00A3DF7B0  ?
+  sysent[466] = 0xFFFFFFF00A3DF61C  ?
+  sysent[467] = 0xFFFFFFF00A3E97B0  ?
+  sysent[468] = 0xFFFFFFF00A3E2F24  ?
+  sysent[469] = 0xFFFFFFF00A3E4DEC  ?
+  sysent[470] = 0xFFFFFFF00A3E57E8  ?
+  sysent[471] = 0xFFFFFFF00A3E3770  ?
+  sysent[472] = 0xFFFFFFF00A3E37D0  ?
+  sysent[473] = 0xFFFFFFF00A3E0F68  ?
+  sysent[474] = 0xFFFFFFF00A3E1C14  ?
+  sysent[475] = 0xFFFFFFF00A3E3D88  ?
+  sysent[476] = 0xFFFFFFF00A3E13F0  ?
+  sysent[477] = 0xFFFFFFF00A3E9D5C  ?
+  sysent[478] = 0xFFFFFFF00A3A24E8  ?
+  sysent[481] = 0xFFFFFFF00A3DF814  ?
+  sysent[490] = 0xFFFFFFF00A3E9748  ?
+  sysent[492] = 0xFFFFFFF00A502AC4  ?
+  sysent[502] = 0xFFFFFFF00A398DBC  ?
+  sysent[503] = 0xFFFFFFF00A4E411C  ?
+  sysent[504] = 0xFFFFFFF00A4E5C28  ?
+  sysent[519] = 0xFFFFFFF00A3E7244  ?
+  sysent[520] = 0xFFFFFFF00A3EDEC4  ?
+  sysent[524] = 0xFFFFFFF00A4B4C3C  ?
+  sysent[525] = 0xFFFFFFF00A4BD438  ?
+  sysent[526] = 0xFFFFFFF00A3A419C  ?
+  sysent[528] = 0xFFFFFFF00A3D9FFC  ?
+  sysent[539] = 0xFFFFFFF00A3DE310  ?
+  sysent[551] = 0xFFFFFFF00A3DA1E4  ?
+  sysent[553] = 0xFFFFFFF00A3E39AC  ?
+  sysent[555] = 0xFFFFFFF00A3E04B8  ?
+  sysent[556] = 0xFFFFFFF00A3E01BC  ?
+  sysent[557] = 0xFFFFFFF00A3DAB3C  ?
 
--- BL callers --
+========================================================================
+### ANY ENTRY WITH 'necp' IN NAME
+========================================================================
   (none)
 
--- sink calls + taint --
-  kalloc_type @ 0xFFFFFFF00A78A414 tainted=False
-  copyin @ 0xFFFFFFF00A78A44C tainted=False
-
--- callees --
-  0xFFFFFFF00A201340  FUN_fffffff00a201340  @ 0xFFFFFFF00A201340  x1
-
--- decompile --
-  
-  undefined8
-  FUN_fffffff00a78a39c(long param_1,undefined8 *param_2,undefined8 param_3,ulong param_4,int param_5)
-  
-  {
-    undefined1 *puVar1;
-    code *pcVar2;
-    undefined8 uVar3;
-    undefined1 *puVar4;
-  
-    if (param_4 < 0x100) {
-      if (param_4 < 2) {
-        uVar3 = 0x16;
-      }
-      else {
-        puVar4 = (undefined1 *)FUN_fffffff00a200988(&DAT_fffffff007c62e68,param_4,0x8004,0);
-        if (puVar4 != (undefined1 *)0x0) {
-          *puVar4 = (char)param_4;
-        }
-        puVar1 = (undefined1 *)0x0;
-        if (puVar4 != (undefined1 *)0x0) {
-          puVar1 = puVar4 + param_4;
-        }
-        if (puVar1 < puVar4 || (ulong)((long)puVar1 - (long)puVar4) < param_4) {
-  LAB_fffffff00a78a440:
-                      /* WARNING: Does not return */
-          pcVar2 = (code *)SoftwareBreakpoint(0x5519,0xfffffff00a78a444);
-          (*pcVar2)();
-        }
-        uVar3 = FUN_fffffff00a368ec0(param_3,puVar4);
-        if ((int)uVar3 == 0) {
-          if (param_5 != 0) {
-            if (puVar1 < puVar4 + 0x10) goto LAB_fffffff00a78a440;
-            if (((puVar4[1] == '\0') && (param_4 == 0x10)) && (*(int *)(param_1 + 8) == 2)) {
-              puVar4[1] = 2;
-            }
-          }
-          if ((puVar1 < puVar4 + 0x10) || (*puVar4 = (char)param_4, puVar1 <= puVar4))
-          goto LAB_fffffff00a78a440;
-          uVar3 = 0;
-          *param_2 = puVar4;
-        }
-        else if (puVar4 != (undefined1 *)0x0) {
-          FUN_fffffff00a201340(&DAT_fffffff007c62e68,puVar4,1,0xff);
-        }
-      }
-    }
-    else {
-      uVar3 = 0x3f;
-    }
-    return uVar3;
-  }
-  
-  
+========================================================================
+### FULL TABLE [528..557]
+========================================================================
+idx   raw_low32            unwrapped            narg   flags      name
+528   0x033D5FFC           0xFFFFFFF00A3D9FFC   4      0x0000000000000001 ?
+529   0x037B9AAC           0xFFFFFFF00A7BDAAC   1      0x0000000000000001 ?
+530   0x037B990C           0xFFFFFFF00A7BD90C   1      0x0000000000000001 ?
+531   0x036F0134           0xFFFFFFF00A6F4134   6      0x0000000000000001 ?
+532   0x036D9318           0xFFFFFFF00A6DD318   4      0x0000000000000001 ?
+533   0x0373AF20           0xFFFFFFF00A73EF20   1      0x0000000000000007 ?
+534   0x0374F4F8           0xFFFFFFF00A7534F8   4      0x0000000000000001 ?
+535   0x0374A758           0xFFFFFFF00A74E758   4      0x0000000000000001 ?
+536   0x0372C554           0xFFFFFFF00A730554   0      0x0000000000000007 ?
+537   0x03869FA0           0xFFFFFFF00A86DFA0   2      0x0000000000000001 ?
+538   0x037B4478           0xFFFFFFF00A7B8478   4      0x0000000000000001 ?
+539   0x033DA310           0xFFFFFFF00A3DE310   2      0x0000000000000001 ?
+540   0x037072EC           0xFFFFFFF00A70B2EC   3      0x0000000000000001 ?
+541   0x037075D8           0xFFFFFFF00A70B5D8   3      0x0000000000000001 ?
+542   0x037473D0           0xFFFFFFF00A74B3D0   4      0x0000000000000006 ?
+543   0x03747F30           0xFFFFFFF00A74BF30   4      0x0000000000000006 ?
+544   0x037473AC           0xFFFFFFF00A74B3AC   4      0x0000000000000006 ?
+545   0x03747F08           0xFFFFFFF00A74BF08   4      0x0000000000000006 ?
+546   0x037507C0           0xFFFFFFF00A7547C0   5      0x0000000000000001 FUN_fffffff00a7547c0
+547   0x037A7EDC           0xFFFFFFF00A7ABEDC   8      0x0000000000000001 ?
+548   0x037AADC4           0xFFFFFFF00A7AEDC4   3      0x0000000000000001 ?
+549   0x036C5CBC           0xFFFFFFF00A6C9CBC   1      0x0000000000000001 ?
+550   0x036C5CB0           0xFFFFFFF00A6C9CB0   3      0x0000000000000001 ?
+551   0x033D61E4           0xFFFFFFF00A3DA1E4   4      0x0000000000000001 ?
+552   0x037B8900           0xFFFFFFF00A7BC900   4      0x0000000000000001 ?
+553   0x033DF9AC           0xFFFFFFF00A3E39AC   3      0x0000000000000001 ?
+554   0x0374E2C0           0xFFFFFFF00A7522C0   4      0x0000000000000001 ?
+555   0x033DC4B8           0xFFFFFFF00A3E04B8   3      0x0000000000000001 ?
+556   0x033DC1BC           0xFFFFFFF00A3E01BC   4      0x0000000000000001 ?
+557   0x033D6B3C           0xFFFFFFF00A3DAB3C   2      0x0000000000000001 ?
 
 ========================================================================
-### fun_8bbf38 @ 0xFFFFFFF00A8BBF38
-note: IOKit target from sysent_69
+### FULL TABLE [490..520]
 ========================================================================
-  func=FUN_fffffff00a8bbf38 entry=0xFFFFFFF00A8BBF38 size=0x19C
-
--- BL callers --
-  (none)
-
--- sink calls + taint --
-  memmove @ 0xFFFFFFF00A8BBFB8 tainted=False
-
--- callees --
-  0xFFFFFFF00A1B1550  FUN_fffffff00a1b1550  @ 0xFFFFFFF00A1B1550  x1
-  0xFFFFFFF00A8BDAC0  FUN_fffffff00a8bdac0  @ 0xFFFFFFF00A8BDAC0  x1
-  0xFFFFFFF00AA27974  FUN_fffffff00aa27974  @ 0xFFFFFFF00AA27974  x1
-
--- decompile --
-  
-  void FUN_fffffff00a8bbf38(undefined8 *param_1,undefined8 param_2,int param_3)
-  
-  {
-    long *plVar1;
-    bool bVar2;
-    undefined8 uVar3;
-    short sVar4;
-    long lVar5;
-    bool bVar6;
-    long lVar7;
-    ulong uVar8;
-    undefined8 uVar9;
-    undefined8 uStack_4a0;
-    undefined8 uStack_498;
-    short sStack_490;
-    short sStack_48e;
-    undefined4 uStack_48c;
-    undefined8 uStack_488;
-    undefined8 uStack_480;
-    undefined8 uStack_478;
-    undefined8 uStack_470;
-    undefined8 uStack_468;
-    undefined1 auStack_460 [1032];
-    long lStack_58;
-  
-    lStack_58 = DAT_fffffff00ad10000;
-    lVar7 = FUN_fffffff00a1b1550(param_2);
-    if (((DAT_fffffff007c1f210 & 1) == 0) && (lVar7 + 1U < 0x401)) {
-      uStack_478 = param_1[1];
-      uStack_480 = *param_1;
-      bVar6 = true;
-      uStack_468 = 1;
-      uStack_470 = 1;
-      uVar3 = UnkSytemRegRead(3,4,0xf,10,6);
-      FUN_fffffff00aa40d30(auStack_460,param_2);
-      lVar5 = tpidr_el1;
-      plVar1 = (long *)(DAT_fffffff00acfe6a8 + (ulong)*(ushort *)(lVar5 + 0x1b0) * 0x4000);
-      *plVar1 = *plVar1 + 1;
-      if ((DAT_fffffff00ad76d98 == 0) && (DAT_fffffff00acf02c0 == 1)) {
-        if (*(int *)(lVar5 + 0x1c0) == 0) {
-          uVar9 = daif;
-          bVar6 = (~(uint)uVar9 & 0x1c0) == 0;
-        }
-        else {
-          bVar6 = true;
-        }
-      }
-      bVar2 = false;
-      if (0x12 < DAT_fffffff007c62470) {
-        bVar2 = bVar6;
-      }
-      if ((!bVar2) && ((DAT_fffffff007c1f210 & 1) == 0)) {
-        uVar9 = 0x1000000405;
-        if (param_3 != 1) {
-          uVar9 = 0x405;
-        }
-        uStack_4a0 = 0x800000405;
-        if (param_3 != 0) {
-          uStack_4a0 = uVar9;
-        }
-        sVar4 = (short)lVar7 + 0x21;
-        _sStack_490 = CONCAT44(3,CONCAT22(sVar4,sVar4));
-        uStack_498 = uVar3;
-        uStack_488 = uStack_4a0;
-        uVar8 = FUN_fffffff00a8bdac0(&uStack_4a0,&uStack_480,1);
-        if ((uVar8 & 1) != 0) goto LAB_fffffff00a8bc09c;
-      }
-      plVar1 = (long *)(DAT_fffffff00acfe6b8 + (ulong)*(ushort *)(lVar5 + 0x1b0) * 0x4000);
-      *plVar1 = *plVar1 + 1;
-    }
-  LAB_fffffff00a8bc09c:
-    if (DAT_fffffff00ad10000 == lStack_58) {
-      return;
-    }
-                      /* WARNING: Subroutine does not return */
-    FUN_fffffff00aa27974();
-  }
-  
-  
+idx   raw_low32            unwrapped            narg   flags      name
+490   0x033E5748           0xFFFFFFF00A3E9748   5      0x0000000000000001 ?
+491   0x036FA004           0xFFFFFFF00A6FE004   5      0x0000000000000001 ?
+492   0x034FEAC4           0xFFFFFFF00A502AC4   2      0x0000000000000001 ?
+493   0x03742634           0xFFFFFFF00A746634   3      0x0000000000000001 ?
+494   0x03742CA4           0xFFFFFFF00A746CA4   3      0x0000000000000001 ?
+495   0x03746640           0xFFFFFFF00A74A640   0      0x0000000000000001 ?
+496   0x0374F850           0xFFFFFFF00A753850   6      0x0000000000000001 ?
+497   0x03746640           0xFFFFFFF00A74A640   0      0x0000000000000001 ?
+498   0x037466A4           0xFFFFFFF00A74A6A4   2      0x0000000000000007 ?
+499   0x037466D4           0xFFFFFFF00A74A6D4   5      0x0000000000000007 ?
+500   0x03746714           0xFFFFFFF00A74A714   6      0x0000000000000007 ?
+501   0x03751BC4           0xFFFFFFF00A755BC4   4      0x0000000000000001 ?
+502   0x03394DBC           0xFFFFFFF00A398DBC   2      0x0000000000000001 ?
+503   0x034E011C           0xFFFFFFF00A4E411C   1      0x0000000000000001 ?
+504   0x034E1C28           0xFFFFFFF00A4E5C28   6      0x0000000000000001 ?
+505   0x037FE220           0xFFFFFFF00A802220   2      0x0000000000000001 ?
+506   0x037FEA00           0xFFFFFFF00A802A00   5      0x0000000000000001 ?
+507   0x037FF02C           0xFFFFFFF00A80302C   3      0x0000000000000001 ?
+508   0x037FF398           0xFFFFFFF00A803398   5      0x0000000000000001 ?
+509   0x037FF8AC           0xFFFFFFF00A8038AC   3      0x0000000000000001 ?
+510   0x037FFC48           0xFFFFFFF00A803C48   4      0x0000000000000001 ?
+511   0x037FFFE8           0xFFFFFFF00A803FE8   4      0x0000000000000001 ?
+512   0x037D6CEC           0xFFFFFFF00A7DACEC   2      0x0000000000000001 ?
+513   0x037D78EC           0xFFFFFFF00A7DB8EC   3      0x0000000000000001 ?
+514   0x037D7BF0           0xFFFFFFF00A7DBBF0   3      0x0000000000000001 ?
+515   0x037D8ACC           0xFFFFFFF00A7DCACC   4      0x0000000000000001 ?
+516   0x037D8F00           0xFFFFFFF00A7DCF00   4      0x0000000000000001 ?
+517   0x03750778           0xFFFFFFF00A754778   4      0x0000000000000001 ?
+518   0x03751798           0xFFFFFFF00A755798   3      0x0000000000000001 ?
+519   0x033E3244           0xFFFFFFF00A3E7244   4      0x0000000000000001 ?
+520   0x033E9EC4           0xFFFFFFF00A3EDEC4   6      0x0000000000000001 ?
 
 ========================================================================
-### fun_8bbd20 @ 0xFFFFFFF00A8BBD20
-note: IOKit target from sysent_70
+### ALL NAMED ENTRIES [0..557] (only where name != ?)
 ========================================================================
-  func=FUN_fffffff00a8bbd20 entry=0xFFFFFFF00A8BBD20 size=0x20C
-
--- BL callers --
-  (none)
-
--- sink calls + taint --
-  memmove @ 0xFFFFFFF00A8BBEB8 tainted=False
-
--- callees --
-  0xFFFFFFF00A8BDAC0  FUN_fffffff00a8bdac0  @ 0xFFFFFFF00A8BDAC0  x1
-  0xFFFFFFF00AA27974  FUN_fffffff00aa27974  @ 0xFFFFFFF00AA27974  x1
-
--- decompile --
-  
-  void FUN_fffffff00a8bbd20
-                 (short param_1,undefined8 param_2,ulong param_3,uint param_4,undefined8 *param_5,
-                 undefined8 param_6,uint param_7,undefined8 param_8)
-  
-  {
-    long *plVar1;
-    short sVar2;
-    ushort uVar3;
-    undefined8 uVar4;
-    long lVar5;
-    ushort uVar6;
-    code *pcVar7;
-    ulong uVar8;
-    short *psVar9;
-    undefined1 uVar10;
-    long lVar11;
-    ulong uStack_188;
-    undefined8 uStack_180;
-    undefined8 uStack_178;
-    ulong uStack_170;
-    uint uStack_168;
-    undefined8 uStack_164;
-    undefined8 uStack_15c;
-    short sStack_154;
-    short asStack_152 [117];
-    long lStack_68;
-  
-    lStack_68 = DAT_fffffff00ad10000;
-    lVar5 = tpidr_el1;
-    plVar1 = (long *)(DAT_fffffff00acfe6f0 + (ulong)*(ushort *)(lVar5 + 0x1b0) * 0x4000);
-    *plVar1 = *plVar1 + 1;
-    uVar6 = DAT_fffffff00acfe738;
-    if ((((DAT_fffffff007c1f210 & 1) == 0) && ((DAT_fffffff00ad9995c._1_1_ >> 2 & 1) == 0)) &&
-       (((DAT_fffffff00ad76d98 == 0 && DAT_fffffff00acf02c0 == 1 &&
-         ((*(int *)(lVar5 + 0x1c0) == 0 && (uVar4 = daif, (~(uint)uVar4 & 0x1c0) != 0)))) ||
-        (DAT_fffffff007c62470 < 0x13)))) {
-      uVar3 = param_1 - 1;
-      lVar11 = 0x16;
-      if (DAT_fffffff00acfe738 <= uVar3) {
-        lVar11 = 0x14;
-      }
-      if (0x100 < lVar11 + param_3) goto LAB_fffffff00a8bbdf4;
-      uStack_15c = param_5[1];
-      uStack_164 = *param_5;
-      if (uVar3 < DAT_fffffff00acfe738) {
-        psVar9 = asStack_152;
-        lVar11 = 0x16;
-        sStack_154 = param_1;
-      }
-      else {
-        psVar9 = &sStack_154;
-        lVar11 = 0x14;
-      }
-      uStack_168 = param_7;
-      if (0x100U - lVar11 < param_3) {
-                      /* WARNING: Does not return */
-        pcVar7 = (code *)SoftwareBreakpoint(0xbffe,0xfffffff00a8bbf2c);
-        (*pcVar7)();
-      }
-      FUN_fffffff00aa40d30(psVar9);
-      uVar8 = 0x20a0000;
-      if (uVar6 <= uVar3) {
-        uVar8 = 0xa0000;
-      }
-      uStack_188 = uVar8 | (ulong)param_7 << 0x20 | (ulong)param_4 << 8 | 4;
-      uVar10 = 2;
-      if (1 < param_4 - 1) {
-        uVar10 = 0;
-      }
-      sVar2 = (short)lVar11 + (short)param_3;
-      uStack_178._0_4_ = CONCAT22(sVar2,sVar2);
-      uStack_178 = (ulong)CONCAT14(uVar10,(undefined4)uStack_178);
-      uStack_180 = param_6;
-      uStack_170 = uStack_188;
-      uVar8 = FUN_fffffff00a8bdac0(&uStack_188,&uStack_168,param_8);
-      if ((uVar8 & 1) != 0) goto LAB_fffffff00a8bbe10;
-    }
-    else {
-  LAB_fffffff00a8bbdf4:
-      uVar8 = 0;
-    }
-    plVar1 = (long *)(DAT_fffffff00acfe6f8 + (ulong)*(ushort *)(lVar5 + 0x1b0) * 0x4000);
-    *plVar1 = *plVar1 + 1;
-  LAB_fffffff00a8bbe10:
-    if (DAT_fffffff00ad10000 != lStack_68) {
-                      /* WARNING: Subroutine does not return */
-      FUN_fffffff00aa27974(uVar8);
-    }
-    return;
-  }
-  
-  
-
-========================================================================
-### sysent_501 @ 0xFFFFFFF00A755BC4
-note: sy_call[501]
-========================================================================
-  func=FUN_fffffff00a755bc4 entry=0xFFFFFFF00A755BC4 size=0x570
-
--- BL callers --
-  (none)
-
--- sink calls + taint --
-  copyin @ 0xFFFFFFF00A755CB0 tainted=False
-  copyin @ 0xFFFFFFF00A755D20 tainted=False
-  copyin @ 0xFFFFFFF00A755DC4 tainted=False
-  copyin @ 0xFFFFFFF00A755EA4 tainted=False
-  copyin @ 0xFFFFFFF00A755F10 tainted=False
-  copyin @ 0xFFFFFFF00A755F74 tainted=False
-  copyout @ 0xFFFFFFF00A755FB8 tainted=False
-  copyout @ 0xFFFFFFF00A7560D4 tainted=False
-
--- callees --
-  0xFFFFFFF00A23F588  FUN_fffffff00a23f588  @ 0xFFFFFFF00A23F588  x1
-  0xFFFFFFF00A26C8D4  FUN_fffffff00a26c8d4  @ 0xFFFFFFF00A26C8D4  x2
-  0xFFFFFFF00A26CAE0  FUN_fffffff00a26cae0  @ 0xFFFFFFF00A26CAE0  x1
-  0xFFFFFFF00A26CBE0  FUN_fffffff00a26cbe0  @ 0xFFFFFFF00A26CBE0  x1
-  0xFFFFFFF00A26D034  FUN_fffffff00a26d034  @ 0xFFFFFFF00A26D034  x1
-  0xFFFFFFF00A26D088  FUN_fffffff00a26d088  @ 0xFFFFFFF00A26D088  x1
-  0xFFFFFFF00A26D16C  FUN_fffffff00a26d16c  @ 0xFFFFFFF00A26D16C  x1
-  0xFFFFFFF00A26D408  FUN_fffffff00a26d408  @ 0xFFFFFFF00A26D408  x1
-  0xFFFFFFF00A26D610  FUN_fffffff00a26d610  @ 0xFFFFFFF00A26D610  x1
-  0xFFFFFFF00A26D7CC  FUN_fffffff00a26d7cc  @ 0xFFFFFFF00A26D7CC  x1
-  0xFFFFFFF00A26D9E8  FUN_fffffff00a26d9e8  @ 0xFFFFFFF00A26D9E8  x1
-  0xFFFFFFF00A27AE44  FUN_fffffff00a27ae44  @ 0xFFFFFFF00A27AE44  x1
-  0xFFFFFFF00A27B6F4  FUN_fffffff00a27b6f4  @ 0xFFFFFFF00A27B6F4  x1
-  0xFFFFFFF00A3698B0  FUN_fffffff00a3698b0  @ 0xFFFFFFF00A3698B0  x2
-  0xFFFFFFF00A7003BC  FUN_fffffff00a7003bc  @ 0xFFFFFFF00A7003BC  x1
-  0xFFFFFFF00AA27974  FUN_fffffff00aa27974  @ 0xFFFFFFF00AA27974  x1
-
--- decompile --
-  
-  void FUN_fffffff00a755bc4(undefined8 param_1,int *param_2)
-  
-  {
-    uint uVar1;
-    long lVar2;
-    int iVar3;
-    long lVar4;
-    long *plVar5;
-    undefined8 uVar6;
-    undefined8 uVar7;
-    undefined8 uStack_1d8;
-    undefined8 uStack_1d0;
-    undefined8 uStack_1c8;
-    undefined8 uStack_1c0;
-    undefined8 uStack_1b8;
-    undefined8 uStack_1b0;
-    undefined2 uStack_1a8;
-    undefined4 uStack_1a6;
-    undefined2 uStack_1a2;
-    undefined1 auStack_1a0 [8];
-    undefined8 uStack_198;
-    long lStack_190;
-    long lStack_188;
-    undefined8 uStack_180;
-    undefined8 uStack_178;
-    undefined8 uStack_170;
-    undefined8 uStack_168;
-    ulong uStack_160;
-    undefined8 uStack_158;
-    undefined8 uStack_150;
-    undefined8 uStack_148;
-    undefined8 uStack_140;
-    undefined8 uStack_138;
-    long lStack_130;
-    undefined8 *puStack_128;
-    undefined8 uStack_120;
-    undefined8 uStack_118;
-    long lStack_110;
-    long lStack_108;
-    undefined8 uStack_100;
-    undefined8 uStack_f8;
-    long lStack_f0;
-    undefined8 uStack_e8;
-    undefined8 uStack_e0;
-    undefined8 uStack_d8;
-    undefined8 uStack_d0;
-    undefined8 uStack_c8;
-    undefined8 uStack_c0;
-    undefined8 uStack_b0;
-    undefined8 uStack_a8;
-    undefined8 uStack_a0;
-    undefined8 uStack_98;
-    undefined8 uStack_90;
-    undefined8 uStack_88;
-    undefined8 uStack_80;
-    undefined8 uStack_78;
-    undefined8 uStack_70;
-    undefined8 uStack_68;
-    undefined8 uStack_60;
-    undefined8 uStack_58;
-    long lStack_48;
-  
-    lStack_48 = DAT_fffffff00ad10000;
-    uStack_c0 = 0;
-    uStack_d8 = 0;
-    uStack_e0 = 0;
-    uStack_c8 = 0;
-    uStack_d0 = 0;
-    lStack_f0 = 0;
-    uStack_e8 = (undefined8 *)0x0;
-    lStack_108 = 0;
-    lStack_110 = 0;
-    uStack_f8 = 0;
-    uStack_100 = 0;
-    uStack_148 = 0;
-    uStack_150 = 0;
-    uStack_138 = 0;
-    uStack_140 = 0;
-    uStack_168 = 0;
-    uStack_170 = 0;
-    uStack_158 = 0;
-    uStack_160 = 0;
-    lStack_188 = 0;
-    lStack_190 = 0;
-    uStack_178 = 0;
-    uStack_180 = 0;
-    if (9 < *param_2 - 2U) {
-      uVar6 = 0x2d;
-      goto LAB_fffffff00a756080;
-    }
-    switch(*param_2) {
-    default:
-      if ((*(long *)(param_2 + 4) == 0) && (*(long *)(param_2 + 2) != 0)) {
-        lVar4 = tpidr_el1;
-        if ((*(long **)(lVar4 + 0x550) != (long *)0x0) &&
-           (**(long **)(lVar4 + 0x550) == *(long *)(param_2 + 2))) {
-          iVar3 = FUN_fffffff00a26c8d4(lVar4,0);
-          goto joined_r0xfffffff00a75601c;
-        }
-      }
-      break;
-    case 3:
-      if (((*(long *)(param_2 + 4) != 0) && (*(long *)(param_2 + 2) != 0)) &&
-         (0x27 < *(ulong *)(param_2 + 6))) {
-        uVar6 = FUN_fffffff00a368ec0(*(long *)(param_2 + 4),&uStack_e0,0x28);
-        if ((int)uVar6 != 0) goto LAB_fffffff00a756080;
-        uStack_1d8 = *(undefined8 *)(param_2 + 2);
-        uStack_1c8 = uStack_d8;
-        uStack_1d0 = uStack_e0;
-        uStack_1b8 = uStack_c8;
-        uStack_1c0 = uStack_d0;
-        uStack_1b0 = uStack_c0;
-        uStack_1a8 = 0;
-        uStack_1a6 = 0;
-        uVar6 = tpidr_el1;
-        uStack_1a2 = 0;
-        iVar3 = FUN_fffffff00a26cae0(uVar6,&uStack_1d8);
-  joined_r0xfffffff00a75601c:
-        if (iVar3 == 0) goto LAB_fffffff00a756020;
-      }
-      break;
-    case 4:
-      if (((*(long *)(param_2 + 4) != 0) && (*(long *)(param_2 + 2) == 0)) &&
-         (0xf < *(ulong *)(param_2 + 6))) {
-        uVar6 = FUN_fffffff00a368ec0(*(long *)(param_2 + 4),&lStack_f0,0x10);
-        if ((int)uVar6 != 0) goto LAB_fffffff00a756080;
-        uVar1 = uStack_e8._4_4_ & 0xf0000000;
-        if ((uStack_e8._4_4_ >> 2 & 1) == 0) {
-          if (uVar1 != 0x30000000) {
-            lVar4 = FUN_fffffff00a27ae44();
-            uVar6 = FUN_fffffff00a7003bc(*(undefined8 *)(lVar4 + 8),0x3f0,0);
-            if ((int)uVar6 != 0) goto LAB_fffffff00a756080;
-          }
-        }
-        else if (((uStack_e8._4_4_ >> 1 & 1) == 0) ||
-                ((uStack_e8._4_4_ >> 0x1d != 0 && (uVar1 != 0x30000000)))) break;
-        lStack_130 = lStack_f0;
-        puStack_128 = (undefined8 *)CONCAT44(uStack_e8._4_4_,(int)uStack_e8);
-        lVar4 = tpidr_el1;
-        iVar3 = FUN_fffffff00a26cbe0(lVar4,&lStack_130);
-        lVar2 = lStack_130;
-        if (iVar3 == 0) {
-          lStack_f0 = lStack_130;
-          uStack_e8 = puStack_128;
-          uVar6 = FUN_fffffff00a369a3c(&lStack_f0,*(undefined8 *)(param_2 + 4),0x10);
-          if ((int)uVar6 != 0) {
-            if (((lVar2 != 0) && (*(long **)(lVar4 + 0x550) != (long *)0x0)) &&
-               (**(long **)(lVar4 + 0x550) == lVar2)) {
-              FUN_fffffff00a26c8d4(lVar4,0);
-            }
-            if (uVar1 == 0x30000000) {
-              uVar7 = FUN_fffffff00a27b6f4(lVar4);
-              FUN_fffffff00a23f588(uVar7,0);
-            }
-            goto LAB_fffffff00a756080;
-          }
-          goto LAB_fffffff00a756020;
-        }
-        if (iVar3 == 5) {
-          uVar6 = 0x25;
-          goto LAB_fffffff00a756080;
-        }
-        if (iVar3 == 6) {
-          uVar6 = 0xc;
-          goto LAB_fffffff00a756080;
-        }
-      }
-      break;
-    case 5:
-      if (*(long *)(param_2 + 4) == 0) {
-        uVar6 = tpidr_el1;
-        iVar3 = FUN_fffffff00a26d9e8(uVar6,param_2[2]);
-        goto joined_r0xfffffff00a75601c;
-      }
-      break;
-    case 6:
-      if (((*(long *)(param_2 + 4) != 0) && (*(long *)(param_2 + 2) != 0)) &&
-         (0x5f < *(ulong *)(param_2 + 6))) {
-        uVar6 = FUN_fffffff00a368ec0(*(long *)(param_2 + 4),&lStack_190,0x60);
-        if ((int)uVar6 != 0) goto LAB_fffffff00a756080;
-        lStack_130 = 0;
-        uVar6 = tpidr_el1;
-        iVar3 = FUN_fffffff00a26d408
-                          (uVar6,*(undefined8 *)(param_2 + 2),&lStack_130,uStack_180,uStack_170,
-                           uStack_168,uStack_160 & 0xffffffff,&uStack_158);
-        if (iVar3 == 0) {
-          lStack_188 = lStack_130;
-  LAB_fffffff00a755fac:
-          uVar6 = *(undefined8 *)(param_2 + 4);
-          plVar5 = &lStack_190;
-          uVar7 = 0x60;
-          goto LAB_fffffff00a755fb8;
-        }
-      }
-      break;
-    case 7:
-      if (((*(long *)(param_2 + 4) != 0) && (*(long *)(param_2 + 2) != 0)) &&
-         (0x5f < *(ulong *)(param_2 + 6))) {
-        uVar6 = FUN_fffffff00a368ec0(*(long *)(param_2 + 4),&lStack_190,0x60);
-        if ((int)uVar6 != 0) goto LAB_fffffff00a756080;
-        if (lStack_188 == 0) goto LAB_fffffff00a756020;
-        uVar6 = tpidr_el1;
-        iVar3 = FUN_fffffff00a26d610
-                          (uVar6,*(undefined8 *)(param_2 + 2),lStack_188,uStack_180,uStack_170,
-                           uStack_168,uStack_160 & 0xffffffff,&uStack_158);
-  joined_r0xfffffff00a755fa8:
-        if (iVar3 == 0) goto LAB_fffffff00a755fac;
-      }
-      break;
-    case 8:
-      if (((*(long *)(param_2 + 4) != 0) && (*(long *)(param_2 + 2) != 0)) &&
-         (0x5f < *(ulong *)(param_2 + 6))) {
-        uVar6 = FUN_fffffff00a368ec0(*(long *)(param_2 + 4),&lStack_190,0x60);
-        if ((int)uVar6 != 0) goto LAB_fffffff00a756080;
-        if (lStack_188 != 0) {
-          uVar6 = tpidr_el1;
-          iVar3 = FUN_fffffff00a26d7cc
-                            (uVar6,*(undefined8 *)(param_2 + 2),lStack_188,uStack_180,uStack_170,
-                             uStack_168,uStack_178,uStack_160 & 0xffffffff,&uStack_158);
-          goto joined_r0xfffffff00a755fa8;
-        }
-  LAB_fffffff00a756020:
-        uVar6 = 0;
-        goto LAB_fffffff00a756080;
-      }
-      break;
-    case 9:
-      if (((*(long *)(param_2 + 4) != 0) && (0xf < *(ulong *)(param_2 + 6))) &&
-         (uVar1 = param_2[2], uVar1 - 1 < 0xfffffffe)) {
-        lStack_f0 = 0;
-        uStack_e8 = (undefined8 *)(ulong)uVar1;
-        iVar3 = FUN_fffffff00a26d034(uVar1,(long)&uStack_e8 + 4);
-        if (iVar3 == 0) {
-          uVar6 = *(undefined8 *)(param_2 + 4);
-          plVar5 = &lStack_f0;
-          uVar7 = 0x10;
-  LAB_fffffff00a755fb8:
-          uVar6 = FUN_fffffff00a369a3c(plVar5,uVar6,uVar7);
-          if ((int)uVar6 != 0) goto LAB_fffffff00a756080;
-          goto LAB_fffffff00a756020;
-        }
-      }
-      break;
-    case 10:
-      if (((*(long *)(param_2 + 4) != 0) && (0x1f < *(ulong *)(param_2 + 6))) &&
-         (iVar3 = param_2[2], iVar3 - 1U < 0xfffffffe)) {
-        uStack_68 = 0;
-        uStack_70 = 0;
-        uStack_58 = 0;
-        uStack_60 = 0;
-        uVar6 = FUN_fffffff00a3698b0(*(long *)(param_2 + 4),&uStack_70,0x20,&uStack_198);
-        if ((int)uVar6 != 0) goto LAB_fffffff00a756080;
-        iVar3 = FUN_fffffff00a26d088(iVar3,&uStack_70,uStack_198);
-        goto joined_r0xfffffff00a75601c;
-      }
-      break;
-    case 0xb:
-      if (((*(long *)(param_2 + 4) != 0) && (0x1f < *(ulong *)(param_2 + 6))) &&
-         (iVar3 = param_2[2], iVar3 - 1U < 0xfffffffe)) {
-        uVar6 = FUN_fffffff00a368ec0(*(long *)(param_2 + 4),&lStack_110,0x20);
-        if ((int)uVar6 != 0) goto LAB_fffffff00a756080;
-        uStack_88 = 0;
-        uStack_90 = 0;
-        uStack_78 = 0;
-        uStack_80 = 0;
-        uStack_a8 = 0;
-        uStack_b0 = 0;
-        uStack_98 = 0;
-        uStack_a0 = 0;
-        if ((lStack_108 != 0) &&
-           (uVar6 = FUN_fffffff00a3698b0(lStack_108,&uStack_b0,0x40,auStack_1a0), (int)uVar6 != 0))
-        goto LAB_fffffff00a756080;
-        uStack_120 = 0;
-        uStack_118 = 0;
-        lStack_130 = lStack_110;
-        puStack_128 = &uStack_b0;
-        iVar3 = FUN_fffffff00a26d16c(iVar3,&lStack_130);
-        if (iVar3 == 0) {
-          lStack_110 = lStack_130;
-          lStack_108 = 0;
-          uStack_f8 = uStack_118;
-          uStack_100 = uStack_120;
-          uVar6 = *(undefined8 *)(param_2 + 4);
-          plVar5 = &lStack_110;
-          uVar7 = 0x20;
-          goto LAB_fffffff00a755fb8;
-        }
-      }
-    }
-    uVar6 = 0x16;
-  LAB_fffffff00a756080:
-    if (DAT_fffffff00ad10000 != lStack_48) {
-                      /* WARNING: Subroutine does not return */
-      FUN_fffffff00aa27974(uVar6);
-    }
-    return;
-  }
-  
-  
-
-========================================================================
-### sysent_502 @ 0xFFFFFFF00A398DBC
-note: sy_call[502]
-========================================================================
-  func=FUN_fffffff00a398dbc entry=0xFFFFFFF00A398DBC size=0x130
-
--- BL callers --
-  (none)
-
--- sink calls + taint --
-  copyout @ 0xFFFFFFF00A398EAC tainted=True
-
--- callees --
-  0xFFFFFFF00AA27974  FUN_fffffff00aa27974  @ 0xFFFFFFF00AA27974  x1
-
--- decompile --
-  
-  void FUN_fffffff00a398dbc(undefined8 param_1,undefined8 *param_2)
-  
-  {
-    ulong uVar1;
-    long lVar2;
-    undefined8 uVar3;
-    ulong uVar4;
-    undefined8 *puVar5;
-    ulong uVar6;
-    undefined8 uStack_170;
-    undefined8 uStack_168;
-    undefined8 uStack_160;
-    undefined8 uStack_158;
-    undefined8 uStack_150;
-    undefined8 uStack_148;
-    undefined8 uStack_140;
-    undefined8 uStack_138;
-    undefined8 uStack_130;
-    undefined8 uStack_128;
-    undefined8 uStack_120;
-    undefined8 uStack_118;
-    undefined8 uStack_110;
-    undefined8 uStack_108;
-    undefined8 uStack_100;
-    undefined8 uStack_f8;
-    undefined8 uStack_f0;
-    undefined8 uStack_e8;
-    undefined8 uStack_e0;
-    undefined8 uStack_d8;
-    undefined8 uStack_d0;
-    undefined8 uStack_c8;
-    undefined8 uStack_c0;
-    undefined8 uStack_b8;
-    undefined8 uStack_b0;
-    undefined8 uStack_a8;
-    undefined8 uStack_a0;
-    undefined8 uStack_98;
-    undefined8 uStack_90;
-    undefined8 uStack_88;
-    undefined8 uStack_80;
-    undefined8 uStack_78;
-    long lStack_70;
-  
-    puVar5 = &uStack_170;
-    lStack_70 = DAT_fffffff00ad10000;
-    uVar4 = param_2[1];
-    if (uVar4 < 0x101) {
-      uStack_88 = 0;
-      uStack_90 = 0;
-      uStack_78 = 0;
-      uStack_80 = 0;
-      uStack_a8 = 0;
-      uStack_b0 = 0;
-      uStack_98 = 0;
-      uStack_a0 = 0;
-      uStack_c8 = 0;
-      uStack_d0 = 0;
-      uStack_b8 = 0;
-      uStack_c0 = 0;
-      uStack_e8 = 0;
-      uStack_f0 = 0;
-      uStack_d8 = 0;
-      uStack_e0 = 0;
-      uStack_108 = 0;
-      uStack_110 = 0;
-      uStack_f8 = 0;
-      uStack_100 = 0;
-      uStack_128 = 0;
-      uStack_130 = 0;
-      uStack_118 = 0;
-      uStack_120 = 0;
-      uStack_148 = 0;
-      uStack_150 = 0;
-      uStack_138 = 0;
-      uStack_140 = 0;
-      uStack_168 = 0;
-      uStack_170 = 0;
-      uStack_158 = 0;
-      uStack_160 = 0;
-      uVar3 = *param_2;
-      (*DAT_fffffff007bc4980)(DAT_fffffff00ada2e30);
-      if (uVar4 != 0) {
-        lVar2 = tpidr_el1;
-        uVar6 = uVar4;
-        do {
-          uVar1 = uVar6;
-          if (0xff < uVar6) {
-            uVar1 = 0x100;
-          }
-          (*DAT_fffffff007bc4988)(DAT_fffffff00ada2e30,*(undefined2 *)(lVar2 + 0x1b0),uVar1,puVar5);
-          puVar5 = (undefined8 *)((long)puVar5 + uVar1);
-          uVar6 = uVar6 - uVar1;
-        } while (uVar6 != 0);
-      }
-      uVar3 = FUN_fffffff00a369a3c(&uStack_170,uVar3,uVar4);
-    }
-    else {
-      uVar3 = 0x16;
-    }
-    if (DAT_fffffff00ad10000 == lStack_70) {
-      return;
-    }
-                      /* WARNING: Subroutine does not return */
-    FUN_fffffff00aa27974(uVar3);
-  }
-  
-  
+  sysent[25] = 0xFFFFFFF00A70CD18  FUN_fffffff00a70cd18  narg=1
+  sysent[38] = 0xFFFFFFF00A3DBE98  FUN_fffffff00a3dbe98  narg=0
+  sysent[88] = 0xFFFFFFF00A73DDC0  FUN_fffffff00a73ddc0  narg=2
+  sysent[150] = 0xFFFFFFF00A74F788  FUN_fffffff00a74f788  narg=2
+  sysent[382] = 0xFFFFFFF00A6F06E8  FUN_fffffff00a6f06e8  narg=4
+  sysent[402] = 0xFFFFFFF00A6F72FC  FUN_fffffff00a6f72fc  narg=4
+  sysent[426] = 0xFFFFFFF00A3D91B4  FUN_fffffff00a3d91b4  narg=5
+  sysent[428] = 0xFFFFFFF00A3DD024  FUN_fffffff00a3dd024  narg=5
+  sysent[480] = 0xFFFFFFF00A6B36D8  FUN_fffffff00a6b354c  narg=4
+  sysent[546] = 0xFFFFFFF00A7547C0  FUN_fffffff00a7547c0  narg=5
