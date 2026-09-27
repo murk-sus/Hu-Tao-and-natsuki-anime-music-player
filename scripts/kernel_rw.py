@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # @runtime Jython
-# kernel_rw.py v56 - taint scan of new iOS 27 syscalls (nexus/channel/ulock)
+# kernel_rw.py v57 - taint scan of nexus/channel/ulock syscalls (correct indices)
 
 import os
 import sys
@@ -31,16 +31,26 @@ SYSENT_BASE = int("FFFFFFF007C19270", 16)
 SYSENT_STRIDE = 24
 KERNEL_BASE = int("FFFFFFF007004000", 16)
 
-TARGET_INDICES = [505, 506, 507, 508, 509, 510, 511,
-                  512, 513, 514, 515, 516,
-                  517, 518, 546]
+# Correct indices for iOS 27.0 with base 0xFFFFFFF007C19270
+# 507..513 = __nexus_open / register / deregister / create / destroy / get_opt / set_opt
+# 514..518 = __channel_open / get_info / sync / get_opt / set_opt
+# 519..520 = ulock_wait / ulock_wake
+# 548      = ulock_wait2
+TARGET_INDICES = [507, 508, 509, 510, 511, 512, 513,
+                  514, 515, 516, 517, 518, 519, 520,
+                  548]
 
-TAINT_SEC = 900
-DUMP_SEC = 300
-MAX_ANALYZED = 15000
-MAX_WORKLIST = 30000
-MAX_DEPTH = 10
+# Also include NECP anchors for cross-reference (we already know them,
+# but presence in output confirms the base is right)
+CROSS_REF_INDICES = [501, 502, 505, 506]
+
+TAINT_SEC = 1200
+DUMP_SEC = 400
+MAX_ANALYZED = 20000
+MAX_WORKLIST = 40000
+MAX_DEPTH = 12
 MAX_DECOMPILE_SEC = 45
+MAX_DUMP_FUNCS = 24
 
 A_KALLOC   = int("FFFFFFF00A200988", 16)
 A_KALLOC_Z = int("FFFFFFF00A20141C", 16)
@@ -328,7 +338,7 @@ def propagate(hf, tainted_idx):
         return tainted
     changed = True
     iters = 0
-    while changed and iters < 200:
+    while changed and iters < 250:
         changed = False
         iters += 1
         for op in all_ops:
@@ -545,6 +555,7 @@ def bl_callers(target, max_hits=15, budget=30):
 def pick_dump_targets(findings):
     seen = set()
     picks = []
+    # P1: depth<=1 kalloc/copyin/copyout
     for fd in findings:
         d = fd.get("depth", 99)
         if d > 1:
@@ -557,6 +568,7 @@ def pick_dump_targets(findings):
             continue
         seen.add(a)
         picks.append((a, fd.get("in_func"), sk + " d=" + str(d)))
+    # P2: depth==2 kalloc/copyin
     for fd in findings:
         d = fd.get("depth", 99)
         if d != 2:
@@ -569,6 +581,19 @@ def pick_dump_targets(findings):
             continue
         seen.add(a)
         picks.append((a, fd.get("in_func"), sk + " d=" + str(d)))
+    # P3: depth<=3 kalloc
+    for fd in findings:
+        d = fd.get("depth", 99)
+        if d > 3:
+            continue
+        if fd.get("sink") != "kalloc_type":
+            continue
+        a = fd.get("in_func_addr")
+        if a in seen:
+            continue
+        seen.add(a)
+        picks.append((a, fd.get("in_func"), "kalloc_type d=" + str(d)))
+    # P4: any unique kalloc ascending depth
     rest = []
     for fd in findings:
         if fd.get("sink") != "kalloc_type":
@@ -584,53 +609,77 @@ def pick_dump_targets(findings):
             continue
         seen.add(a)
         picks.append((a, fd.get("in_func"), "kalloc_type d=" + str(fd.get("depth"))))
-    return picks[:20]
+    return picks[:MAX_DUMP_FUNCS]
 
 
-def resolve_sysent_sources():
-    sources = []
-    for idx in TARGET_INDICES:
+def resolve_indices(indices):
+    out = []
+    for idx in indices:
         base = SYSENT_BASE + idx * SYSENT_STRIDE
         raw = read_u64(base)
         addr = unpack(raw)
         narg = read_u16(base + 0x14)
-        if addr is None:
-            sources.append((idx, None, narg, "unpack_fail"))
-            continue
-        sources.append((idx, addr, narg, "ok"))
-    return sources
+        flags = read_u32(base + 0x10)
+        out.append((idx, addr, narg, flags))
+    return out
+
+
+def format_resolved(sources):
+    lines = []
+    lines.append("%-5s %-20s %-6s %-10s" % ("idx", "unwrapped", "narg", "flags"))
+    for s in sources:
+        idx = s[0]
+        addr = s[1]
+        narg = s[2]
+        flags = s[3]
+        lines.append("%-5d %-20s %-6s %-10s" % (
+            idx, fmt(addr) if addr else "?", narg if narg is not None else "?",
+            fmt(flags) if flags is not None else "?"))
+    return lines
 
 
 def main():
     global START_TS
     START_TS = time.time()
 
-    log("=== kernel_rw.py v56 ===")
+    log("=== kernel_rw.py v57 ===")
 
-    w("natsuk1 v56 new-syscall taint scan")
+    w("natsuk1 v57 nexus/channel/ulock taint scan")
     w("sysent_base=%s kernel_base=%s" % (fmt(SYSENT_BASE), fmt(KERNEL_BASE)))
     w("target_indices=%s" % repr(TARGET_INDICES))
+    w("cross_ref_indices=%s" % repr(CROSS_REF_INDICES))
     w("has_disasm=%s has_create=%s" % (HAS_DISASM, HAS_CREATE))
+    w("max_depth=%d max_analyzed=%d taint_sec=%d" % (MAX_DEPTH, MAX_ANALYZED, TAINT_SEC))
     w("")
 
-    sources = resolve_sysent_sources()
+    w(SEP)
+    w("### CROSS REF (NECP anchors — should confirm base)")
+    w(SEP)
+    xr = resolve_indices(CROSS_REF_INDICES)
+    for l in format_resolved(xr):
+        w("  " + l)
+    w("  expected: 501=necp_open(0xA4E411C), 502=necp_client_action(0xA4E5C28)")
+    w("")
 
     w(SEP)
     w("### RESOLVED SOURCES")
     w(SEP)
-    w("%-5s %-20s %-6s %s" % ("idx", "unwrapped", "narg", "status"))
-    for s in sources:
-        idx = s[0]
-        addr = s[1]
-        narg = s[2]
-        status = s[3]
-        w("%-5d %-20s %-6s %s" % (
-            idx, fmt(addr) if addr else "?", narg if narg is not None else "?", status))
+    sources = resolve_indices(TARGET_INDICES)
+    for l in format_resolved(sources):
+        w("  " + l)
+    w("  expected: 507=__nexus_open, 514=__channel_open, 519=ulock_wait, 548=ulock_wait2")
     w("")
 
-    all_findings = []
+    valid = []
+    for s in sources:
+        if s[1] is None:
+            w("SRC sysent_%d UNPACK_FAIL" % s[0])
+            continue
+        valid.append(s)
 
-    valid = [s for s in sources if s[1] is not None]
+    log("[+] valid sources: %d / %d" % (len(valid), len(sources)))
+
+    all_findings = []
 
     for i in range(len(valid)):
         s = valid[i]
@@ -678,6 +727,21 @@ def main():
     for sk in sorted(by_sink.keys()):
         w("%s: %d" % (sk, len(by_sink.get(sk, []))))
     w("")
+
+    # Depth histogram
+    w("depth histogram per sink:")
+    depth_hist = {}
+    for fd in all_findings:
+        sk = fd.get("sink")
+        d = fd.get("depth", -1)
+        key = (sk, d)
+        depth_hist[key] = depth_hist.get(key, 0) + 1
+    for sk in sorted(set(k[0] for k in depth_hist.keys())):
+        w("  %s:" % sk)
+        for d in sorted(set(k[1] for k in depth_hist.keys() if k[0] == sk)):
+            w("    d=%d: %d" % (d, depth_hist[(sk, d)]))
+    w("")
+
     w("unique in_func per sink:")
     for sk in sorted(by_sink.keys()):
         uniq = {}
@@ -690,16 +754,38 @@ def main():
             cur.append(fd.get("depth"))
         w("  %s:" % sk)
         items = sorted(uniq.items(), key=lambda x: min(x[1]))
-        for pair in items[:40]:
+        for pair in items[:60]:
             w("    %s  d=%s" % (pair[0], sorted(set(pair[1]))))
+    w("")
+
+    # Cross-source table: which source hits which function
+    w(SEP)
+    w("### SOURCE x FUNC MATRIX")
+    w(SEP)
+    src_func = {}
+    for fd in all_findings:
+        src = fd.get("via")
+        fn = fd.get("in_func_addr")
+        sink = fd.get("sink")
+        key = (src, fn, sink)
+        if key not in src_func:
+            src_func[key] = []
+        src_func[key].append(fd.get("depth"))
+    srcs = sorted(set(k[0] for k in src_func.keys()))
+    for src in srcs:
+        w("  %s:" % src)
+        items = [(k, v) for k, v in src_func.items() if k[0] == src]
+        items.sort(key=lambda kv: min(kv[1]))
+        for k, v in items[:30]:
+            w("    %s  %s  d=%s" % (k[1], k[2], sorted(set(v))))
+    w("")
 
     START_TS = time.time()
     picks = pick_dump_targets(all_findings)
     log("[*] dump targets: %d" % len(picks))
 
-    w("")
     w(SEP)
-    w("HOT TARGETS DECOMPILE")
+    w("### HOT TARGETS DECOMPILE")
     w(SEP)
 
     for pick in picks:
