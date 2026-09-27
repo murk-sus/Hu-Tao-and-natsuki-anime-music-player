@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # @runtime Jython
-# kernel_rw.py v54 - full sysent dump with symbol resolution
+# kernel_rw.py v55 - sysent dump with working symbols (basestring fix)
 
 import os
 import sys
@@ -17,9 +17,6 @@ SYSENT_STRIDE = 24
 SYSENT_COUNT = 558
 KERNEL_BASE = int("FFFFFFF007004000", 16)
 
-NECP_LO = int("FFFFFFF00A300000", 16)
-NECP_HI = int("FFFFFFF00A520000", 16)
-
 L = []
 
 
@@ -30,10 +27,6 @@ def log(m):
 
 def w(s):
     L.append(s)
-
-
-def _u(v):
-    return int(v) & 0xFFFFFFFFFFFFFFFF
 
 
 def fmt(v):
@@ -104,9 +97,23 @@ def unpack(raw):
     return KERNEL_BASE + low
 
 
+def is_str(x):
+    try:
+        if isinstance(x, unicode):
+            return True
+    except Exception:
+        pass
+    try:
+        if isinstance(x, str):
+            return True
+    except Exception:
+        pass
+    return False
+
+
 def load_symbols(path):
     if not os.path.exists(path):
-        log("[!] symbols missing")
+        log("[!] symbols missing: %s" % path)
         return {}
     try:
         fh = open(path)
@@ -120,10 +127,12 @@ def load_symbols(path):
         for k, v in data.items():
             try:
                 a = int(k)
-                if isinstance(v, str):
-                    out[a] = v
             except Exception:
-                pass
+                continue
+            if is_str(v):
+                name = v.strip()
+                if name:
+                    out[a] = name
     log("[+] symbols loaded: %d" % len(out))
     return out
 
@@ -134,7 +143,6 @@ def resolve_name(addr, syms):
     n = syms.get(addr)
     if n is not None:
         return n
-    # try function container
     try:
         ga = sa(addr)
         if ga is None:
@@ -148,20 +156,17 @@ def resolve_name(addr, syms):
 
 
 def main():
-    log("=== kernel_rw.py v54 sysent dump ===")
+    log("=== kernel_rw.py v55 ===")
 
     syms = load_symbols(SYMBOLS_JSON)
 
-    w("natsuk1 sysent full dump v54")
+    w("natsuk1 sysent dump v55")
     w("base=%s stride=%d count=%d" % (fmt(SYSENT_BASE), SYSENT_STRIDE, SYSENT_COUNT))
     w("kernel_base=%s" % fmt(KERNEL_BASE))
     w("symbols_loaded=%d" % len(syms))
     w("")
 
-    necp_hits = []
-    other_hits = []
     rows = []
-
     for i in range(SYSENT_COUNT):
         base = SYSENT_BASE + i * SYSENT_STRIDE
         raw = read_u64(base)
@@ -170,75 +175,66 @@ def main():
         flags = read_u32(base + 0x10)
         name = resolve_name(addr, syms)
         rows.append((i, raw, addr, narg, flags, name))
-        if addr is not None and NECP_LO <= addr < NECP_HI:
-            necp_hits.append((i, addr, name))
-        if addr is not None and name != "?":
-            low = name.lower()
-            if "necp" in low:
-                other_hits.append((i, addr, name))
 
+    # NECP cluster
     w(SEP)
-    w("### NECP-RANGE ENTRIES (addr in [%s, %s))" % (fmt(NECP_LO), fmt(NECP_HI)))
+    w("### NECP CLUSTER (expected 503/504)")
     w(SEP)
-    if not necp_hits:
-        w("  (none)")
-    for h in necp_hits:
-        w("  sysent[%d] = %s  %s" % (h[0], fmt(h[1]), h[2]))
-    w("")
-
-    w(SEP)
-    w("### ANY ENTRY WITH 'necp' IN NAME")
-    w(SEP)
-    if not other_hits:
-        w("  (none)")
-    for h in other_hits:
-        w("  sysent[%d] = %s  %s" % (h[0], fmt(h[1]), h[2]))
-    w("")
-
-    w(SEP)
-    w("### FULL TABLE [%d..%d]" % (SYSENT_COUNT - 30, SYSENT_COUNT - 1))
-    w(SEP)
-    w("%-5s %-20s %-20s %-6s %-10s %s" % ("idx", "raw_low32", "unwrapped", "narg", "flags", "name"))
-    for r in rows[-30:]:
-        i = r[0]
-        raw = r[1]
-        addr = r[2]
-        narg = r[3]
-        flags = r[4]
-        name = r[5]
-        low32 = raw & 0xFFFFFFFF if raw is not None else 0
-        w("%-5d 0x%08X           %-20s %-6s %-10s %s" % (
-            i, low32, fmt(addr) if addr else "?", narg if narg is not None else "?",
-            fmt(flags) if flags is not None else "?", name))
-    w("")
-
-    w(SEP)
-    w("### FULL TABLE [490..520]")
-    w(SEP)
-    w("%-5s %-20s %-20s %-6s %-10s %s" % ("idx", "raw_low32", "unwrapped", "narg", "flags", "name"))
+    w("%-5s %-20s %-6s %-10s %s" % ("idx", "unwrapped", "narg", "flags", "name"))
     for r in rows:
         i = r[0]
-        if i < 490 or i > 520:
+        if i < 495 or i > 510:
             continue
-        raw = r[1]
         addr = r[2]
+        name = r[5]
         narg = r[3]
         flags = r[4]
-        name = r[5]
-        low32 = raw & 0xFFFFFFFF if raw is not None else 0
-        w("%-5d 0x%08X           %-20s %-6s %-10s %s" % (
-            i, low32, fmt(addr) if addr else "?", narg if narg is not None else "?",
+        w("%-5d %-20s %-6s %-10s %s" % (
+            i, fmt(addr) if addr else "?", narg if narg is not None else "?",
             fmt(flags) if flags is not None else "?", name))
     w("")
 
+    # All entries with names (like "necp")
     w(SEP)
-    w("### ALL NAMED ENTRIES [0..557] (only where name != ?)")
+    w("### ENTRIES WITH 'necp' IN NAME")
+    w(SEP)
+    hits = []
+    for r in rows:
+        if r[5] == "?":
+            continue
+        if "necp" in r[5].lower():
+            hits.append(r)
+    if not hits:
+        w("  (none)")
+    for r in hits:
+        w("  sysent[%d] = %s  %s" % (r[0], fmt(r[2]) if r[2] else "?", r[5]))
+    w("")
+
+    # All entries with names (any)
+    w(SEP)
+    w("### NAMED SYSCALLS (name != '?')")
     w(SEP)
     for r in rows:
         if r[5] == "?":
             continue
-        w("  sysent[%d] = %s  %s  narg=%s" % (r[0], fmt(r[2]) if r[2] else "?",
-                                              r[5], r[3] if r[3] is not None else "?"))
+        w("  %-5d %-20s narg=%-3s flags=%-8s %s" % (
+            r[0], fmt(r[2]) if r[2] else "?",
+            r[3] if r[3] is not None else "?",
+            fmt(r[4]) if r[4] is not None else "?",
+            r[5]))
+    w("")
+
+    # Full table 0..557, one line each
+    w(SEP)
+    w("### FULL TABLE 0..557")
+    w(SEP)
+    w("%-5s %-20s %-6s %-10s %s" % ("idx", "unwrapped", "narg", "flags", "name"))
+    for r in rows:
+        w("%-5d %-20s %-6s %-10s %s" % (
+            r[0], fmt(r[2]) if r[2] else "?",
+            r[3] if r[3] is not None else "?",
+            fmt(r[4]) if r[4] is not None else "?",
+            r[5]))
 
     try:
         fh = open(OUT, "w")
