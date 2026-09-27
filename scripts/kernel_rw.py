@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # @runtime Jython
-# kernel_rw.py v58 - dump NECP internals from v56 findings
+# kernel_rw.py v59 - final NECP closures
 
 import os
 import sys
@@ -26,32 +26,25 @@ WS = os.environ.get("GITHUB_WORKSPACE", "/tmp")
 OUT = os.path.join(WS, "result.txt")
 SEP = "=" * 72
 
-SYSENT_BASE = int("FFFFFFF007C192D0", 16)
-SYSENT_STRIDE = 24
-KERNEL_BASE = int("FFFFFFF007004000", 16)
-
-# NECP cluster (correct indices for base 0x...D0)
-NECP_ANCHOR_INDICES = [501, 502]
-
-# Functions to dump (from v56 findings)
 DUMP_TARGETS = [
-    (int("FFFFFFF00A501454", 16), "necp_handler_core",   "core of necp_client_action"),
-    (int("FFFFFFF00A4E479C", 16), "necp_memmove_1",     "memmove d=1 in necp_open"),
-    (int("FFFFFFF00A4E45F8", 16), "necp_memmove_2",     "memmove d=1..3 in necp_open"),
-    (int("FFFFFFF00A4F3840", 16), "necp_hot_d2",        "memmove d=2 from client_action"),
-    (int("FFFFFFF00A4ED864", 16), "necp_lookup_sess",   "session lookup"),
-    (int("FFFFFFF00A4ED8BC", 16), "necp_copy_state",    "copy state"),
-    (int("FFFFFFF00A4DB9F0", 16), "necp_sess_alloc",    "session alloc"),
-    (int("FFFFFFF00A4F2E70", 16), "necp_per_flow",      "per-flow copy"),
-    (int("FFFFFFF00A4F26F0", 16), "necp_res_inner",     "copy_result_inner"),
-    (int("FFFFFFF00A4E843C", 16), "necp_add_flow",      "add_flow"),
-    (int("FFFFFFF00A4E60DC", 16), "necp_add_client",    "add_client"),
-    (int("FFFFFFF00A4E411C", 16), "necp_open",          "necp_open itself"),
-    (int("FFFFFFF00A4E5C28", 16), "necp_client_action", "necp_client_action itself"),
+    (int("FFFFFFF00A4F3840", 16), "necp_hot_d2",      "TLV parser from handler_core"),
+    (int("FFFFFFF00A4C3558", 16), "necp_packer",      "buffer packer called by 0xA4F3840"),
+    (int("FFFFFFF00A4E76F4", 16), "necp_case_02",     "remove_client path"),
+    (int("FFFFFFF00A4E7158", 16), "necp_case_13",     "claim path"),
+    (int("FFFFFFF00A4EAC7C", 16), "necp_case_09",     "copy_interface path"),
+    (int("FFFFFFF00A4DD078", 16), "necp_arena_parse", "arena parser sub"),
+    (int("FFFFFFF00A4E9904", 16), "necp_case_06",     "request_nexus path"),
+    (int("FFFFFFF00A4EA0B4", 16), "necp_case_07",     "agent_action path"),
+    (int("FFFFFFF00A4EBA0C", 16), "necp_case_0B",     "copy_route_stats"),
+    (int("FFFFFFF00A4EA8A0", 16), "necp_case_0C",     "copy_parameters"),
+    (int("FFFFFFF00A4EAB50", 16), "necp_case_16",     "copy_agent_alt"),
+    (int("FFFFFFF00A4ECC4C", 16), "necp_case_18",     "get_signed_id"),
+    (int("FFFFFFF00A4ECE88", 16), "necp_case_19",     "set_signed_id"),
+    (int("FFFFFFF00A4ED170", 16), "necp_case_1B",     "get_flow_stats"),
 ]
 
 MAX_DECOMPILE_SEC = 90
-BUDGET_SEC = 600
+BUDGET_SEC = 700
 
 DEC = None
 MONITOR = ConsoleTaskMonitor()
@@ -85,59 +78,6 @@ def sa(a):
         return currentProgram.getAddressFactory().getAddress(s)
     except Exception:
         return None
-
-
-def read_u16(addr):
-    try:
-        ga = sa(addr)
-        if ga is None:
-            return None
-        b = getBytes(ga, 2)
-        if b is None:
-            return None
-        return (b[0] & 0xFF) | ((b[1] & 0xFF) << 8)
-    except Exception:
-        return None
-
-
-def read_u32(addr):
-    try:
-        ga = sa(addr)
-        if ga is None:
-            return None
-        b = getBytes(ga, 4)
-        if b is None:
-            return None
-        return (b[0] & 0xFF) | ((b[1] & 0xFF) << 8) | ((b[2] & 0xFF) << 16) | ((b[3] & 0xFF) << 24)
-    except Exception:
-        return None
-
-
-def read_u64(addr):
-    try:
-        ga = sa(addr)
-        if ga is None:
-            return None
-        b = getBytes(ga, 8)
-        if b is None:
-            return None
-        r = 0
-        for i in range(8):
-            r = r | ((b[i] & 0xFF) << (i * 8))
-        return r
-    except Exception:
-        return None
-
-
-def unpack(raw):
-    if raw is None or raw == 0:
-        return None
-    low = raw & 0xFFFFFFFF
-    if low < 0x1000:
-        return None
-    if low > 0x4000000:
-        return None
-    return KERNEL_BASE + low
 
 
 def get_func(addr):
@@ -298,24 +238,6 @@ def bl_callers(target, max_hits=20, budget=40):
     return hits
 
 
-def dump_sysent_anchors():
-    w(SEP)
-    w("### SYSENT ANCHORS (base=%s)" % fmt(SYSENT_BASE))
-    w(SEP)
-    w("%-5s %-20s %-6s %-10s" % ("idx", "unwrapped", "narg", "flags"))
-    for idx in NECP_ANCHOR_INDICES:
-        base = SYSENT_BASE + idx * SYSENT_STRIDE
-        raw = read_u64(base)
-        addr = unpack(raw)
-        narg = read_u16(base + 0x14)
-        flags = read_u32(base + 0x10)
-        w("%-5d %-20s %-6s %-10s" % (
-            idx, fmt(addr) if addr else "?", narg if narg is not None else "?",
-            fmt(flags) if flags is not None else "?"))
-    w("  expected: 501 = 0xA4E411C (necp_open), 502 = 0xA4E5C28 (necp_client_action)")
-    w("")
-
-
 def dump_one(addr, name, note):
     w("")
     w(SEP)
@@ -367,14 +289,11 @@ def main():
     global START_TS
     START_TS = time.time()
 
-    log("=== kernel_rw.py v58 ===")
+    log("=== kernel_rw.py v59 ===")
 
-    w("natsuk1 v58 NECP internals dump")
-    w("sysent_base=%s kernel_base=%s" % (fmt(SYSENT_BASE), fmt(KERNEL_BASE)))
+    w("natsuk1 v59 final NECP closures")
     w("targets=%d" % len(DUMP_TARGETS))
     w("")
-
-    dump_sysent_anchors()
 
     for entry in DUMP_TARGETS:
         addr = entry[0]
