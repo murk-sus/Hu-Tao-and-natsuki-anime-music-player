@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # @runtime Jython
-# mig_scan.py v1 - mach_trap_table MIG handler scanner for iOS 27 / 24A437
+# mig_scan.py v2 - stride-aware mach_trap_table scanner
 
 import os
 import sys
@@ -29,10 +29,13 @@ SEP = "=" * 72
 KERNEL_BASE = int("FFFFFFF007004000", 16)
 MACH_TRAP_TABLE = int("FFFFFFF007BE8018", 16)
 
-MAX_ENTRIES = 256
+MACH_TRAP_STRIDE = 24
+OFF_ARGS = 0
+OFF_FN = 8
+OFF_FILT = 16
+MAX_TRAPS = 220
 MAX_DECOMPILE_SEC = 60
 BUDGET_SEC = 2700
-MAX_TAINT_DEPTH = 12
 
 SINKS_COPYIN  = ["copyin", "copyinstr"]
 SINKS_COPYOUT = ["copyout", "copyoutstr"]
@@ -46,6 +49,7 @@ DEC = None
 MONITOR = ConsoleTaskMonitor()
 START_TS = time.time()
 L = []
+_DECOMPILE_CACHE = {}
 
 
 def log(m):
@@ -143,22 +147,25 @@ def get_dec():
 
 def decompile_text(f, sec=MAX_DECOMPILE_SEC):
     try:
+        ent = _u(f.getEntryPoint().getOffset())
+    except Exception:
+        ent = 0
+    if ent in _DECOMPILE_CACHE:
+        return _DECOMPILE_CACHE[ent]
+    try:
         r = get_dec().decompileFunction(f, sec, MONITOR)
-        if r is None:
-            return ["(decompile failed)"]
-        if not r.decompileCompleted():
-            return ["(decompile failed)"]
-        c = r.getDecompiledFunction()
-        if c is None:
-            return ["(empty)"]
-        raw = c.getC()
-        return [line.rstrip() for line in raw.split("\n")]
+        if r is None or not r.decompileCompleted():
+            out = ["(decompile failed)"]
+        else:
+            c = r.getDecompiledFunction()
+            out = ["(empty)"] if c is None else [l.rstrip() for l in c.getC().split("\n")]
     except Exception as e:
-        return ["(exception %s)" % e]
+        out = ["(exception %s)" % e]
+    _DECOMPILE_CACHE[ent] = out
+    return out
 
 
 def pac_unwrap(raw):
-    """iOS 16+ arm64e PAC unwrap: lower 32 bits + KERNEL_BASE."""
     return KERNEL_BASE + (raw & 0xFFFFFFFF)
 
 
@@ -173,7 +180,6 @@ def read_u64(addr):
 
 
 def classify_text(text):
-    """Return (has_copyin, has_copyout, has_alloc, has_free, has_filter, has_port, has_vm)."""
     joined = "\n".join(text)
     def any_in(lst):
         for s in lst:
@@ -228,7 +234,6 @@ def dump_one(addr, name, note):
     return {
         "addr": addr,
         "name": name,
-        "size": int(f.getBody().getNumAddresses()),
         "has_in": has_in,
         "has_out": has_out,
         "has_alloc": has_alloc,
@@ -239,90 +244,118 @@ def dump_one(addr, name, note):
     }
 
 
+def read_mach_trap(idx):
+    base = MACH_TRAP_TABLE + idx * MACH_TRAP_STRIDE
+    a = read_u64(base + OFF_ARGS)
+    f = read_u64(base + OFF_FN)
+    x = read_u64(base + OFF_FILT)
+    return (a, f, x)
+
+
 def main():
     global START_TS
     START_TS = time.time()
 
-    log("=== mig_scan.py v1 ===")
-    w("natsuk1 mig_scan v1")
+    log("=== mig_scan.py v2 ===")
+    w("natsuk1 mig_scan v2")
     w("kernel base %s" % fmt(KERNEL_BASE))
-    w("mach_trap_table %s" % fmt(MACH_TRAP_TABLE))
+    w("mach_trap_table %s stride %d" % (fmt(MACH_TRAP_TABLE), MACH_TRAP_STRIDE))
     w("")
 
-    table = []
-    for i in range(MAX_ENTRIES):
+    traps = []
+    for i in range(MAX_TRAPS):
         if time.time() - START_TS > BUDGET_SEC:
             w("BUDGET EXCEEDED while reading table at i=%d" % i)
             break
-        raw = read_u64(MACH_TRAP_TABLE + i * 8)
-        if raw is None:
+        args, fn_raw, filt_raw = read_mach_trap(i)
+        if fn_raw is None:
             break
-        if raw == 0:
+        if fn_raw == 0:
             continue
-        addr = pac_unwrap(raw)
-        if addr == KERNEL_BASE:
+        fn_addr = pac_unwrap(fn_raw)
+        if fn_addr == KERNEL_BASE:
             continue
-        table.append((i, addr))
+        if fn_addr < KERNEL_BASE or fn_addr > KERNEL_BASE + 0x20000000:
+            continue
+        filt_addr = 0
+        if filt_raw and filt_raw != 0:
+            fa = pac_unwrap(filt_raw)
+            if fa != KERNEL_BASE and fa >= KERNEL_BASE and fa <= KERNEL_BASE + 0x20000000:
+                filt_addr = fa
+        traps.append((i, args, fn_raw, fn_addr, filt_addr))
 
-    log("[*] table entries: %d" % len(table))
+    log("[*] traps read: %d" % len(traps))
 
     w("")
     w(SEP)
     w("### TABLE")
     w(SEP)
-    for i, addr in table:
-        f = get_func(addr)
+    for i, args, fn_raw, fn_addr, filt_addr in traps:
+        f = get_func(fn_addr)
         nm = "?"
         if f is not None:
             try:
                 nm = str(f.getName())
             except Exception:
                 pass
-        w("  [%3d] %s  %s" % (i, fmt(addr), nm))
+        filt_s = ""
+        if filt_addr:
+            filt_s = " filter=%s" % fmt(filt_addr)
+        w("  [%3d] args=0x%X fn=%s %s%s" % (i, args or 0, fmt(fn_addr), nm, filt_s))
+
+    by_fn = {}
+    for i, args, fn_raw, fn_addr, filt_addr in traps:
+        by_fn.setdefault(fn_addr, []).append(i)
+
+    w("")
+    w(SEP)
+    w("### UNIQUE HANDLERS: %d" % len(by_fn))
+    w(SEP)
 
     interesting = []
-    for i, addr in table:
+    for fn_addr, idxs in sorted(by_fn.items()):
         if time.time() - START_TS > BUDGET_SEC:
-            w("BUDGET EXCEEDED at trap %d" % i)
+            w("BUDGET EXCEEDED while classifying")
             break
-        f = get_func(addr)
+        f = get_func(fn_addr)
         if f is None:
-            f = ensure_function(addr)
+            f = ensure_function(fn_addr)
         if f is None:
             continue
         text = decompile_text(f, MAX_DECOMPILE_SEC)
         has_in, has_out, has_alloc, has_free, has_filter, has_port, has_vm = classify_text(text)
         if has_in or has_out or has_alloc or (has_port and has_vm):
-            interesting.append((i, addr, f))
+            interesting.append((fn_addr, idxs, f))
 
-    log("[*] interesting traps: %d" % len(interesting))
+    log("[*] interesting handlers: %d" % len(interesting))
 
     results = []
-    for i, addr, f in interesting:
+    for fn_addr, idxs, f in interesting:
         if time.time() - START_TS > BUDGET_SEC:
-            w("BUDGET EXCEEDED while dumping trap %d" % i)
+            w("BUDGET EXCEEDED while dumping")
             break
         try:
             nm = str(f.getName())
         except Exception:
             nm = "?"
-        log("[*] dumping trap %d %s" % (i, fmt(addr)))
-        r = dump_one(addr, "mach_trap[%d] %s" % (i, nm), "MIG candidate")
+        log("[*] dumping fn %s traps=%s" % (fmt(fn_addr), idxs))
+        r = dump_one(fn_addr, "trap_fn %s traps=%s" % (nm, idxs), "unique handler")
         if r is not None:
-            r["index"] = i
+            r["traps"] = idxs
             results.append(r)
 
     w("")
     w(SEP)
     w("### SUMMARY")
     w(SEP)
-    w("total traps: %d" % len(table))
+    w("total traps: %d" % len(traps))
+    w("unique handlers: %d" % len(by_fn))
     w("interesting: %d" % len(interesting))
     w("dumped: %d" % len(results))
     w("")
     for r in results:
-        w("  [%3d] %s %s in=%s out=%s alloc=%s free=%s filter=%s port=%s vm=%s" % (
-            r["index"], fmt(r["addr"]), r["name"],
+        w("  %s traps=%s in=%s out=%s alloc=%s free=%s filter=%s port=%s vm=%s" % (
+            fmt(r["addr"]), r["traps"],
             r["has_in"], r["has_out"], r["has_alloc"], r["has_free"],
             r["has_filter"], r["has_port"], r["has_vm"]))
 
