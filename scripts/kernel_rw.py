@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # @runtime Jython
-# kernel_rw.py v73 - match_policy + raw_lookup callers
+# mig_scan.py v1 - mach_trap_table MIG handler scanner for iOS 27 / 24A437
 
 import os
 import sys
@@ -26,13 +26,21 @@ WS = os.environ.get("GITHUB_WORKSPACE", "/tmp")
 OUT = os.path.join(WS, "result.txt")
 SEP = "=" * 72
 
-MATCH_POLICY = int("FFFFFFF00A4F75D8", 16)
-RAW_LOOKUP   = int("FFFFFFF00A4DB8D4", 16)
-SESS_LOOKUP  = int("FFFFFFF00A4ED864", 16)
+KERNEL_BASE = int("FFFFFFF007004000", 16)
+MACH_TRAP_TABLE = int("FFFFFFF007BE8018", 16)
 
-MAX_DECOMPILE_SEC = 90
-BUDGET_SEC = 600
-MAX_CALLERS = 40
+MAX_ENTRIES = 256
+MAX_DECOMPILE_SEC = 60
+BUDGET_SEC = 2700
+MAX_TAINT_DEPTH = 12
+
+SINKS_COPYIN  = ["copyin", "copyinstr"]
+SINKS_COPYOUT = ["copyout", "copyoutstr"]
+SINKS_ALLOC   = ["kalloc_type", "kalloc_zone", "kalloc", "zalloc", "IOMalloc", "IOMallocAligned"]
+SINKS_FREE    = ["kfree", "kfree_type", "zfree", "IOFree"]
+MIG_FILTER    = ["mig_filter", "ipc_filter", "filter_msg", "port_filter"]
+MACH_PORT     = ["mach_port_", "ipc_port_", "MACH_PORT_"]
+MACH_VM       = ["mach_vm_", "vm_map_", "vm_object_", "vm_entry_"]
 
 DEC = None
 MONITOR = ConsoleTaskMonitor()
@@ -112,7 +120,7 @@ def ensure_function(addr):
                 pass
         try:
             fm = currentProgram.getFunctionManager()
-            nm = "nk_%X" % addr
+            nm = "mig_%X" % addr
             f = fm.createFunction(ga, nm)
             if f is not None:
                 return f
@@ -149,117 +157,38 @@ def decompile_text(f, sec=MAX_DECOMPILE_SEC):
         return ["(exception %s)" % e]
 
 
-def sign26(x):
-    if x & 0x02000000:
-        return x - 0x04000000
-    return x
+def pac_unwrap(raw):
+    """iOS 16+ arm64e PAC unwrap: lower 32 bits + KERNEL_BASE."""
+    return KERNEL_BASE + (raw & 0xFFFFFFFF)
 
 
-_blocks = None
-
-
-def blocks():
-    global _blocks
-    if _blocks is not None:
-        return _blocks
-    out = []
+def read_u64(addr):
     try:
-        for b in currentProgram.getMemory().getBlocks():
-            if not b.isInitialized():
-                continue
-            if not b.isExecute():
-                continue
-            s = _u(b.getStart().getOffset())
-            e = _u(b.getEnd().getOffset())
-            out.append((s, e))
+        ga = sa(addr)
+        if ga is None:
+            return None
+        return _u(currentProgram.getMemory().getLong(ga))
     except Exception:
-        pass
-    _blocks = out
-    return out
+        return None
 
 
-def bl_callers(target, max_hits=MAX_CALLERS, budget=40):
-    hits = []
-    mem = currentProgram.getMemory()
-    ts = time.time()
-    for pair in blocks():
-        if time.time() - ts > budget:
-            break
-        s = pair[0]
-        e = pair[1]
-        size = e - s + 1
-        if size <= 0:
-            continue
-        if size > 0x1000000:
-            continue
-        try:
-            jbuf = zeros(size, 'b')
-            ga = sa(s)
-            if ga is None:
-                continue
-            mem.getBytes(ga, jbuf)
-        except Exception:
-            continue
-        pc = s
-        i = 0
-        while i + 4 <= size:
-            b0 = int(jbuf[i]) & 0xFF
-            b1 = int(jbuf[i + 1]) & 0xFF
-            b2 = int(jbuf[i + 2]) & 0xFF
-            b3 = int(jbuf[i + 3]) & 0xFF
-            raw = b0 | (b1 << 8) | (b2 << 16) | (b3 << 24)
-            op = raw & 0xFC000000
-            if op == 0x94000000 or op == 0x14000000:
-                imm = sign26(raw & 0x03FFFFFF) << 2
-                dst = (pc + imm) & 0xFFFFFFFFFFFFFFFF
-                if dst == target:
-                    kind = "BL"
-                    if op == 0x14000000:
-                        kind = "B"
-                    hits.append((pc, kind))
-                    if len(hits) >= max_hits:
-                        del jbuf
-                        return hits
-            i += 4
-            pc += 4
-        del jbuf
-    return hits
-
-
-def collect_callees_with_target(f, target):
-    """Return list of (pc, kind) where f calls target directly."""
-    hits = []
-    try:
-        listing = currentProgram.getListing()
-        body = f.getBody()
-        it = body.getAddresses(True)
-    except Exception:
-        return hits
-    cnt = 0
-    while it.hasNext() and cnt < 40000:
-        a = it.next()
-        cnt += 1
-        try:
-            insn = listing.getInstructionAt(a)
-            if insn is None:
-                continue
-            pcode = insn.getPcode()
-            if pcode is None:
-                continue
-            for p in pcode:
-                if p.getOpcode() != 1:
-                    continue
-                inp0 = p.getInput(0)
-                tgt = None
-                if inp0.isAddress():
-                    tgt = _u(inp0.getAddress().getOffset())
-                elif inp0.isConstant():
-                    tgt = _u(inp0.getOffset())
-                if tgt == target:
-                    hits.append(_u(a.getOffset()))
-        except Exception:
-            pass
-    return hits
+def classify_text(text):
+    """Return (has_copyin, has_copyout, has_alloc, has_free, has_filter, has_port, has_vm)."""
+    joined = "\n".join(text)
+    def any_in(lst):
+        for s in lst:
+            if s in joined:
+                return True
+        return False
+    return (
+        any_in(SINKS_COPYIN),
+        any_in(SINKS_COPYOUT),
+        any_in(SINKS_ALLOC),
+        any_in(SINKS_FREE),
+        any_in(MIG_FILTER),
+        any_in(MACH_PORT),
+        any_in(MACH_VM),
+    )
 
 
 def dump_one(addr, name, note):
@@ -274,7 +203,7 @@ def dump_one(addr, name, note):
         f = ensure_function(addr)
     if f is None:
         w("  no function")
-        return
+        return None
 
     try:
         ent = _u(f.getEntryPoint().getOffset())
@@ -283,105 +212,122 @@ def dump_one(addr, name, note):
     except Exception:
         pass
 
+    text = decompile_text(f, MAX_DECOMPILE_SEC)
+    has_in, has_out, has_alloc, has_free, has_filter, has_port, has_vm = classify_text(text)
+
     w("")
-    w("-- BL callers --")
-    try:
-        hits = bl_callers(addr, MAX_CALLERS, 40)
-    except Exception:
-        hits = []
-    if not hits:
-        w("  (none)")
-    for pair in hits:
-        pc = pair[0]
-        kind = pair[1]
-        cf = getFunctionContaining(sa(pc))
-        nm = "?"
-        if cf is not None:
-            nm = str(cf.getName())
-        cfe = 0
-        if cf is not None:
-            cfe = _u(cf.getEntryPoint().getOffset())
-        w("  %s %s in %s @ %s" % (fmt(pc), kind, nm, fmt(cfe)))
+    w("-- sinks --")
+    w("  copyin=%s copyout=%s alloc=%s free=%s filter=%s port=%s vm=%s" % (
+        has_in, has_out, has_alloc, has_free, has_filter, has_port, has_vm))
 
     w("")
     w("-- decompile --")
-    for l in decompile_text(f, MAX_DECOMPILE_SEC):
+    for l in text:
         w("  " + l)
+
+    return {
+        "addr": addr,
+        "name": name,
+        "size": int(f.getBody().getNumAddresses()),
+        "has_in": has_in,
+        "has_out": has_out,
+        "has_alloc": has_alloc,
+        "has_free": has_free,
+        "has_filter": has_filter,
+        "has_port": has_port,
+        "has_vm": has_vm,
+    }
 
 
 def main():
     global START_TS
     START_TS = time.time()
 
-    log("=== kernel_rw.py v73 ===")
-
-    w("natsuk1 v73 match_policy + raw_lookup callers")
+    log("=== mig_scan.py v1 ===")
+    w("natsuk1 mig_scan v1")
+    w("kernel base %s" % fmt(KERNEL_BASE))
+    w("mach_trap_table %s" % fmt(MACH_TRAP_TABLE))
     w("")
 
-    # 1. Full dump of necp_match_policy
-    dump_one(MATCH_POLICY, "necp_match_policy", "sysent[462] entry - d=0 copyin from v70")
+    table = []
+    for i in range(MAX_ENTRIES):
+        if time.time() - START_TS > BUDGET_SEC:
+            w("BUDGET EXCEEDED while reading table at i=%d" % i)
+            break
+        raw = read_u64(MACH_TRAP_TABLE + i * 8)
+        if raw is None:
+            break
+        if raw == 0:
+            continue
+        addr = pac_unwrap(raw)
+        if addr == KERNEL_BASE:
+            continue
+        table.append((i, addr))
 
-    # 2. Full dump of raw_lookup itself (for reference)
-    dump_one(RAW_LOOKUP, "raw_lookup", "lookup without ref")
+    log("[*] table entries: %d" % len(table))
 
-    # 3. All direct callers of raw_lookup
-    if time.time() - START_TS < BUDGET_SEC:
-        log("[*] scanning direct callers of raw_lookup")
+    w("")
+    w(SEP)
+    w("### TABLE")
+    w(SEP)
+    for i, addr in table:
+        f = get_func(addr)
+        nm = "?"
+        if f is not None:
+            try:
+                nm = str(f.getName())
+            except Exception:
+                pass
+        w("  [%3d] %s  %s" % (i, fmt(addr), nm))
+
+    interesting = []
+    for i, addr in table:
+        if time.time() - START_TS > BUDGET_SEC:
+            w("BUDGET EXCEEDED at trap %d" % i)
+            break
+        f = get_func(addr)
+        if f is None:
+            f = ensure_function(addr)
+        if f is None:
+            continue
+        text = decompile_text(f, MAX_DECOMPILE_SEC)
+        has_in, has_out, has_alloc, has_free, has_filter, has_port, has_vm = classify_text(text)
+        if has_in or has_out or has_alloc or (has_port and has_vm):
+            interesting.append((i, addr, f))
+
+    log("[*] interesting traps: %d" % len(interesting))
+
+    results = []
+    for i, addr, f in interesting:
+        if time.time() - START_TS > BUDGET_SEC:
+            w("BUDGET EXCEEDED while dumping trap %d" % i)
+            break
         try:
-            hits = bl_callers(RAW_LOOKUP, MAX_CALLERS, 40)
+            nm = str(f.getName())
         except Exception:
-            hits = []
-
-        w("")
-        w(SEP)
-        w("### RAW_LOOKUP CALLERS (%d)" % len(hits))
-        w(SEP)
-
-        seen_fns = set()
-        for pair in hits:
-            pc = pair[0]
-            kind = pair[1]
-            cf = getFunctionContaining(sa(pc))
-            if cf is None:
-                continue
-            cfe = _u(cf.getEntryPoint().getOffset())
-            if cfe in seen_fns:
-                continue
-            seen_fns.add(cfe)
-            w("  caller: %s @ %s  (call pc=%s %s)" % (str(cf.getName()), fmt(cfe), fmt(pc), kind))
-
-        w("")
-        w("### RAW_LOOKUP CALLER BODIES")
-
-        for cfe in sorted(seen_fns):
-            if time.time() - START_TS > BUDGET_SEC:
-                w("BUDGET EXCEEDED")
-                break
-            cf = get_func(cfe)
-            if cf is None:
-                continue
             nm = "?"
-            try:
-                nm = str(cf.getName())
-            except Exception:
-                pass
-            log("[*] caller body: %s @ %s" % (nm, fmt(cfe)))
-            w("")
-            w(SEP)
-            w("### caller_%s @ %s" % (nm[:40], fmt(cfe)))
-            w(SEP)
-            try:
-                sz = int(cf.getBody().getNumAddresses())
-                w("  size=0x%X" % sz)
-            except Exception:
-                pass
-            # find where raw_lookup is called and print context
-            call_pcs = collect_callees_with_target(cf, RAW_LOOKUP)
-            if call_pcs:
-                w("  raw_lookup called at: %s" % ", ".join([fmt(p) for p in call_pcs]))
-            w("  decompile:")
-            for l in decompile_text(cf, MAX_DECOMPILE_SEC):
-                w("  " + l)
+        log("[*] dumping trap %d %s" % (i, fmt(addr)))
+        r = dump_one(addr, "mach_trap[%d] %s" % (i, nm), "MIG candidate")
+        if r is not None:
+            r["index"] = i
+            results.append(r)
+
+    w("")
+    w(SEP)
+    w("### SUMMARY")
+    w(SEP)
+    w("total traps: %d" % len(table))
+    w("interesting: %d" % len(interesting))
+    w("dumped: %d" % len(results))
+    w("")
+    for r in results:
+        w("  [%3d] %s %s in=%s out=%s alloc=%s free=%s filter=%s port=%s vm=%s" % (
+            r["index"], fmt(r["addr"]), r["name"],
+            r["has_in"], r["has_out"], r["has_alloc"], r["has_free"],
+            r["has_filter"], r["has_port"], r["has_vm"]))
+
+    w("")
+    w("elapsed: %.1f sec" % (time.time() - START_TS))
 
     try:
         fh = open(OUT, "w")
