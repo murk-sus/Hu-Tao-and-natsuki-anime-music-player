@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # @runtime Jython
-# iokit_scan.py v2 - strings + xrefs based vtable finder with diagnostics
+# kernel_rw.py v80
 
 import os
 import sys
@@ -27,17 +27,25 @@ OUT = os.path.join(WS, "result.txt")
 SEP = "=" * 72
 
 KERNEL_BASE = int("FFFFFFF007004000", 16)
-KERNEL_END  = KERNEL_BASE + 0x20000000
 
-MAX_SYMBOLS = 2000000
-MAX_STRINGS = 800000
-STR_FILTER = ["IOUserClient", "IOExternalMethod", "externalMethod", "IOKit"]
+MATCH_POLICY = int("FFFFFFF00A4F75D8", 16)
+RAW_LOOKUP   = int("FFFFFFF00A4DB8D4", 16)
+SESS_LOOKUP  = int("FFFFFFF00A4ED864", 16)
+
+FIELD_10C_ANCHOR = int("FFFFFFF009A68314", 16)
+IOHID_VTABLE     = int("FFFFFFF007FF9F60", 16)
+LOCK_ADDR        = int("FFFFFFF00A1EA000", 16)
+IOMFB_VTABLE     = int("FFFFFFF008016370", 16)
+
+MAX_DECOMPILE_SEC = 60
+BUDGET_SEC = 1500
+MAX_CALLERS = 40
 
 DEC = None
 MONITOR = ConsoleTaskMonitor()
 START_TS = time.time()
 L = []
-_DECOMP_CACHE = {}
+DECOMP_CACHE = {}
 
 
 def log(m):
@@ -49,7 +57,7 @@ def w(s):
     L.append(s)
 
 
-def _u(v):
+def u(v):
     return int(v) & 0xFFFFFFFFFFFFFFFF
 
 
@@ -68,6 +76,75 @@ def sa(a):
         return None
 
 
+def rd_u64(addr):
+    try:
+        ga = sa(addr)
+        if ga is None:
+            return None
+        return u(currentProgram.getMemory().getLong(ga))
+    except Exception:
+        return None
+
+
+def pac(raw):
+    return KERNEL_BASE + (raw & 0xFFFFFFFF)
+
+
+def get_func(addr):
+    try:
+        ga = sa(addr)
+        if ga is None:
+            return None
+        f = getFunctionAt(ga)
+        if f is not None:
+            return f
+        return getFunctionContaining(ga)
+    except Exception:
+        return None
+
+
+def disasm(addr):
+    if not HAS_DISASM:
+        return
+    try:
+        ga = sa(addr)
+        if ga is None:
+            return
+        _DC(ga, None, True).applyTo(currentProgram)
+    except Exception:
+        pass
+
+
+def ensure_func(addr):
+    try:
+        ga = sa(addr)
+        if ga is None:
+            return None
+        f = getFunctionAt(ga)
+        if f is not None:
+            return f
+        f = getFunctionContaining(ga)
+        if f is not None:
+            return f
+        disasm(ga)
+        if HAS_CREATE:
+            try:
+                _CFC(ga).applyTo(currentProgram)
+            except Exception:
+                pass
+        try:
+            fm = currentProgram.getFunctionManager()
+            nm = "nk_%X" % addr
+            f = fm.createFunction(ga, nm)
+            if f is not None:
+                return f
+        except Exception:
+            pass
+        return getFunctionAt(ga) or getFunctionContaining(ga)
+    except Exception:
+        return None
+
+
 def get_dec():
     global DEC
     if DEC is not None:
@@ -78,374 +155,376 @@ def get_dec():
     return DEC
 
 
-def decompile_text(f, sec=60):
+def decomp(f, sec=MAX_DECOMPILE_SEC):
     try:
-        ent = _u(f.getEntryPoint().getOffset())
+        ent = u(f.getEntryPoint().getOffset())
     except Exception:
         ent = 0
-    if ent in _DECOMP_CACHE:
-        return _DECOMP_CACHE[ent]
+    if ent in DECOMP_CACHE:
+        return DECOMP_CACHE[ent]
     try:
         r = get_dec().decompileFunction(f, sec, MONITOR)
         if r is None or not r.decompileCompleted():
             out = ["(decompile failed)"]
         else:
             c = r.getDecompiledFunction()
-            out = ["(empty)"] if c is None else [l.rstrip() for l in c.getC().split("\n")]
+            out = ["(empty)"] if c is None else [ln.rstrip() for ln in c.getC().split("\n")]
     except Exception as e:
         out = ["(exception %s)" % e]
-    _DECOMP_CACHE[ent] = out
+    DECOMP_CACHE[ent] = out
     return out
 
 
-def ensure_function(addr):
-    ga = sa(addr)
-    if ga is None:
-        return None
-    f = getFunctionAt(ga)
-    if f is not None:
-        return f
-    f = getFunctionContaining(ga)
-    if f is not None:
-        return f
-    if HAS_DISASM:
-        try:
-            _DC(ga, None, True).applyTo(currentProgram)
-        except Exception:
-            pass
-    f = getFunctionContaining(ga)
-    if f is not None:
-        return f
-    if HAS_CREATE:
-        try:
-            _CFC(ga).applyTo(currentProgram)
-        except Exception:
-            pass
-    return getFunctionAt(ga) or getFunctionContaining(ga)
-
-
-def pac_target(raw):
-    """Kernelcache stores function pointers as offsets from KERNEL_BASE."""
-    if raw is None or raw == 0:
-        return None
-    v = KERNEL_BASE + (raw & 0xFFFFFFFF)
-    if KERNEL_BASE <= v <= KERNEL_END:
-        return v
-    if KERNEL_BASE <= raw <= KERNEL_END:
-        return raw
-    return None
-
-
-def read_u64(addr):
+def fn_name(f):
     try:
-        ga = sa(addr)
-        if ga is None:
-            return None
-        return _u(currentProgram.getMemory().getLong(ga))
+        return str(f.getName())
     except Exception:
-        return None
+        return "?"
 
 
-def diag_symbols():
-    w("")
-    w(SEP)
-    w("### DIAG: SYMBOL TABLE")
-    w(SEP)
-    sym = currentProgram.getSymbolTable()
-    total = 0
-    sample = []
-    io_user = []
-    vtable_syms = []
-    ztv_syms = []
+def blocks():
+    out = []
     try:
-        it = sym.getSymbolIterator()
-        while it.hasNext():
-            s = it.next()
-            total += 1
-            if total > MAX_SYMBOLS:
-                break
-            if total % 100000 == 0:
-                log("[*] symbols: %d" % total)
-            try:
-                nm = str(s.getName())
-            except Exception:
+        for b in currentProgram.getMemory().getBlocks():
+            if not b.isInitialized():
                 continue
-            if total <= 30:
-                sample.append(nm)
-            if "IOUser" in nm:
-                io_user.append((_u(s.getAddress().getOffset()), nm))
-            if "vtable" in nm.lower():
-                vtable_syms.append((_u(s.getAddress().getOffset()), nm))
-            if "__ZTV" in nm:
-                ztv_syms.append((_u(s.getAddress().getOffset()), nm))
-    except Exception as e:
-        w("  symtab iter EXC: %s" % e)
-    w("  total symbols: %d" % total)
-    w("  with 'IOUser': %d" % len(io_user))
-    w("  with 'vtable': %d" % len(vtable_syms))
-    w("  with '__ZTV': %d" % len(ztv_syms))
-    w("  sample (first 30):")
-    for nm in sample:
-        w("    %s" % nm)
-    w("  IOUser symbols (up to 20):")
-    for a, nm in io_user[:20]:
-        w("    %s  %s" % (fmt(a), nm))
-    w("  vtable symbols (up to 20):")
-    for a, nm in vtable_syms[:20]:
-        w("    %s  %s" % (fmt(a), nm))
-    w("  __ZTV symbols (up to 20):")
-    for a, nm in ztv_syms[:20]:
-        w("    %s  %s" % (fmt(a), nm))
-    log("[*] diag: total=%d io_user=%d vtable=%d ztv=%d" % (
-        total, len(io_user), len(vtable_syms), len(ztv_syms)))
+            if not b.isExecute():
+                continue
+            s = u(b.getStart().getOffset())
+            e = u(b.getEnd().getOffset())
+            out.append((s, e))
+    except Exception:
+        pass
+    return out
 
 
-def find_strings():
-    w("")
-    w(SEP)
-    w("### DIAG: STRINGS")
-    w(SEP)
+BLOCKS = None
+
+
+def get_blocks():
+    global BLOCKS
+    if BLOCKS is None:
+        BLOCKS = blocks()
+    return BLOCKS
+
+
+def sign26(x):
+    if x & 0x02000000:
+        return x - 0x04000000
+    return x
+
+
+def scan_calls_to(target, max_hits=MAX_CALLERS, budget=40):
     hits = []
-    total_str = 0
-    listing = currentProgram.getListing()
-    try:
-        di = listing.getDefinedData(True)
-    except Exception as e:
-        w("  getDefinedData EXC: %s" % e)
-        return hits
-    cnt = 0
-    while di.hasNext():
-        cnt += 1
-        if cnt > MAX_STRINGS:
+    mem = currentProgram.getMemory()
+    ts = time.time()
+    for pair in get_blocks():
+        if time.time() - ts > budget:
             break
-        if cnt % 100000 == 0:
-            log("[*] data items: %d, strings: %d, hits: %d" % (cnt, total_str, len(hits)))
+        s = pair[0]
+        e = pair[1]
+        size = e - s + 1
+        if size <= 0 or size > 0x1000000:
+            continue
         try:
-            d = di.next()
-            if not d.hasStringValue():
+            jbuf = zeros(size, 'b')
+            ga = sa(s)
+            if ga is None:
                 continue
-            total_str += 1
-            sval = str(d.getValue())
+            mem.getBytes(ga, jbuf)
         except Exception:
             continue
-        for f in STR_FILTER:
-            if f in sval:
-                a = _u(d.getAddress().getOffset())
-                hits.append((a, sval[:80]))
-                break
-    w("  total strings: %d" % total_str)
-    w("  filtered hits: %d" % len(hits))
-    for a, sval in hits[:60]:
-        w("    %s  %s" % (fmt(a), sval))
-    if len(hits) > 60:
-        w("    ... (%d more)" % (len(hits) - 60))
-    log("[*] strings: total=%d hits=%d" % (total_str, len(hits)))
+        pc = s
+        i = 0
+        while i + 4 <= size:
+            b0 = int(jbuf[i]) & 0xFF
+            b1 = int(jbuf[i + 1]) & 0xFF
+            b2 = int(jbuf[i + 2]) & 0xFF
+            b3 = int(jbuf[i + 3]) & 0xFF
+            raw = b0 | (b1 << 8) | (b2 << 16) | (b3 << 24)
+            op = raw & 0xFC000000
+            if op == 0x94000000 or op == 0x14000000:
+                imm = sign26(raw & 0x03FFFFFF) << 2
+                dst = (pc + imm) & 0xFFFFFFFFFFFFFFFF
+                if dst == target:
+                    kind = "BL" if op == 0x94000000 else "B"
+                    hits.append((pc, kind))
+                    if len(hits) >= max_hits:
+                        del jbuf
+                        return hits
+            i += 4
+            pc += 4
+        del jbuf
     return hits
 
 
-def find_xrefs(addr):
-    out = []
-    ga = sa(addr)
-    if ga is None:
-        return out
-    try:
-        rm = currentProgram.getReferenceManager()
-        refs = rm.getReferencesTo(ga)
-        it = refs.iterator()
-        while it.hasNext():
-            r = it.next()
-            try:
-                fa = _u(r.getFromAddress().getOffset())
-                out.append(fa)
-            except Exception:
-                continue
-    except Exception as e:
-        log("[!] xref exc @ %s: %s" % (fmt(addr), e))
-    return out
-
-
-def looks_like_vtable(addr, min_entries=5):
-    """Count slots that resolve to a valid function; require min_entries."""
-    hits = 0
-    checked = 0
-    for i in range(16):
-        raw = read_u64(addr + i * 8)
-        if raw is None or raw == 0:
-            break
-        checked += 1
-        t = pac_target(raw)
-        if t is None:
-            break
-        f = getFunctionContaining(sa(t))
-        if f is not None:
-            hits += 1
-    return hits >= min_entries and checked >= min_entries
-
-
-def vtable_dump(addr, max_entries=64):
-    out = []
-    for i in range(max_entries):
-        raw = read_u64(addr + i * 8)
-        if raw is None or raw == 0:
-            break
-        t = pac_target(raw)
-        name = "?"
-        if t is not None:
-            f = getFunctionContaining(sa(t))
-            if f is not None:
-                try:
-                    name = str(f.getName())
-                except Exception:
-                    pass
-        out.append((i, raw, t or 0, name))
-    return out
-
-
-def count_sinks(text):
-    joined = "\n".join(text).lower()
-    out = {}
-    for name in ("copyin", "copyout", "memmove", "memset", "kalloc_type", "kalloc_zone"):
-        out[name] = joined.count(name)
-    return out
-
-
-def dump_one(addr, label, extra=""):
+def dump_fn(addr, label, note):
     w("")
     w(SEP)
-    w("### %s @ %s %s" % (label, fmt(addr), extra))
+    w("### %s @ %s" % (label, fmt(addr)))
+    w("note: %s" % note)
     w(SEP)
-    f = ensure_function(addr)
+    f = get_func(addr) or ensure_func(addr)
     if f is None:
         w("  no function")
-        return None
+        return
     try:
-        w("  name = %s" % f.getName())
-        w("  size = 0x%X" % int(f.getBody().getNumAddresses()))
+        ent = u(f.getEntryPoint().getOffset())
+        sz = int(f.getBody().getNumAddresses())
+        w("  name=%s entry=%s size=0x%X" % (fn_name(f), fmt(ent), sz))
     except Exception:
         pass
-    text = decompile_text(f)
-    c = count_sinks(text)
-    parts = []
-    for k in sorted(c.keys()):
-        if c[k] > 0:
-            parts.append("%s=%d" % (k, c[k]))
-    w("  sinks: %s" % (" ".join(parts) if parts else "(none)"))
+    w("")
+    w("-- BL callers --")
+    try:
+        hits = scan_calls_to(addr, MAX_CALLERS, 40)
+    except Exception:
+        hits = []
+    if not hits:
+        w("  (none)")
+    for pc, kind in hits:
+        cf = getFunctionContaining(sa(pc))
+        nm = fn_name(cf) if cf is not None else "?"
+        cfe = u(cf.getEntryPoint().getOffset()) if cf is not None else 0
+        w("  %s %s in %s @ %s" % (fmt(pc), kind, nm, fmt(cfe)))
     w("")
     w("-- decompile --")
-    for l in text:
-        w("  " + l)
-    return {"addr": addr, "name": str(f.getName()), "sinks": c, "text": text}
+    for ln in decomp(f):
+        w("  " + ln)
+
+
+def task1_field_10c():
+    w("")
+    w(SEP)
+    w("### TASK 1: LDR/STR with offset 0x10C")
+    w(SEP)
+    listing = currentProgram.getListing()
+    it = listing.getInstructions(True)
+    count = 0
+    while it.hasNext() and not monitor_cancelled():
+        ins = it.next()
+        mnem = ins.getMnemonicString()
+        if not mnem.startswith("LDR") and not mnem.startswith("STR"):
+            continue
+        for i in range(ins.getNumOperands()):
+            for op in ins.getOpObjects(i):
+                try:
+                    val = op.getUnsignedValue()
+                except Exception:
+                    continue
+                if val == 0x10C:
+                    kind = "READ " if mnem.startswith("LDR") else "WRITE"
+                    f = getFunctionContaining(ins.getAddress())
+                    nm = fn_name(f) if f is not None else "?"
+                    w("[%s] %s  in %s  |  %s" % (
+                        kind, ins.getAddress(), nm, ins.toString()))
+                    count += 1
+    w("total hits: %d" % count)
+
+
+def monitor_cancelled():
+    try:
+        return MONITOR.isCancelled()
+    except Exception:
+        return False
+
+
+def task2_vtable(vtable_ptr, label):
+    w("")
+    w(SEP)
+    w("### TASK 2: vtable %s @ %s" % (label, fmt(vtable_ptr)))
+    w(SEP)
+    for i in range(64):
+        if time.time() - START_TS > BUDGET_SEC:
+            w("budget exceeded")
+            return
+        raw = rd_u64(vtable_ptr + i * 8)
+        if raw is None or raw == 0:
+            break
+        ptr = pac(raw)
+        if ptr < KERNEL_BASE or ptr > KERNEL_BASE + 0x20000000:
+            break
+        f = get_func(ptr) or ensure_func(ptr)
+        nm = fn_name(f) if f is not None else "?"
+        w("  slot %d: %s @ %s" % (i, nm, fmt(ptr)))
+        if f is not None:
+            sinks = detect_sinks(f)
+            if sinks:
+                w("    sinks: %s" % sinks)
+
+
+def detect_sinks(f):
+    out = []
+    try:
+        text = "\n".join(decomp(f)).lower()
+    except Exception:
+        return out
+    for name in ("copyin", "copyout", "iomalloc", "memcpy", "memset", "kalloc"):
+        if name in text:
+            out.append(name)
+    return out
+
+
+def task3_lock_type(addr):
+    w("")
+    w(SEP)
+    w("### TASK 3: lock type @ %s" % fmt(addr))
+    w(SEP)
+    ins = None
+    try:
+        ins = getInstructionAt(sa(addr))
+    except Exception:
+        pass
+    if ins is None:
+        disasm(addr)
+        try:
+            ins = getInstructionAt(sa(addr))
+        except Exception:
+            ins = None
+    if ins is None:
+        w("  no instruction")
+        return
+    w("  first: %s" % ins.toString())
+    mnem = ins.getMnemonicString()
+    if mnem == "B":
+        try:
+            flows = ins.getFlows()
+            if flows and len(flows) > 0:
+                tgt = u(flows[0].getOffset())
+                w("  thunk -> %s" % fmt(tgt))
+                f = get_func(tgt) or ensure_func(tgt)
+                if f is not None:
+                    w("  func: %s" % fn_name(f))
+                    text = "\n".join(decomp(f)).lower()
+                    if "_lck_mtx_lock" in text or "iolocklock" in text:
+                        w("  type: mutex")
+                    elif "iocommandgate" in text:
+                        w("  type: IOCommandGate serialized")
+                    elif "_lck_spin_lock" in text or "ldaxr" in text:
+                        w("  type: spinlock")
+                    elif "_thread_block" in text:
+                        w("  type: mutex via thread_block")
+                    else:
+                        w("  type: unknown")
+        except Exception as e:
+            w("  flow error: %s" % e)
+    else:
+        f = get_func(addr)
+        if f is not None:
+            text = "\n".join(decomp(f)).lower()
+            if "_lck_mtx_lock" in text:
+                w("  type: mutex")
+            elif "iocommandgate" in text:
+                w("  type: IOCommandGate")
+            else:
+                w("  type: unknown")
+
+
+def task4_dispatch_table(vtable_ptr, label):
+    w("")
+    w(SEP)
+    w("### TASK 4: dispatch table for %s" % label)
+    w(SEP)
+    f = get_func(vtable_ptr) or ensure_func(vtable_ptr)
+    if f is None:
+        w("  no function at vtable ptr")
+        return
+    text = "\n".join(decomp(f))
+    for i, ln in enumerate(text.split("\n")):
+        if i > 60:
+            break
+    w("  decompile preview:")
+    for i, ln in enumerate(text.split("\n")):
+        if i > 40:
+            break
+        w("    " + ln)
+    w("")
+    w("  externalMethod search by name:")
+    fm = currentProgram.getFunctionManager()
+    found = 0
+    it = fm.getFunctions(True)
+    while it.hasNext() and found < 10:
+        cf = it.next()
+        nm = fn_name(cf)
+        if "externalMethod" in nm or "ExternalMethod" in nm:
+            ent = u(cf.getEntryPoint().getOffset())
+            if ent >= 0xFFFFFFF009A00000 and ent <= 0xFFFFFFF009B00000:
+                w("    %s @ %s" % (nm, fmt(ent)))
+                found += 1
 
 
 def main():
     global START_TS
     START_TS = time.time()
 
-    log("=== iokit_scan v2 ===")
-    w("natsuk1 iokit_scan v2 diag")
+    log("=== kernel_rw.py v80 ===")
+    w("natsuk1 kernel_rw v80")
     w("kernel base %s" % fmt(KERNEL_BASE))
-    w("kernel end  %s" % fmt(KERNEL_END))
     w("")
 
-    diag_symbols()
+    dump_fn(MATCH_POLICY, "necp_match_policy", "sysent[462]")
 
-    strs = find_strings()
+    dump_fn(RAW_LOOKUP, "raw_lookup", "internal")
 
-    w("")
-    w(SEP)
-    w("### XREFS TO STRINGS")
-    w(SEP)
-
-    candidate_data_addrs = []
-    for s_addr, s_val in strs[:60]:
-        xrefs = find_xrefs(s_addr)
+    if time.time() - START_TS < BUDGET_SEC:
+        log("[*] scanning raw_lookup callers")
+        hits = scan_calls_to(RAW_LOOKUP, MAX_CALLERS, 40)
         w("")
-        w("  string @ %s = %s" % (fmt(s_addr), s_val))
-        if not xrefs:
-            w("    (no xrefs)")
-            continue
-        for xa in xrefs[:20]:
-            w("    xref from %s" % fmt(xa))
-            candidate_data_addrs.append(xa)
-
-    candidate_data_addrs = sorted(set(candidate_data_addrs))
-    log("[*] candidate data addrs: %d" % len(candidate_data_addrs))
-
-    w("")
-    w(SEP)
-    w("### VTABLE CANDIDATES FROM XREFS")
-    w(SEP)
-
-    vtables = []
-    for ca in candidate_data_addrs:
-        if time.time() - START_TS > 2400:
-            w("BUDGET EXCEEDED while scanning xrefs")
-            break
-        for delta in range(-0x100, 0x400, 8):
-            addr = ca + delta
-            if addr < KERNEL_BASE:
+        w(SEP)
+        w("### raw_lookup callers (%d)" % len(hits))
+        w(SEP)
+        seen = set()
+        for pc, kind in hits:
+            cf = getFunctionContaining(sa(pc))
+            if cf is None:
                 continue
-            if looks_like_vtable(addr, min_entries=5):
-                vtables.append(addr)
+            cfe = u(cf.getEntryPoint().getOffset())
+            if cfe in seen:
+                continue
+            seen.add(cfe)
+            w("  %s @ %s  (call at %s %s)" % (fn_name(cf), fmt(cfe), fmt(pc), kind))
+        for cfe in sorted(seen):
+            if time.time() - START_TS > BUDGET_SEC:
+                w("budget exceeded")
                 break
+            cf = get_func(cfe)
+            if cf is None:
+                continue
+            w("")
+            w(SEP)
+            w("### caller %s @ %s" % (fn_name(cf), fmt(cfe)))
+            w(SEP)
+            for ln in decomp(cf):
+                w("  " + ln)
 
-    vtables = sorted(set(vtables))
+    if time.time() - START_TS < BUDGET_SEC:
+        try:
+            task1_field_10c()
+        except Exception as e:
+            w("task1 error: %s" % e)
 
-    w("  vtable candidates: %d" % len(vtables))
-    for v in vtables[:60]:
-        w("    %s" % fmt(v))
+    if time.time() - START_TS < BUDGET_SEC:
+        try:
+            task2_vtable(IOHID_VTABLE, "IOHIDOOBReportDescriptor")
+        except Exception as e:
+            w("task2 error: %s" % e)
 
-    log("[*] vtables: %d" % len(vtables))
+    if time.time() - START_TS < BUDGET_SEC:
+        try:
+            task3_lock_type(LOCK_ADDR)
+        except Exception as e:
+            w("task3 error: %s" % e)
 
-    w("")
-    w(SEP)
-    w("### VTABLE DUMPS")
-    w(SEP)
-
-    methods_found = []
-    for vt in vtables:
-        if time.time() - START_TS > 2400:
-            w("BUDGET EXCEEDED during vtable dump")
-            break
-        entries = vtable_dump(vt, 64)
-        w("")
-        w("  vtable @ %s" % fmt(vt))
-        for idx, raw, target, name in entries:
-            w("    [%3d] %s -> %s  %s" % (idx, fmt(raw), fmt(target), name))
-            for sig in ("externalMethod", "getTargetAndMethodForIndex", "externalMethodOverride"):
-                if sig.lower() in name.lower():
-                    methods_found.append((vt, idx, target, name))
-                    break
-
-    log("[*] methods of interest: %d" % len(methods_found))
-
-    w("")
-    w(SEP)
-    w("### METHOD DUMPS")
-    w(SEP)
-
-    results = []
-    for vt, idx, target, name in methods_found:
-        if time.time() - START_TS > 2400:
-            w("BUDGET EXCEEDED during method dump")
-            break
-        r = dump_one(target, "ext_method", extra="vtable=%s slot=%d name=%s" % (fmt(vt), idx, name))
-        if r is not None:
-            r["vtable"] = vt
-            r["slot"] = idx
-            results.append(r)
-
-    w("")
-    w(SEP)
-    w("### SUMMARY")
-    w(SEP)
-    w("elapsed %.1f sec" % (time.time() - START_TS))
-    w("methods dumped: %d" % len(results))
+    if time.time() - START_TS < BUDGET_SEC:
+        try:
+            task4_dispatch_table(IOMFB_VTABLE, "IOMobileFramebufferUserClient")
+        except Exception as e:
+            w("task4 error: %s" % e)
 
     try:
         fh = open(OUT, "w")
-        for l in L:
-            fh.write(l + "\n")
+        for ln in L:
+            fh.write(ln + "\n")
         fh.close()
         log("[+] wrote %s (%d lines)" % (OUT, len(L)))
     except Exception as e:
